@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)",
+      "mcp__semantic-code__search_code",
+      "mcp__semantic-code__index_codebase",
+      "mcp__semantic-code__index_status"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "semantic-code"
+  ]
+}

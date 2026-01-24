@@ -1,0 +1,161 @@
+"""LanceDB vector storage operations."""
+
+from pathlib import Path
+
+import lancedb
+import pyarrow as pa
+import structlog
+
+from semantic_code_mcp.models import ChunkType, ChunkWithEmbedding, SearchResult
+
+log = structlog.get_logger()
+
+# Schema for the chunks table
+CHUNKS_SCHEMA = pa.schema(
+    [
+        pa.field("vector", pa.list_(pa.float32(), 384)),  # MiniLM embedding size
+        pa.field("file_path", pa.utf8()),
+        pa.field("line_start", pa.int32()),
+        pa.field("line_end", pa.int32()),
+        pa.field("content", pa.utf8()),
+        pa.field("chunk_type", pa.utf8()),
+        pa.field("name", pa.utf8()),
+    ]
+)
+
+TABLE_NAME = "chunks"
+
+
+class VectorStore:
+    """LanceDB-backed vector storage for code chunks."""
+
+    def __init__(self, db_path: Path) -> None:
+        """Initialize the vector store.
+
+        Args:
+            db_path: Path to the LanceDB database directory.
+        """
+        self.db_path = db_path
+        self.db = lancedb.connect(str(db_path))
+        self._ensure_table()
+
+    def _ensure_table(self) -> None:
+        """Ensure the chunks table exists."""
+        try:
+            self.db.create_table(TABLE_NAME, schema=CHUNKS_SCHEMA, exist_ok=True)
+            log.debug("ensured_table", table=TABLE_NAME)
+        except ValueError:
+            # Table already exists (race condition or stale cache)
+            pass
+
+    def _get_table(self) -> lancedb.table.Table:
+        """Get the chunks table."""
+        return self.db.open_table(TABLE_NAME)
+
+    def add_chunks(self, items: list[ChunkWithEmbedding]) -> None:
+        """Add chunks with their embeddings to the store.
+
+        Args:
+            items: List of ChunkWithEmbedding objects.
+        """
+        if not items:
+            return
+
+        data = [
+            {
+                "vector": item.embedding,
+                "file_path": item.chunk.file_path,
+                "line_start": item.chunk.line_start,
+                "line_end": item.chunk.line_end,
+                "content": item.chunk.content,
+                "chunk_type": item.chunk.chunk_type.value,
+                "name": item.chunk.name,
+            }
+            for item in items
+        ]
+
+        table = self._get_table()
+        table.add(data)
+        log.debug("added_chunks", count=len(data))
+
+    def search(self, query_embedding: list[float], limit: int = 10) -> list[SearchResult]:
+        """Search for similar chunks.
+
+        Args:
+            query_embedding: The query vector.
+            limit: Maximum number of results.
+
+        Returns:
+            List of SearchResult objects sorted by similarity.
+        """
+        table = self._get_table()
+
+        if table.count_rows() == 0:
+            return []
+
+        results = table.search(query_embedding).metric("cosine").limit(limit).to_pandas()  # ty: ignore[unresolved-attribute]
+
+        search_results = []
+        for _, row in results.iterrows():
+            # LanceDB returns _distance (cosine distance in [0, 2], lower is better)
+            # Convert to score where higher is better: score = 1 - (distance / 2)
+            distance = row["_distance"]
+            score = max(0.0, min(1.0, 1.0 - distance / 2.0))
+
+            search_results.append(
+                SearchResult(
+                    file_path=row["file_path"],
+                    line_start=int(row["line_start"]),
+                    line_end=int(row["line_end"]),
+                    content=row["content"],
+                    chunk_type=ChunkType(row["chunk_type"]),
+                    name=row["name"],
+                    score=score,
+                )
+            )
+
+        return search_results
+
+    def delete_by_file(self, file_path: str) -> None:
+        """Delete all chunks for a specific file.
+
+        Args:
+            file_path: The file path to delete chunks for.
+        """
+        table = self._get_table()
+        table.delete(f"file_path = '{file_path}'")
+        log.debug("deleted_chunks_for_file", file_path=file_path)
+
+    def get_indexed_files(self) -> list[str]:
+        """Get list of all indexed file paths.
+
+        Returns:
+            List of unique file paths in the store.
+        """
+        table = self._get_table()
+
+        if table.count_rows() == 0:
+            return []
+
+        df = table.to_pandas()
+        return df["file_path"].unique().tolist()
+
+    def count(self) -> int:
+        """Count total chunks in the store.
+
+        Returns:
+            Number of chunks.
+        """
+        table = self._get_table()
+        return table.count_rows()
+
+    def clear(self) -> None:
+        """Delete all chunks from the store."""
+        try:
+            self.db.drop_table(TABLE_NAME)
+            log.debug("cleared_store", table=TABLE_NAME)
+        except ValueError:
+            # Table doesn't exist, nothing to clear
+            pass
+        # Recreate empty table
+        self._ensure_table()
