@@ -2,12 +2,25 @@
 
 ## In Progress
 
-### Semantic Code Search MVP
-We need semantic code search because grep requires knowing exact terms. When exploring unfamiliar codebases or searching for concepts ("function that handles authentication", "error handling for API calls"), grep fails because we don't know the exact variable/function names used.
+### Search Quality & Output Improvements
+Improve search result quality and output format for better usability.
 
-Semantic search lets us find code by meaning, not just text matching. This dramatically speeds up code exploration and reduces the iterative grep→read→refine cycle.
+**Tier 1 - Quick Wins:**
+- [x] Score threshold filtering - filter out low-confidence results (score < 0.3)
+- [x] Remove unused Searcher class - dead code in search/searcher.py
+- [x] Truncate long results - cap at ~50 lines with "..." indicator
+- [x] Group results by file - sort results so same-file chunks are together
 
-**Scope**: Python support only, single-machine local operation, MCP integration with Claude Code.
+**Tier 2 - Medium Effort:**
+- [x] Keyword boost (hybrid search) - boost results containing query words literally
+- [x] Parallel chunking - use asyncio.gather for parallel file processing
+- [x] File recency boost - factor mtime into ranking
+
+**Tier 3 - Larger Effort:**
+- [ ] Module-level code - extend chunker to capture top-level statements
+- [ ] Background re-indexing - return stale results while re-indexing
+- [ ] Separate docstrings - index docstrings separately for better matching
+- [ ] Code-specific embedding model - evaluate UniXcoder/CodeBERT
 
 ## Pending
 

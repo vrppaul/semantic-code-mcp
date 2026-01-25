@@ -6,6 +6,17 @@ import pytest
 
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.indexer.indexer import Indexer
+from semantic_code_mcp.models import IndexResult
+
+
+async def run_index(indexer: Indexer, project_path: Path, force: bool = False) -> IndexResult:
+    """Helper to run async index generator and return final result."""
+    result = None
+    async for update in indexer.index(project_path, force=force):
+        if isinstance(update, IndexResult):
+            result = update
+    assert result is not None
+    return result
 
 
 class TestIndexer:
@@ -118,35 +129,42 @@ class Helper:
         assert len(files) == 1
         assert "code.py" in files[0]
 
-    def test_index_project_creates_chunks(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_index_project_creates_chunks(self, settings: Settings, sample_project: Path):
         """Index creates chunks in vector store."""
         indexer = Indexer(settings)
-        result = indexer.index(sample_project)
+        result = await run_index(indexer, sample_project)
 
         assert result.files_indexed > 0
         assert result.chunks_indexed > 0
         assert result.files_indexed == 2  # main.py and utils.py
 
-    def test_index_incremental_skips_unchanged(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_index_incremental_skips_unchanged(
+        self, settings: Settings, sample_project: Path
+    ):
         """Incremental index skips unchanged files."""
         indexer = Indexer(settings)
 
         # First index
-        indexer.index(sample_project)
+        await run_index(indexer, sample_project)
 
         # Second index without changes
-        result2 = indexer.index(sample_project, force=False)
+        result2 = await run_index(indexer, sample_project, force=False)
 
         # No files should be re-indexed
         assert result2.files_indexed == 0
         assert result2.chunks_indexed == 0
 
-    def test_index_incremental_reindexes_changed(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_index_incremental_reindexes_changed(
+        self, settings: Settings, sample_project: Path
+    ):
         """Incremental index reindexes changed files."""
         indexer = Indexer(settings)
 
         # First index
-        indexer.index(sample_project)
+        await run_index(indexer, sample_project)
 
         # Modify a file
         import time
@@ -159,37 +177,40 @@ def new_function():
 ''')
 
         # Second index
-        result = indexer.index(sample_project, force=False)
+        result = await run_index(indexer, sample_project, force=False)
 
         # Only main.py should be re-indexed
         assert result.files_indexed == 1
 
-    def test_index_force_reindexes_all(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_index_force_reindexes_all(self, settings: Settings, sample_project: Path):
         """Force index reindexes all files."""
         indexer = Indexer(settings)
 
         # First index
-        indexer.index(sample_project)
+        await run_index(indexer, sample_project)
 
         # Force re-index
-        result = indexer.index(sample_project, force=True)
+        result = await run_index(indexer, sample_project, force=True)
 
         # All files should be re-indexed
         assert result.files_indexed == 2
 
-    def test_index_handles_empty_project(self, settings: Settings, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_index_handles_empty_project(self, settings: Settings, tmp_path: Path):
         """Handles project with no Python files."""
         empty_project = tmp_path / "empty"
         empty_project.mkdir()
         (empty_project / "readme.md").write_text("# Empty")
 
         indexer = Indexer(settings)
-        result = indexer.index(empty_project)
+        result = await run_index(indexer, empty_project)
 
         assert result.files_indexed == 0
         assert result.chunks_indexed == 0
 
-    def test_index_handles_syntax_errors(self, settings: Settings, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_index_handles_syntax_errors(self, settings: Settings, tmp_path: Path):
         """Handles files with syntax errors gracefully."""
         project = tmp_path / "project"
         project.mkdir()
@@ -198,12 +219,13 @@ def new_function():
         (project / "broken.py").write_text("def broken(: pass")  # Syntax error
 
         indexer = Indexer(settings)
-        result = indexer.index(project)
+        result = await run_index(indexer, project)
 
         # Should index valid file, skip broken one
         assert result.files_indexed >= 1
 
-    def test_get_index_status(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_get_index_status(self, settings: Settings, sample_project: Path):
         """Can get index status for a project."""
         indexer = Indexer(settings)
 
@@ -212,33 +234,35 @@ def new_function():
         assert status.is_indexed is False
 
         # After indexing
-        indexer.index(sample_project)
+        await run_index(indexer, sample_project)
         status = indexer.get_status(sample_project)
 
         assert status.is_indexed is True
         assert status.files_count > 0
         assert status.chunks_count > 0
 
-    def test_index_result_has_timing(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_index_result_has_timing(self, settings: Settings, sample_project: Path):
         """Index result includes timing information."""
         indexer = Indexer(settings)
-        result = indexer.index(sample_project)
+        result = await run_index(indexer, sample_project)
 
         assert result.duration_seconds > 0
 
-    def test_index_removes_deleted_files(self, settings: Settings, sample_project: Path):
+    @pytest.mark.asyncio
+    async def test_index_removes_deleted_files(self, settings: Settings, sample_project: Path):
         """Removes chunks for deleted files on re-index."""
         indexer = Indexer(settings)
 
         # Initial index
-        indexer.index(sample_project)
+        await run_index(indexer, sample_project)
         status1 = indexer.get_status(sample_project)
 
         # Delete a file
         (sample_project / "utils.py").unlink()
 
         # Re-index
-        indexer.index(sample_project, force=False)
+        await run_index(indexer, sample_project, force=False)
         status2 = indexer.get_status(sample_project)
 
         # Should have fewer files/chunks
