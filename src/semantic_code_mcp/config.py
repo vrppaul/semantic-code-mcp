@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     chunking_target_tokens: int = 800
     chunking_max_tokens: int = 1500
 
+    # Performance settings
+    status_cache_ttl: float = 5.0  # Seconds to cache status check results
+
     # Ignore patterns
     ignore_patterns: list[str] = Field(
         default_factory=lambda: [
