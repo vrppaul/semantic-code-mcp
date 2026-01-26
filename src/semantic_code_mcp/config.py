@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Logging
     debug: bool = False  # Enable debug logging (SEMANTIC_CODE_MCP_DEBUG=1)
 
+    # Profiling (dev only)
+    profile: bool = False  # Enable profiling (SEMANTIC_CODE_MCP_PROFILE=1)
+
     # Ignore patterns
     ignore_patterns: list[str] = Field(
         default_factory=lambda: [

@@ -22,6 +22,9 @@ wheels/
 .coverage
 htmlcov/
 
+# Profiling output (dev only)
+profiles/
+
 # OS
 .DS_Store
 .claude/settings.local.json

@@ -14,11 +14,13 @@ from semantic_code_mcp.indexer.embedder import Embedder
 from semantic_code_mcp.indexer.indexer import Indexer
 from semantic_code_mcp.logging import configure_logging
 from semantic_code_mcp.models import IndexProgress, IndexResult
+from semantic_code_mcp.profiling import configure_profiling, profile_async
 from semantic_code_mcp.storage.lancedb import VectorStore
 
 # Create settings and configure logging
 settings = Settings()
 configure_logging(debug=settings.debug)
+configure_profiling(enabled=settings.profile)
 
 log = structlog.get_logger()
 
@@ -59,6 +61,7 @@ async def _do_index_with_progress(
 
 
 @mcp.tool()
+@profile_async("search_code")
 async def search_code(
     query: str,
     project_path: str,
@@ -238,6 +241,7 @@ async def search_code(
 
 
 @mcp.tool()
+@profile_async("index_codebase")
 async def index_codebase(
     project_path: str,
     ctx: Context[ServerSession, None],
@@ -282,6 +286,7 @@ async def index_codebase(
 
 
 @mcp.tool()
+@profile_async("index_status")
 async def index_status(
     project_path: str,
     ctx: Context[ServerSession, None],
