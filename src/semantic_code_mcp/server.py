@@ -1,10 +1,8 @@
 """FastMCP server and tool definitions."""
 
 import asyncio
-import re
 import time
 from collections import defaultdict
-from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -14,16 +12,16 @@ from mcp.server.session import ServerSession
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.indexer.embedder import Embedder
 from semantic_code_mcp.indexer.indexer import Indexer
+from semantic_code_mcp.logging import configure_logging
 from semantic_code_mcp.models import IndexProgress, IndexResult
 from semantic_code_mcp.storage.lancedb import VectorStore
 
+# Create settings and configure logging
+settings = Settings()
+configure_logging(debug=settings.debug)
+
 log = structlog.get_logger()
 
-# Compiled regex for extracting words from queries
-WORD_PATTERN = re.compile(r"\w+")
-
-# Create settings and components
-settings = Settings()
 indexer = Indexer(settings)
 embedder = Embedder(settings)
 
@@ -125,46 +123,46 @@ async def search_code(
     query_embedding = await asyncio.to_thread(embedder.embed_text, query)
     timings["embedding_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
-    # Search the vector store
+    # Search the vector store using hybrid search (vector + full-text)
     t0 = time.perf_counter()
     store = VectorStore(index_path)
-    # Request more results than needed, then filter by score threshold
-    raw_results = await asyncio.to_thread(store.search, query_embedding, limit * 2)
+
+    # Use hybrid search to combine semantic and keyword matching
+    # This ensures exact keyword matches surface even with low semantic similarity
+    raw_results = await asyncio.to_thread(
+        store.search_hybrid,
+        query_embedding,
+        query,  # Use original query for FTS
+        limit * 2,
+        0.5,  # 50% vector, 50% FTS weight
+    )
+
     # Filter low-confidence results (score < 0.3 is essentially noise)
     filtered = [r for r in raw_results if r.score >= 0.3]
 
-    # Hybrid search: boost results containing query keywords + recency
-    query_words = set(WORD_PATTERN.findall(query.lower()))
-    query_words = {w for w in query_words if len(w) > 2}  # Skip short words
-    now = datetime.now(UTC).timestamp()
-    one_week_seconds = 7 * 24 * 60 * 60
-
+    # Apply recency boost only (keyword boost is handled by hybrid FTS)
     boosted = []
     for r in filtered:
-        content_lower = r.content.lower()
-        # Count how many query words appear in content
-        matches = sum(1 for w in query_words if w in content_lower)
-        # Keyword boost: up to 20% bonus for keyword matches
-        keyword_boost = min(0.2, matches * 0.05) if query_words else 0
-
-        # Recency boost: up to 5% bonus for files modified in last week
-        recency_boost = 0.0
         try:
             mtime = Path(r.file_path).stat().st_mtime
         except OSError:
             mtime = None
-        if mtime is not None:
-            age_seconds = now - mtime
-            if age_seconds < one_week_seconds:
-                # Linear decay: 5% for just modified, 0% for 1 week old
-                recency_boost = 0.05 * (1 - age_seconds / one_week_seconds)
 
-        boosted_score = min(1.0, r.score + keyword_boost + recency_boost)
-        boosted.append((r, boosted_score, matches))
+        # Small recency boost for recently modified files
+        recency_boost = 0.0
+        if mtime is not None:
+            now = time.time()
+            age_seconds = now - mtime
+            one_week = 7 * 24 * 60 * 60
+            if age_seconds < one_week:
+                recency_boost = 0.05 * (1 - age_seconds / one_week)
+
+        boosted_score = min(1.0, r.score + recency_boost)
+        boosted.append((r, boosted_score))
 
     # Re-sort by boosted score and take limit
     boosted.sort(key=lambda x: x[1], reverse=True)
-    filtered = [r for r, _, _ in boosted[:limit]]
+    filtered = [r for r, _ in boosted[:limit]]
 
     # Group by file, order files by best score, chunks by score within file
     by_file: dict[str, list] = defaultdict(list)

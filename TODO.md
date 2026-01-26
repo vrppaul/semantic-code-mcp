@@ -10,6 +10,9 @@ Improve search result quality and output format for better usability.
 - [x] Remove unused Searcher class - dead code in search/searcher.py
 - [x] Truncate long results - cap at ~50 lines with "..." indicator
 - [x] Group results by file - sort results so same-file chunks are together
+- [ ] Configurable min_score parameter - let callers control the quality threshold (default 0.3)
+- [x] Stronger exact match boost - exact phrase/keyword matches should get +30-50% boost, not just +5%
+- [x] Hybrid search with keyword fallback - run semantic + keyword search in parallel, merge results. Ensures exact identifier matches surface even with low semantic similarity
 
 **Tier 2 - Medium Effort:**
 - [x] Keyword boost (hybrid search) - boost results containing query words literally
