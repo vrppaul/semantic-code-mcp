@@ -261,6 +261,7 @@ class Indexer:
         batch_size = 20
         total_files = len(files_to_index)
 
+        t0 = time.time()
         for batch_start in range(0, total_files, batch_size):
             batch_end = min(batch_start + batch_size, total_files)
             batch = files_to_index[batch_start:batch_end]
@@ -281,7 +282,12 @@ class Indexer:
                 percent=percent,
             )
 
-        log.debug("chunked_files", files=len(files_to_index), chunks=len(all_chunks))
+        log.debug(
+            "chunking_completed",
+            files=len(files_to_index),
+            chunks=len(all_chunks),
+            duration_ms=round((time.time() - t0) * 1000, 1),
+        )
 
         # Embed chunks
         if all_chunks:
@@ -294,7 +300,9 @@ class Indexer:
             # Load model if needed (this is the slow part on first run)
             if not self.embedder.is_loaded:
                 yield IndexProgress(stage="embed", message="Loading embedding model...", percent=55)
+                t0 = time.time()
                 await asyncio.to_thread(self.embedder.load)
+                log.debug("model_loaded", duration_ms=round((time.time() - t0) * 1000, 1))
 
             yield IndexProgress(
                 stage="embed",
@@ -304,7 +312,13 @@ class Indexer:
 
             # Generate embeddings (run in thread as it's CPU-bound)
             contents = [chunk.content for chunk in all_chunks]
+            t0 = time.time()
             embeddings = await asyncio.to_thread(self.embedder.embed_batch, contents)
+            log.debug(
+                "embedding_completed",
+                chunks=len(all_chunks),
+                duration_ms=round((time.time() - t0) * 1000, 1),
+            )
 
             yield IndexProgress(stage="store", message="Storing in database...", percent=85)
 
@@ -315,7 +329,13 @@ class Indexer:
             ]
 
             # Store in vector database
+            t0 = time.time()
             await asyncio.to_thread(store.add_chunks, items)
+            log.debug(
+                "storage_completed",
+                chunks=len(items),
+                duration_ms=round((time.time() - t0) * 1000, 1),
+            )
 
         yield IndexProgress(stage="finalize", message="Finalizing...", percent=95)
 

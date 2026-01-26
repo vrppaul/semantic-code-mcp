@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Performance settings
     status_cache_ttl: float = 5.0  # Seconds to cache status check results
 
+    # Logging
+    debug: bool = False  # Enable debug logging (SEMANTIC_CODE_MCP_DEBUG=1)
+
     # Ignore patterns
     ignore_patterns: list[str] = Field(
         default_factory=lambda: [
