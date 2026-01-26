@@ -51,15 +51,28 @@ class VectorStore:
         # Ensure FTS index exists on content column
         self._ensure_fts_index()
 
-    def _ensure_fts_index(self) -> None:
-        """Ensure full-text search index exists on content column."""
+    def _ensure_fts_index(self, *, force: bool = False) -> None:
+        """Ensure full-text search index exists on content column.
+
+        Args:
+            force: If True, always rebuild the index. If False, skip if index exists.
+        """
         try:
             table = self._get_table()
             if table.count_rows() == 0:
                 return  # Can't create index on empty table
 
-            # Create FTS index on content column
-            # Using replace=True to handle re-indexing gracefully
+            # Check if FTS index already exists (skip expensive rebuild)
+            if not force:
+                existing_indices = table.list_indices()
+                fts_exists = any(
+                    idx.index_type == "FTS" and "content" in idx.columns for idx in existing_indices
+                )
+                if fts_exists:
+                    log.debug("fts_index_exists", column="content")
+                    return
+
+            # Create/rebuild FTS index on content column
             table.create_fts_index("content", replace=True)
             log.debug("created_fts_index", column="content")
         except Exception as e:
@@ -97,7 +110,7 @@ class VectorStore:
         log.debug("added_chunks", count=len(data))
 
         # Rebuild FTS index after adding data
-        self._ensure_fts_index()
+        self._ensure_fts_index(force=True)
 
     def search(self, query_embedding: list[float], limit: int = 10) -> list[SearchResult]:
         """Search for similar chunks.
