@@ -28,16 +28,22 @@ Improve search result quality and output format for better usability.
 ## Pending
 
 ### Convert to Dependency Injection
-Currently classes instantiate their dependencies directly (e.g., Searcher creates Embedder and Indexer internally). This makes testing harder and couples classes tightly. Refactor to inject dependencies:
+Currently classes instantiate their dependencies directly. This makes testing harder and couples classes tightly. Refactor to inject dependencies:
 - Pass Embedder, Indexer, VectorStore as constructor parameters
 - Use a factory or container for wiring in production
 - Allows easier mocking in tests
+- Eliminates duplicate VectorStore creation during search (~37ms overhead identified via profiling)
 
 ### Multi-language Support
 Currently Python only. Need JS/TS for web projects, Rust/Go for systems work. Tree-sitter supports all of these, so it's mainly about adding language-specific chunking logic.
 
 ### Performance Optimization
-After MVP works, profile and optimize:
-- Batch embedding generation
-- LanceDB index tuning (IVF partitions, PQ compression)
-- Incremental indexing efficiency
+Profiling infrastructure added (pyinstrument). Use `SEMANTIC_CODE_MCP_PROFILE=1` to generate profiles.
+
+**Completed:**
+- [x] FTS index skip - avoid rebuilding if already exists (~80ms saved per search)
+- [x] Batch embedding generation (already implemented)
+
+**Remaining:**
+- [ ] LanceDB index tuning (IVF partitions, PQ compression)
+- [ ] VectorStore caching or DI (see "Convert to Dependency Injection" above)

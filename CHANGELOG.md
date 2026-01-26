@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Profiling support with pyinstrument for dev (enable with `SEMANTIC_CODE_MCP_PROFILE=1`)
 - MCP server with three tools: `search_code`, `index_codebase`, `index_status`
 - Semantic code search using sentence-transformers embeddings (all-MiniLM-L6-v2)
 - LanceDB vector storage for embeddings
@@ -32,3 +33,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File scanning uses `git ls-files` for 100x speedup (falls back to os.walk for non-git repos)
 - Removed sync `index()` method - only async version remains (no code duplication)
 - Removed unused Searcher class
+- Skip FTS index rebuild if already exists (~80ms saved per search)
