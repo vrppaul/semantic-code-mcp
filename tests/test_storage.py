@@ -54,7 +54,7 @@ class TestLanceDBVectorStore:
             line_start=1,
             line_end=5,
             content="def foo(): pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="foo",
         )
         chunk2 = Chunk(
@@ -62,7 +62,7 @@ class TestLanceDBVectorStore:
             line_start=1,
             line_end=5,
             content="def bar(): pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="bar",
         )
 
@@ -93,7 +93,7 @@ class TestLanceDBVectorStore:
                     line_start=1,
                     line_end=5,
                     content=f"def func{i}(): pass",
-                    chunk_type=ChunkType.FUNCTION,
+                    chunk_type=ChunkType.function,
                     name=f"func{i}",
                 ),
                 embedding=np.random.rand(384).tolist(),
@@ -113,7 +113,7 @@ class TestLanceDBVectorStore:
             line_start=1,
             line_end=5,
             content="def foo(): pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="foo",
         )
         chunk2 = Chunk(
@@ -121,7 +121,7 @@ class TestLanceDBVectorStore:
             line_start=1,
             line_end=5,
             content="def bar(): pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="bar",
         )
 
@@ -151,7 +151,7 @@ class TestLanceDBVectorStore:
                 line_start=1,
                 line_end=5,
                 content="def foo(): pass",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="foo",
             ),
             Chunk(
@@ -159,7 +159,7 @@ class TestLanceDBVectorStore:
                 line_start=10,
                 line_end=15,
                 content="def bar(): pass",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="bar",
             ),
             Chunk(
@@ -167,7 +167,7 @@ class TestLanceDBVectorStore:
                 line_start=1,
                 line_end=5,
                 content="class Baz: pass",
-                chunk_type=ChunkType.CLASS,
+                chunk_type=ChunkType.klass,
                 name="Baz",
             ),
         ]
@@ -194,7 +194,7 @@ class TestLanceDBVectorStore:
                     line_start=1,
                     line_end=5,
                     content=f"def func{i}(): pass",
-                    chunk_type=ChunkType.FUNCTION,
+                    chunk_type=ChunkType.function,
                     name=f"func{i}",
                 ),
                 embedding=[0.5] * 384,
@@ -214,7 +214,7 @@ class TestLanceDBVectorStore:
                     line_start=1,
                     line_end=5,
                     content=f"def func{i}(): pass",
-                    chunk_type=ChunkType.FUNCTION,
+                    chunk_type=ChunkType.function,
                     name=f"func{i}",
                 ),
                 embedding=[0.5] * 384,
@@ -240,7 +240,7 @@ class TestLanceDBVectorStore:
             line_start=1,
             line_end=5,
             content="def test(): pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="test",
         )
         store1.add_chunks([ChunkWithEmbedding(chunk=chunk, embedding=[0.5] * 384)])

@@ -20,7 +20,7 @@ class TestRustChunker:
 
         assert len(chunks) == 1
         assert chunks[0].name == "hello"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
         assert "fn hello()" in chunks[0].content
 
     def test_function_with_doc_comment(self):
@@ -53,7 +53,7 @@ fn greet(name: &str) -> String {
 
         assert len(chunks) == 1
         assert chunks[0].name == "Point"
-        assert chunks[0].chunk_type == ChunkType.CLASS
+        assert chunks[0].chunk_type == ChunkType.klass
 
     def test_struct_with_impl_methods(self):
         """Struct + impl block: struct as CLASS, methods as METHOD."""
@@ -75,8 +75,8 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
 
         # struct + impl block
         assert len(class_chunks) == 2
@@ -98,7 +98,7 @@ impl Point {
 
         assert len(chunks) == 1
         assert chunks[0].name == "Color"
-        assert chunks[0].chunk_type == ChunkType.CLASS
+        assert chunks[0].chunk_type == ChunkType.klass
 
     def test_trait_definition(self):
         """Extracts a trait as CLASS chunk with signature methods."""
@@ -110,7 +110,7 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "Drawable"
 
@@ -127,8 +127,8 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
 
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "Greetable"
@@ -150,8 +150,8 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
 
         assert len(class_chunks) == 1
         # impl name should include trait info
@@ -197,8 +197,8 @@ fn configure() {}
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="config.rs")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
-        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.FUNCTION]
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
+        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.function]
 
         assert len(module_chunks) == 1
         assert module_chunks[0].name == "config"
@@ -216,7 +216,7 @@ fn configure() {}
 
         assert len(chunks) == 1
         assert chunks[0].name == "identity"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
 
     def test_generic_struct(self):
         """Generic struct is extracted."""
@@ -242,7 +242,7 @@ fn configure() {}
 
         assert len(chunks) == 1
         assert chunks[0].name == "fetch_data"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
 
     def test_empty_file(self):
         """Empty file returns empty list."""
@@ -325,6 +325,6 @@ fn second() {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "MyStruct"

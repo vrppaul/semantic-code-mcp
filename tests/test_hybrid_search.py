@@ -25,7 +25,7 @@ def store_with_chunks(lance_connection: LanceDBConnection) -> LanceDBVectorStore
                 line_start=100,
                 line_end=120,
                 content='log.debug("timing", duration_ms=round(time.time() - t0))',
-                chunk_type=ChunkType.METHOD,
+                chunk_type=ChunkType.method,
                 name="index",
             ),
             embedding=emb_low,  # Low similarity to query
@@ -37,7 +37,7 @@ def store_with_chunks(lance_connection: LanceDBConnection) -> LanceDBVectorStore
                 line_start=1,
                 line_end=10,
                 content="def measure_elapsed_time(): return time.perf_counter()",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="measure_elapsed_time",
             ),
             embedding=emb_high,  # High similarity to query
@@ -49,7 +49,7 @@ def store_with_chunks(lance_connection: LanceDBConnection) -> LanceDBVectorStore
                 line_start=50,
                 line_end=60,
                 content='log.debug("cache_saved", files_count=len(files))',
-                chunk_type=ChunkType.METHOD,
+                chunk_type=ChunkType.method,
                 name="_save",
             ),
             embedding=emb_mid,

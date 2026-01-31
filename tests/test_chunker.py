@@ -22,7 +22,7 @@ class TestPythonChunker:
 
         assert len(chunks) == 1
         assert chunks[0].name == "hello"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
         assert "def hello():" in chunks[0].content
         assert 'print("hello")' in chunks[0].content
 
@@ -64,8 +64,8 @@ class TestPythonChunker:
         chunks = chunker.chunk_file(str(file_path))
 
         # Should get class and its method
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
 
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "Person"
@@ -91,7 +91,7 @@ class TestPythonChunker:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
         assert len(method_chunks) == 2
 
         names = {c.name for c in method_chunks}
@@ -212,7 +212,7 @@ def three():
 
         assert len(chunks) == 1
         assert chunks[0].name == "fetch_data"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
 
     def test_decorated_function(self, tmp_path: Path):
         """Extracts functions with decorators, including decorator in content."""
@@ -246,7 +246,7 @@ class User:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert "@dataclass" in class_chunks[0].content
 
@@ -281,7 +281,7 @@ class User:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.CLASS]
+        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert "DEBUG = True" in class_chunks[0].content
         assert "VERSION" in class_chunks[0].content
@@ -303,7 +303,7 @@ class User:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
         assert len(method_chunks) == 2
 
         names = {c.name for c in method_chunks}
@@ -334,8 +334,8 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="important.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
-        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.FUNCTION]
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
+        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.function]
 
         assert len(module_chunks) == 1
         assert len(func_chunks) == 1
@@ -356,7 +356,7 @@ def foo():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="multi.py")
 
-        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.MODULE)
+        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.module)
         assert module_chunk.line_start == 1
         assert module_chunk.line_end == 5
 
@@ -370,7 +370,7 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="no_doc.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
         assert len(module_chunks) == 0
 
     def test_docstring_after_import_not_extracted(self):
@@ -385,7 +385,7 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="after_import.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
         assert len(module_chunks) == 0
 
     def test_file_with_only_docstring(self):
@@ -396,7 +396,7 @@ def hello():
         chunks = chunker.chunk_string(code, file_path="only_doc.py")
 
         assert len(chunks) == 1
-        assert chunks[0].chunk_type == ChunkType.MODULE
+        assert chunks[0].chunk_type == ChunkType.module
         assert chunks[0].name == "only_doc"
 
     def test_module_docstring_name_from_file_stem(self):
@@ -406,7 +406,7 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="/some/path/my_module.py")
 
-        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.MODULE)
+        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.module)
         assert module_chunk.name == "my_module"
 
     def test_comments_before_docstring_still_extracted(self):
@@ -422,7 +422,7 @@ def foo():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="commented.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
         assert len(module_chunks) == 1
         assert "Module docstring after comments" in module_chunks[0].content
 
@@ -444,7 +444,7 @@ def foo():
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHOD]
+        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
         # Both getter and setter are methods named "full_name"
         assert len(method_chunks) == 2
         assert all(c.name == "full_name" for c in method_chunks)

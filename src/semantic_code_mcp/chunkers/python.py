@@ -16,6 +16,10 @@ class NodeType(StrEnum):
     function_definition = auto()
     class_definition = auto()
     decorated_definition = auto()
+    comment = auto()
+    newline = auto()
+    expression_statement = auto()
+    string = auto()
 
 
 class PythonChunker(BaseTreeSitterChunker):
@@ -143,7 +147,7 @@ class PythonChunker(BaseTreeSitterChunker):
             return None
         name = name_node.text.decode()
 
-        chunk_type = ChunkType.METHOD if in_class else ChunkType.FUNCTION
+        chunk_type = ChunkType.method if in_class else ChunkType.function
         return self._make_chunk(node, file_path, lines, chunk_type, name)
 
     def _extract_class(
@@ -169,7 +173,7 @@ class PythonChunker(BaseTreeSitterChunker):
             return None
         name = name_node.text.decode()
 
-        return self._make_chunk(node, file_path, lines, ChunkType.CLASS, name)
+        return self._make_chunk(node, file_path, lines, ChunkType.klass, name)
 
     def _extract_module_docstring(
         self,
@@ -184,15 +188,15 @@ class PythonChunker(BaseTreeSitterChunker):
         statement (import, assignment, etc.) means there is no module docstring.
         """
         for child in root.children:
-            if child.type in ("comment", "newline"):
+            if child.type in (NodeType.comment, NodeType.newline):
                 continue
 
             # First real statement must be an expression_statement with a string
-            if child.type == "expression_statement":
+            if child.type == NodeType.expression_statement:
                 for sub in child.children:
-                    if sub.type == "string":
+                    if sub.type == NodeType.string:
                         name = Path(file_path).stem
-                        return self._make_chunk(child, file_path, lines, ChunkType.MODULE, name)
+                        return self._make_chunk(child, file_path, lines, ChunkType.module, name)
 
             # Any other node type means no module docstring
             return None

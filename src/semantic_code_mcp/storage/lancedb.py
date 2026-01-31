@@ -135,7 +135,7 @@ class LanceDBVectorStore:
                 "line_start": item.chunk.line_start,
                 "line_end": item.chunk.line_end,
                 "content": item.chunk.content,
-                "chunk_type": item.chunk.chunk_type.value,
+                "chunk_type": item.chunk.chunk_type,
                 "name": item.chunk.name,
             }
             for item in items

@@ -1,18 +1,18 @@
 """Domain models for chunks, search results, and index status."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum, auto
 
 from pydantic import BaseModel, field_validator, model_validator
 
 
-class ChunkType(str, Enum):
+class ChunkType(StrEnum):
     """Type of code chunk."""
 
-    MODULE = "module"
-    FUNCTION = "function"
-    CLASS = "class"
-    METHOD = "method"
+    module = auto()
+    function = auto()
+    klass = "class"
+    method = auto()
 
 
 class Chunk(BaseModel):

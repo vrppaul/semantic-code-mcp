@@ -1,5 +1,6 @@
 """Tree-sitter based AST chunking for Rust code."""
 
+from enum import StrEnum, auto
 from pathlib import Path
 
 import structlog
@@ -10,6 +11,22 @@ from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
 from semantic_code_mcp.models import Chunk, ChunkType
 
 log = structlog.get_logger()
+
+
+class NodeType(StrEnum):
+    """Tree-sitter Rust AST node types."""
+
+    line_comment = auto()
+    inner_doc_comment_marker = auto()
+    outer_doc_comment_marker = auto()
+    function_item = auto()
+    struct_item = auto()
+    enum_item = auto()
+    trait_item = auto()
+    impl_item = auto()
+    attribute_item = auto()
+    type_identifier = auto()
+    for_kw = "for"
 
 
 class RustChunker(BaseTreeSitterChunker):
@@ -38,11 +55,11 @@ class RustChunker(BaseTreeSitterChunker):
         doc_lines_end: int | None = None
 
         for child in root.children:
-            if child.type == "line_comment" and self._is_inner_doc_comment(child):
+            if child.type == NodeType.line_comment and self._is_inner_doc_comment(child):
                 if doc_lines_start is None:
                     doc_lines_start = child.start_point[0]
                 doc_lines_end = child.end_point[0]
-            elif child.type == "line_comment":
+            elif child.type == NodeType.line_comment:
                 # Regular comment, skip
                 continue
             else:
@@ -58,7 +75,7 @@ class RustChunker(BaseTreeSitterChunker):
                 line_start=start,
                 line_end=end,
                 content=content,
-                chunk_type=ChunkType.MODULE,
+                chunk_type=ChunkType.module,
                 name=name,
             )
 
@@ -66,7 +83,7 @@ class RustChunker(BaseTreeSitterChunker):
 
     def _is_inner_doc_comment(self, node: Node) -> bool:
         """Check if a line_comment is a //! inner doc comment."""
-        return any(child.type == "inner_doc_comment_marker" for child in node.children)
+        return any(child.type == NodeType.inner_doc_comment_marker for child in node.children)
 
     def _walk_items(
         self,
@@ -85,39 +102,39 @@ class RustChunker(BaseTreeSitterChunker):
             item_start_idx = self._find_item_start(children, i)
 
             match child.type:
-                case "function_item":
+                case NodeType.function_item:
                     start_node = children[item_start_idx] if item_start_idx < i else child
                     chunk = self._extract_function(child, start_node, file_path, lines)
                     if chunk:
                         chunks.append(chunk)
 
-                case "struct_item":
+                case NodeType.struct_item:
                     start_node = children[item_start_idx] if item_start_idx < i else child
                     chunk = self._extract_named_item(
-                        child, start_node, file_path, lines, ChunkType.CLASS
+                        child, start_node, file_path, lines, ChunkType.klass
                     )
                     if chunk:
                         chunks.append(chunk)
 
-                case "enum_item":
+                case NodeType.enum_item:
                     start_node = children[item_start_idx] if item_start_idx < i else child
                     chunk = self._extract_named_item(
-                        child, start_node, file_path, lines, ChunkType.CLASS
+                        child, start_node, file_path, lines, ChunkType.klass
                     )
                     if chunk:
                         chunks.append(chunk)
 
-                case "trait_item":
+                case NodeType.trait_item:
                     start_node = children[item_start_idx] if item_start_idx < i else child
                     chunk = self._extract_named_item(
-                        child, start_node, file_path, lines, ChunkType.CLASS
+                        child, start_node, file_path, lines, ChunkType.klass
                     )
                     if chunk:
                         chunks.append(chunk)
                     # Extract default method implementations inside the trait
                     self._extract_trait_methods(child, file_path, lines, chunks)
 
-                case "impl_item":
+                case NodeType.impl_item:
                     start_node = children[item_start_idx] if item_start_idx < i else child
                     self._extract_impl(child, start_node, file_path, lines, chunks)
 
@@ -133,8 +150,8 @@ class RustChunker(BaseTreeSitterChunker):
         j = current_idx - 1
         while j >= 0:
             prev = children[j]
-            is_attr = prev.type == "attribute_item"
-            is_doc = prev.type == "line_comment" and self._is_outer_doc_comment(prev)
+            is_attr = prev.type == NodeType.attribute_item
+            is_doc = prev.type == NodeType.line_comment and self._is_outer_doc_comment(prev)
             if is_attr or is_doc:
                 start = j
             else:
@@ -144,7 +161,7 @@ class RustChunker(BaseTreeSitterChunker):
 
     def _is_outer_doc_comment(self, node: Node) -> bool:
         """Check if a line_comment is a /// outer doc comment."""
-        return any(child.type == "outer_doc_comment_marker" for child in node.children)
+        return any(child.type == NodeType.outer_doc_comment_marker for child in node.children)
 
     def _extract_function(
         self,
@@ -168,7 +185,7 @@ class RustChunker(BaseTreeSitterChunker):
             line_start=start_line,
             line_end=end_line,
             content=content,
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name=name,
         )
 
@@ -222,7 +239,7 @@ class RustChunker(BaseTreeSitterChunker):
                 line_start=start_line,
                 line_end=end_line,
                 content=content,
-                chunk_type=ChunkType.CLASS,
+                chunk_type=ChunkType.klass,
                 name=impl_name,
             )
         )
@@ -258,7 +275,7 @@ class RustChunker(BaseTreeSitterChunker):
         """Extract function_item nodes from a declaration_list as METHOD chunks."""
         body_children = list(body.children)
         for idx, child in enumerate(body_children):
-            if child.type != "function_item":
+            if child.type != NodeType.function_item:
                 continue
 
             name = self._get_name(child)
@@ -279,7 +296,7 @@ class RustChunker(BaseTreeSitterChunker):
                     line_start=start_line,
                     line_end=end_line,
                     content=content,
-                    chunk_type=ChunkType.METHOD,
+                    chunk_type=ChunkType.method,
                     name=name,
                 )
             )
@@ -294,7 +311,7 @@ class RustChunker(BaseTreeSitterChunker):
     def _get_type_name(self, node: Node) -> str | None:
         """Get the type_identifier name from a struct/enum/trait node."""
         for child in node.children:
-            if child.type == "type_identifier" and child.text is not None:
+            if child.type == NodeType.type_identifier and child.text is not None:
                 return child.text.decode()
         return None
 
@@ -305,9 +322,11 @@ class RustChunker(BaseTreeSitterChunker):
         For `impl Trait for Type`, returns "Trait for Type".
         """
         type_ids = [
-            c for c in impl_node.children if c.type == "type_identifier" and c.text is not None
+            c
+            for c in impl_node.children
+            if c.type == NodeType.type_identifier and c.text is not None
         ]
-        has_for = any(c.type == "for" for c in impl_node.children)
+        has_for = any(c.type == NodeType.for_kw for c in impl_node.children)
 
         if has_for and len(type_ids) >= 2:
             trait_name = type_ids[0].text.decode()  # type: ignore[union-attr]

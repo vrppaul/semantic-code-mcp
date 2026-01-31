@@ -23,7 +23,7 @@ class TestCompositeChunker:
 
         assert len(chunks) == 1
         assert chunks[0].name == "hello"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
 
     def test_routes_rs_to_rust_chunker(self, tmp_path: Path):
         """Routes .rs files to RustChunker."""
@@ -35,7 +35,7 @@ class TestCompositeChunker:
 
         assert len(chunks) == 1
         assert chunks[0].name == "greet"
-        assert chunks[0].chunk_type == ChunkType.FUNCTION
+        assert chunks[0].chunk_type == ChunkType.function
 
     def test_unknown_extension_returns_empty(self, tmp_path: Path):
         """Unknown file extension returns empty list."""

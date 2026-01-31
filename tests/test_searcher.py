@@ -16,7 +16,7 @@ def _make_result(name: str, score: float, file_path: str = "/a.py") -> SearchRes
         line_start=1,
         line_end=5,
         content=f"def {name}(): pass",
-        chunk_type=ChunkType.FUNCTION,
+        chunk_type=ChunkType.function,
         name=name,
         score=score,
     )

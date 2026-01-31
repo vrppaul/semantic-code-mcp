@@ -95,7 +95,7 @@ class FormattedSearchResult(BaseModel):
             line_start=result.line_start,
             line_end=result.line_end,
             name=result.name,
-            chunk_type=result.chunk_type.value,
+            chunk_type=result.chunk_type,
             content=content,
             score=round(result.score, 3),
             truncated=truncated,

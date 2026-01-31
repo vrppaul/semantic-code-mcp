@@ -92,7 +92,7 @@ class TestIndexerWithMocks:
                 line_start=1,
                 line_end=5,
                 content="def test(): pass",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="test",
             )
         ]

@@ -18,14 +18,14 @@ class TestChunk:
             line_start=10,
             line_end=20,
             content="def hello():\n    pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="hello",
         )
         assert chunk.file_path == "/path/to/file.py"
         assert chunk.line_start == 10
         assert chunk.line_end == 20
         assert chunk.content == "def hello():\n    pass"
-        assert chunk.chunk_type == ChunkType.FUNCTION
+        assert chunk.chunk_type == ChunkType.function
         assert chunk.name == "hello"
 
     def test_create_class_chunk(self):
@@ -35,10 +35,10 @@ class TestChunk:
             line_start=1,
             line_end=50,
             content="class Foo:\n    pass",
-            chunk_type=ChunkType.CLASS,
+            chunk_type=ChunkType.klass,
             name="Foo",
         )
-        assert chunk.chunk_type == ChunkType.CLASS
+        assert chunk.chunk_type == ChunkType.klass
 
     def test_create_method_chunk(self):
         """Chunk can be created with method type."""
@@ -47,10 +47,10 @@ class TestChunk:
             line_start=5,
             line_end=10,
             content="def bar(self):\n    pass",
-            chunk_type=ChunkType.METHOD,
+            chunk_type=ChunkType.method,
             name="bar",
         )
-        assert chunk.chunk_type == ChunkType.METHOD
+        assert chunk.chunk_type == ChunkType.method
 
     def test_line_end_must_be_gte_line_start(self):
         """line_end must be >= line_start."""
@@ -60,7 +60,7 @@ class TestChunk:
                 line_start=20,
                 line_end=10,  # Invalid: end < start
                 content="def hello():\n    pass",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="hello",
             )
 
@@ -72,7 +72,7 @@ class TestChunk:
                 line_start=0,  # Invalid: must be >= 1
                 line_end=10,
                 content="def hello():\n    pass",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="hello",
             )
 
@@ -83,7 +83,7 @@ class TestChunk:
             line_start=10,
             line_end=20,
             content="def hello():\n    pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="hello",
         )
         d = chunk.model_dump()
@@ -102,7 +102,7 @@ class TestChunkWithEmbedding:
             line_start=10,
             line_end=20,
             content="def hello():\n    pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="hello",
         )
         embedding = [0.1, 0.2, 0.3]
@@ -119,7 +119,7 @@ class TestChunkWithEmbedding:
             line_start=10,
             line_end=20,
             content="def hello():\n    pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="hello",
         )
         item = ChunkWithEmbedding(chunk=chunk, embedding=[0.5] * 384)
@@ -140,7 +140,7 @@ class TestSearchResult:
             line_start=10,
             line_end=20,
             content="def hello():\n    pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="hello",
             score=0.95,
         )
@@ -154,7 +154,7 @@ class TestSearchResult:
                 line_start=10,
                 line_end=20,
                 content="def hello():\n    pass",
-                chunk_type=ChunkType.FUNCTION,
+                chunk_type=ChunkType.function,
                 name="hello",
                 score=1.5,  # Invalid: > 1
             )
@@ -166,7 +166,7 @@ class TestSearchResult:
             line_start=10,
             line_end=20,
             content="def hello():\n    pass",
-            chunk_type=ChunkType.FUNCTION,
+            chunk_type=ChunkType.function,
             name="hello",
             score=0.85,
         )

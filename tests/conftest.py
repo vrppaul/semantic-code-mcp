@@ -102,7 +102,7 @@ def sample_chunk() -> Chunk:
         line_start=10,
         line_end=20,
         content="def hello():\n    return 'world'",
-        chunk_type=ChunkType.FUNCTION,
+        chunk_type=ChunkType.function,
         name="hello",
     )
 

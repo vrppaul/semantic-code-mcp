@@ -33,6 +33,12 @@ paths:
 - Let MCP framework handle tool errors (return error responses)
 - Log errors with full context before re-raising
 
+## Enums
+- Use `StrEnum` + `auto()` for all string enums (lowercase values auto-generated from member names)
+- Never use `str, Enum` base classes — always `StrEnum`
+- For Python keywords (e.g. `class`, `for`), use an alias with explicit value: `klass = "class"`, `for_kw = "for"`
+- Tree-sitter node types must be `NodeType(StrEnum)` enums per chunker — no raw string comparisons
+
 ## Module Structure
 - **NEVER** put code in `__init__.py` files - they should only contain imports/exports
 - Keep `__init__.py` minimal: just `"""Docstring."""` or re-exports
