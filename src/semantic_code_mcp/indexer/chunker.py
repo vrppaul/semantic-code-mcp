@@ -70,6 +70,11 @@ class PythonChunker:
         chunks: list[Chunk] = []
         lines = code.split("\n")
 
+        # Extract module docstring if present (PEP 257: first statement)
+        module_chunk = self._extract_module_docstring(tree.root_node, file_path, lines)
+        if module_chunk:
+            chunks.append(module_chunk)
+
         # Walk the tree and extract functions and classes at module level
         self._extract_from_node(tree.root_node, file_path, lines, chunks, in_class=False)
 
@@ -260,3 +265,41 @@ class PythonChunker:
             chunk_type=ChunkType.CLASS,
             name=name,
         )
+
+    def _extract_module_docstring(
+        self,
+        root: Node,
+        file_path: str,
+        lines: list[str],
+    ) -> Chunk | None:
+        """Extract module-level docstring per PEP 257.
+
+        The module docstring must be the first statement in the file.
+        Comments and blank lines before it are allowed, but any other
+        statement (import, assignment, etc.) means there is no module docstring.
+        """
+        for child in root.children:
+            if child.type in ("comment", "newline"):
+                continue
+
+            # First real statement must be an expression_statement with a string
+            if child.type == "expression_statement":
+                for sub in child.children:
+                    if sub.type == "string":
+                        start_line = child.start_point[0] + 1
+                        end_line = child.end_point[0] + 1
+                        content = "\n".join(lines[start_line - 1 : end_line])
+                        name = Path(file_path).stem
+                        return Chunk(
+                            file_path=file_path,
+                            line_start=start_line,
+                            line_end=end_line,
+                            content=content,
+                            chunk_type=ChunkType.MODULE,
+                            name=name,
+                        )
+
+            # Any other node type means no module docstring
+            return None
+
+        return None

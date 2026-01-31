@@ -20,7 +20,7 @@ Improve search result quality and output format for better usability.
 - [x] File recency boost - factor mtime into ranking
 
 **Tier 3 - Larger Effort:**
-- [ ] Module-level code - extend chunker to capture top-level statements
+- [x] Module-level code - extend chunker to capture module docstrings (see decision 003)
 - [ ] Background re-indexing - return stale results while re-indexing
 - [ ] Separate docstrings - index docstrings separately for better matching
 - [ ] Code-specific embedding model - evaluate UniXcoder/CodeBERT

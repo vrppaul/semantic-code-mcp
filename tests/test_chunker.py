@@ -322,6 +322,110 @@ class User:
         assert chunks[0].name == "hello"
         assert chunks[0].file_path == "<string>"
 
+    # --- Module docstring tests ---
+
+    def test_module_docstring_with_function(self):
+        """File with module docstring + function produces MODULE chunk + FUNCTION chunk."""
+        code = '''"""This module does important things."""
+
+def hello():
+    pass
+'''
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="important.py")
+
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.FUNCTION]
+
+        assert len(module_chunks) == 1
+        assert len(func_chunks) == 1
+        assert module_chunks[0].name == "important"
+        assert "This module does important things" in module_chunks[0].content
+
+    def test_module_docstring_multiline_line_numbers(self):
+        """Multi-line module docstring has correct line numbers."""
+        code = '''"""First line.
+
+Second paragraph with more detail.
+Third line.
+"""
+
+def foo():
+    pass
+'''
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="multi.py")
+
+        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.MODULE)
+        assert module_chunk.line_start == 1
+        assert module_chunk.line_end == 5
+
+    def test_no_module_docstring_starts_with_import(self):
+        """File starting with import produces zero MODULE chunks."""
+        code = """import os
+
+def hello():
+    pass
+"""
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="no_doc.py")
+
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        assert len(module_chunks) == 0
+
+    def test_docstring_after_import_not_extracted(self):
+        """Docstring after import is not a module docstring (PEP 257)."""
+        code = '''import os
+
+"""This is not a module docstring."""
+
+def hello():
+    pass
+'''
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="after_import.py")
+
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        assert len(module_chunks) == 0
+
+    def test_file_with_only_docstring(self):
+        """File with only a module docstring produces one MODULE chunk."""
+        code = '''"""Just a docstring, nothing else."""
+'''
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="only_doc.py")
+
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == ChunkType.MODULE
+        assert chunks[0].name == "only_doc"
+
+    def test_module_docstring_name_from_file_stem(self):
+        """Module chunk name is derived from file stem."""
+        code = '''"""Docstring."""
+'''
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="/some/path/my_module.py")
+
+        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.MODULE)
+        assert module_chunk.name == "my_module"
+
+    def test_comments_before_docstring_still_extracted(self):
+        """Comments before docstring don't prevent extraction."""
+        code = '''# Copyright 2024
+# License: MIT
+
+"""Module docstring after comments."""
+
+def foo():
+    pass
+'''
+        chunker = PythonChunker()
+        chunks = chunker.chunk_string(code, file_path="commented.py")
+
+        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.MODULE]
+        assert len(module_chunks) == 1
+        assert "Module docstring after comments" in module_chunks[0].content
+
     def test_property_decorator(self, tmp_path: Path):
         """Extracts property methods."""
         code = '''class User:

@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator, model_validator
 class ChunkType(str, Enum):
     """Type of code chunk."""
 
+    MODULE = "module"
     FUNCTION = "function"
     CLASS = "class"
     METHOD = "method"
