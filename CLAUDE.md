@@ -43,6 +43,13 @@ uv run ruff format src/               # Format
 - Use generic Exception for error handling
 - Commit secrets or credentials
 
+## Commit Messages
+
+Conventional Commits with **required scope** (`--strict --force-scope`).
+Format: `type(scope): description`
+
+Types: `feat fix docs style refactor perf test build ci chore`
+
 ## Key Architecture
 
 The server lazily loads the embedding model on first query (with MCP progress notifications). Code is chunked via tree-sitter AST parsing, embedded in batches, and stored in LanceDB. Search embeds the query and performs vector similarity lookup with optional full-text hybrid search. Context-specific coding rules live in `.claude/rules/` and activate based on file glob patterns. Architecture decisions are in `docs/decisions/`. Project planning flows through TODO.md (epics) → decisions/ (how) → CHANGELOG.md (done).

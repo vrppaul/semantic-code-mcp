@@ -59,6 +59,7 @@ Key conventions:
 - **Error handling**: Specific exceptions, not generic Exception
 - **Dependencies**: Add via `uv add`, never pip install
 - **Logging**: DEBUG for timing/perf, INFO for operations, WARNING for recoverable issues, ERROR for failures
+- **Commits**: Conventional Commits, required scope (`type(scope): description`). Types: `feat fix docs style refactor perf test build ci chore`
 
 ## Boundaries
 

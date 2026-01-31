@@ -1,8 +1,10 @@
 # semantic-code-mcp
 
-Local MCP server that provides semantic code search for Claude Code, replacing iterative grep searches with direct embedding-based queries.
+Local MCP server that provides semantic code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase with embeddings and returns ranked results by meaning.
 
-## Architecture
+**Python only** for now — multi-language support (JS/TS, Rust, Go) is planned.
+
+## How It Works
 
 ```
 Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
@@ -12,6 +14,13 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
               AST Chunker      Embedder        LanceDB
              (tree-sitter)  (sentence-trans)  (vectors)
 ```
+
+1. **Chunking** — tree-sitter parses Python into functions, classes, and methods
+2. **Embedding** — sentence-transformers encodes each chunk (all-MiniLM-L6-v2, 384d)
+3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
+4. **Search** — hybrid semantic + keyword search with recency boosting
+
+Indexing is incremental (mtime-based) and uses `git ls-files` for fast file discovery. The embedding model loads lazily on first query.
 
 ## Installation
 
@@ -30,7 +39,7 @@ Add to `~/.config/claude-code/config.json`:
 ```json
 {
   "mcpServers": {
-    "semantic-search": {
+    "semantic-code": {
       "command": "uvx",
       "args": ["semantic-code-mcp"]
     }
@@ -38,131 +47,71 @@ Add to `~/.config/claude-code/config.json`:
 }
 ```
 
-### Options
-
-```json
-{
-  "mcpServers": {
-    "semantic-search": {
-      "command": "uvx",
-      "args": [
-        "semantic-code-mcp",
-        "--index-dir", "~/.cache/semantic-code-mcp"
-      ]
-    }
-  }
-}
-```
-
-- `--index-dir PATH` - Store indexes in specified directory (default: `~/.cache/semantic-code-mcp`)
-- `--local-index` - Store index in `.semantic-code/` within each project
-
 ## MCP Tools
 
-### `semantic_search`
+### `search_code`
 
-Search code semantically by meaning, not just text matching.
+Search code by meaning, not just text matching. Auto-indexes on first search.
 
-```python
-semantic_search(
-    query: str,              # "function that validates user input"
-    path: str = ".",         # Codebase root
-    limit: int = 10,         # Max results
-    file_pattern: str = None # "*.py", "tests/**"
-) -> list[SearchResult]
-```
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | `str` | required | Natural language description of what you're looking for |
+| `project_path` | `str` | required | Absolute path to the project root |
+| `limit` | `int` | `10` | Maximum number of results |
 
-Returns: `file_path`, `line_start`, `line_end`, `snippet`, `score`, `chunk_type`
+Returns ranked results with `file_path`, `line_start`, `line_end`, `name`, `chunk_type`, `content`, and `score`.
 
 ### `index_codebase`
 
-Index a codebase for semantic search.
+Index a codebase for semantic search. Only processes new and changed files unless `force=True`.
 
-```python
-index_codebase(
-    path: str,
-    force: bool = False,     # Rebuild from scratch
-    incremental: bool = True # Only changed files
-) -> IndexStatus
-```
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `project_path` | `str` | required | Absolute path to the project root |
+| `force` | `bool` | `False` | Re-index all files regardless of changes |
 
 ### `index_status`
 
-Check indexing status for a codebase.
+Check indexing status for a project.
 
-```python
-index_status(path: str = ".") -> IndexStatus
-```
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `project_path` | `str` | required | Absolute path to the project root |
 
-Returns: `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `stale_files`
+Returns `is_indexed`, `files_count`, `chunks_count`, `stale_files_count`, and `stale_files`.
 
-### `find_similar`
+## Configuration
 
-Find code similar to a specific location.
+All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via pydantic-settings):
 
-```python
-find_similar(
-    file_path: str,
-    line: int,
-    limit: int = 5
-) -> list[SearchResult]
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SEMANTIC_CODE_MCP_CACHE_DIR` | `~/.cache/semantic-code-mcp` | Where indexes are stored |
+| `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` within each project |
+| `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
+| `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
+| `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling |
 
 ## Tech Stack
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| MCP Framework | FastMCP | Python decorators, simple STDIO transport |
+| MCP Framework | FastMCP | Python decorators, STDIO transport |
 | Embeddings | sentence-transformers | Local, no API costs, good quality |
 | Vector Store | LanceDB | Embedded (like SQLite), no server needed |
 | Chunking | tree-sitter | AST-based, respects code structure |
 
-## Configuration
-
-Optional config file at `~/.config/semantic-code-mcp/config.yaml`:
-
-```yaml
-embedding:
-  model: "all-MiniLM-L6-v2"  # or "microsoft/unixcoder-base"
-  device: "auto"
-
-storage:
-  cache_dir: "~/.cache/semantic-code-mcp"
-
-chunking:
-  target_tokens: 800
-  max_tokens: 1500
-
-ignore:
-  patterns: ["node_modules/**", ".venv/**", "__pycache__/**"]
-  use_gitignore: true
-```
-
 ## Development
 
 ```bash
-# Setup
-uv sync
-
-# Run server locally
-uv run python -m semantic_code_mcp
-
-# Run tests
-uv run pytest
-
-# Lint & format
-uv run ruff check src/
-uv run ruff format src/
+uv sync                            # Install dependencies
+uv run python -m semantic_code_mcp # Run server
+uv run pytest                      # Run tests
+uv run ruff check src/             # Lint
+uv run ruff format src/            # Format
 ```
 
-## Performance
-
-| Metric | Target |
-|--------|--------|
-| Search latency | < 100ms (after model loaded) |
-| Index speed | > 50 files/sec |
-| Cold start | < 3s (first query, model loading) |
-| Memory | < 500MB |
+Architecture decisions are documented in `docs/decisions/`. Project planning lives in `TODO.md`.
 
 ## License
 
