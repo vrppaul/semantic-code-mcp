@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from semantic_code_mcp.indexer.chunker import PythonChunker
+from semantic_code_mcp.chunkers.python import PythonChunker
 from semantic_code_mcp.models import ChunkType
 
 

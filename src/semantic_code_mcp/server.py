@@ -90,8 +90,8 @@ async def search_code(
     was_stale = outcome.index_result.files_indexed > 0
 
     # Get live index status for debug info
-    indexer = container.create_indexer(path)
-    status = indexer.get_status(path)
+    index_service = container.create_index_service(path)
+    status = index_service.get_status(path)
 
     debug = SearchDebugInfo(
         timings=timings,
@@ -182,8 +182,8 @@ async def index_status(
         return ErrorResponse(error=f"Path does not exist: {project_path}")
 
     container = get_container()
-    indexer = container.create_indexer(path)
-    status = indexer.get_status(path)
+    index_service = container.create_index_service(path)
+    status = index_service.get_status(path)
 
     return IndexStatusResponse(
         is_indexed=status.is_indexed,

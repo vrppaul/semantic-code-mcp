@@ -7,7 +7,7 @@ import pytest
 from sentence_transformers import SentenceTransformer
 
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.indexer.embedder import Embedder
+from semantic_code_mcp.embedder import Embedder
 from semantic_code_mcp.models import Chunk, ChunkType
 from semantic_code_mcp.protocols import ChunkerProtocol, EmbedderProtocol, VectorStoreProtocol
 from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
@@ -61,7 +61,7 @@ def mock_embedder() -> EmbedderProtocol:
     """Create a mock Embedder implementing the protocol."""
     mock = MagicMock(spec=EmbedderProtocol)
     mock.embed_text.return_value = [0.1] * 384
-    mock.embed_batch.return_value = [[0.1] * 384]
+    mock.embed_batch.side_effect = lambda texts: [[0.1] * 384 for _ in texts]
     return mock
 
 

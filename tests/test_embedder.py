@@ -2,7 +2,7 @@
 
 from sentence_transformers import SentenceTransformer
 
-from semantic_code_mcp.indexer.embedder import Embedder
+from semantic_code_mcp.embedder import Embedder
 
 
 class TestEmbedder:

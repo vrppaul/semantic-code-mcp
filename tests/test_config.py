@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from semantic_code_mcp.config import Settings, get_index_path
+from semantic_code_mcp.config import Settings, get_index_path, resolve_cache_dir
 
 
 class TestSettings:
@@ -81,3 +81,37 @@ class TestGetIndexPath:
         path2 = get_index_path(settings, Path("/project2"))
 
         assert path1 != path2
+
+
+class TestResolveCacheDir:
+    """Tests for resolve_cache_dir utility."""
+
+    def test_override_returns_override_path(self, tmp_path: Path):
+        """Override path is returned and created."""
+        override = tmp_path / "custom" / "cache"
+        settings = Settings(cache_dir=tmp_path / "default")
+
+        result = resolve_cache_dir(settings, Path("/project"), override=override)
+
+        assert result == override
+        assert override.is_dir()
+
+    def test_no_override_uses_settings(self, tmp_path: Path):
+        """Without override, uses get_index_path from settings."""
+        settings = Settings(cache_dir=tmp_path / "cache")
+        project = Path("/some/project")
+
+        result = resolve_cache_dir(settings, project)
+
+        expected = get_index_path(settings, project)
+        assert result == expected
+        assert result.is_dir()
+
+    def test_creates_directory(self, tmp_path: Path):
+        """Creates the cache directory if it doesn't exist."""
+        settings = Settings(cache_dir=tmp_path / "new" / "cache")
+        project = Path("/project")
+
+        result = resolve_cache_dir(settings, project)
+
+        assert result.is_dir()

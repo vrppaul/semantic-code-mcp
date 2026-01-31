@@ -81,7 +81,7 @@ class SearchService:
         await _progress(5, "Checking index...")
 
         # Check if indexing needed
-        status = self.index_service.indexer.get_status(project_path)
+        status = self.index_service.get_status(project_path)
         index_result: IndexResult | None = None
 
         needs_index = not status.is_indexed

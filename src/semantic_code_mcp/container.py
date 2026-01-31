@@ -7,15 +7,19 @@ to override default settings (e.g. in tests).
 
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
 
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
+from semantic_code_mcp.chunkers.composite import CompositeChunker
+from semantic_code_mcp.chunkers.python import PythonChunker
+from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings, get_index_path, get_settings
-from semantic_code_mcp.indexer.chunker import PythonChunker
-from semantic_code_mcp.indexer.embedder import Embedder
-from semantic_code_mcp.indexer.indexer import Indexer
+from semantic_code_mcp.embedder import Embedder
+from semantic_code_mcp.indexer import Indexer
 from semantic_code_mcp.services.index_service import IndexService
 from semantic_code_mcp.services.search_service import SearchService
 from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
@@ -27,24 +31,36 @@ log = structlog.get_logger()
 
 
 class Container:
-    """Shares expensive resources, creates fresh lightweight instances per request."""
+    """Shares expensive resources, creates fresh lightweight instances per request.
+
+    Caching strategy:
+    - Model: session-scoped (expensive to load, stateless)
+    - Embedder: session-scoped (wraps model, stateless)
+    - Connections: per-project (DB handle)
+    - Stores: per-project (wraps connection, lightweight)
+    - Chunker, Indexer, services: created fresh (cheap, stateless)
+    """
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._model: SentenceTransformer | None = None
         self._connections: dict[str, LanceDBConnection] = {}
+        self._stores: dict[str, LanceDBVectorStore] = {}
 
-    @property
+    @cached_property
     def model(self) -> SentenceTransformer:
         """Lazy-load the SentenceTransformer model on first access."""
-        if self._model is None:
-            # Lazy: sentence-transformers pulls in torch (~4s); defer until first use
-            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+        # Lazy: sentence-transformers pulls in torch (~4s); defer until first use
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-            log.info("loading_embedding_model", model=self.settings.embedding_model)
-            self._model = SentenceTransformer(self.settings.embedding_model)
-            log.info("embedding_model_loaded", model=self.settings.embedding_model)
-        return self._model
+        log.info("loading_embedding_model", model=self.settings.embedding_model)
+        model = SentenceTransformer(self.settings.embedding_model)
+        log.info("embedding_model_loaded", model=self.settings.embedding_model)
+        return model
+
+    @cached_property
+    def embedder(self) -> Embedder:
+        """Lazy-load the embedder (wraps the shared model)."""
+        return Embedder(self.model)
 
     def _get_connection(self, project_path: Path) -> LanceDBConnection:
         index_path = get_index_path(self.settings, project_path)
@@ -54,36 +70,37 @@ class Container:
             self._connections[key] = LanceDBConnection(index_path)
         return self._connections[key]
 
-    def create_store(self, project_path: Path) -> LanceDBVectorStore:
-        return LanceDBVectorStore(self._get_connection(project_path))
+    def get_store(self, project_path: Path) -> LanceDBVectorStore:
+        """Get or create a cached vector store for a project."""
+        key = str(get_index_path(self.settings, project_path))
+        if key not in self._stores:
+            self._stores[key] = LanceDBVectorStore(self._get_connection(project_path))
+        return self._stores[key]
 
-    def create_embedder(self) -> Embedder:
-        return Embedder(self.model)
+    def get_chunkers(self) -> list[BaseTreeSitterChunker]:
+        """All language-specific chunkers. Add new languages here."""
+        return [PythonChunker(), RustChunker()]
 
-    def create_chunker(self) -> PythonChunker:
-        return PythonChunker()
-
-    def create_indexer(self, project_path: Path) -> Indexer:
-        store = self.create_store(project_path)
-        cache_dir = get_index_path(self.settings, project_path)
-        return Indexer(
-            settings=self.settings,
-            embedder=self.create_embedder(),
-            store=store,
-            chunker=self.create_chunker(),
-            cache_dir=cache_dir,
-        )
+    def create_chunker(self) -> CompositeChunker:
+        """Create a CompositeChunker from all registered language chunkers."""
+        return CompositeChunker(self.get_chunkers())
 
     def create_index_service(self, project_path: Path) -> IndexService:
-        return IndexService(self.create_indexer(project_path))
+        """Create an IndexService wired to cached store/embedder."""
+        indexer = Indexer(embedder=self.embedder, store=self.get_store(project_path))
+        return IndexService(
+            settings=self.settings,
+            indexer=indexer,
+            chunker=self.create_chunker(),
+            cache_dir=get_index_path(self.settings, project_path),
+        )
 
     def create_search_service(self, project_path: Path) -> SearchService:
-        indexer = self.create_indexer(project_path)
-        index_service = IndexService(indexer)
+        """Create a SearchService sharing store/embedder with its IndexService."""
         return SearchService(
-            store=indexer.store,
-            embedder=indexer.embedder,
-            index_service=index_service,
+            store=self.get_store(project_path),
+            embedder=self.embedder,
+            index_service=self.create_index_service(project_path),
         )
 
 

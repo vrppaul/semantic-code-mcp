@@ -23,22 +23,15 @@ def _make_result(name: str, score: float, file_path: str = "/a.py") -> SearchRes
 
 
 @pytest.fixture
-def mock_indexer():
-    indexer = MagicMock()
-    indexer.get_status.return_value = IndexStatus(
+def mock_index_service() -> IndexService:
+    service = MagicMock(spec=IndexService)
+    service.get_status.return_value = IndexStatus(
         is_indexed=True,
         last_updated=None,
         files_count=5,
         chunks_count=20,
         stale_files=[],
     )
-    return indexer
-
-
-@pytest.fixture
-def mock_index_service(mock_indexer) -> IndexService:
-    service = MagicMock(spec=IndexService)
-    service.indexer = mock_indexer
     return service
 
 
@@ -168,10 +161,10 @@ class TestSearchAutoIndex:
 
     @pytest.mark.asyncio
     async def test_auto_indexes_when_not_indexed(
-        self, search_service, mock_indexer, mock_index_service, mock_store
+        self, search_service, mock_index_service, mock_store
     ):
         """Triggers indexing when project is not indexed."""
-        mock_indexer.get_status.return_value = IndexStatus(
+        mock_index_service.get_status.return_value = IndexStatus(
             is_indexed=False,
             last_updated=None,
             files_count=0,
@@ -193,11 +186,9 @@ class TestSearchAutoIndex:
         assert outcome.index_result.files_indexed == 2
 
     @pytest.mark.asyncio
-    async def test_reindexes_stale_files(
-        self, search_service, mock_indexer, mock_index_service, mock_store
-    ):
+    async def test_reindexes_stale_files(self, search_service, mock_index_service, mock_store):
         """Re-indexes when stale files are detected."""
-        mock_indexer.get_status.return_value = IndexStatus(
+        mock_index_service.get_status.return_value = IndexStatus(
             is_indexed=True,
             last_updated=None,
             files_count=5,
@@ -220,12 +211,12 @@ class TestSearchAutoIndex:
 
     @pytest.mark.asyncio
     async def test_skips_indexing_when_up_to_date(
-        self, search_service, mock_indexer, mock_index_service, mock_store
+        self, search_service, mock_index_service, mock_store
     ):
         """Skips indexing when index is fresh."""
         mock_store.search_hybrid.return_value = [_make_result("foo", 0.9)]
 
-        # mock_indexer already returns is_indexed=True, stale_files=[]
+        # mock_index_service already returns is_indexed=True, stale_files=[]
         outcome = await search_service.search("test", Path("/tmp/proj"), 10)
 
         assert outcome is not None

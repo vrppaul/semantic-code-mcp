@@ -81,3 +81,22 @@ def get_index_path(settings: Settings, project_path: Path) -> Path:
     # Hash the absolute path for global cache
     path_hash = hashlib.sha256(str(project_path.resolve()).encode()).hexdigest()[:16]
     return settings.cache_dir / path_hash
+
+
+def resolve_cache_dir(settings: Settings, project_path: Path, override: Path | None = None) -> Path:
+    """Get cache directory, with optional override (e.g. for tests).
+
+    Args:
+        settings: Application settings.
+        project_path: Path to the project root.
+        override: Explicit cache directory (bypasses settings).
+
+    Returns:
+        Resolved cache directory, created if it doesn't exist.
+    """
+    if override is not None:
+        override.mkdir(parents=True, exist_ok=True)
+        return override
+    path = get_index_path(settings, project_path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path

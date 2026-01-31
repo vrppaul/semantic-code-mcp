@@ -25,24 +25,26 @@ Improve search result quality and output format for better usability.
 - [ ] Separate docstrings - index docstrings separately for better matching
 - [ ] Code-specific embedding model - evaluate UniXcoder/CodeBERT
 
-## Pending
+## In Progress
 
 ### Multi-language Support
-Currently Python only. Need JS/TS for web projects, Rust/Go for systems work. Tree-sitter supports all of these. See decision 004 for architecture analysis.
+Currently Python and Rust. Need JS/TS for web projects, Go for systems work. Tree-sitter supports all of these. See decision 004 for architecture analysis.
 
-**Architecture (decided):** Hybrid base class + dispatcher pattern (Option C+D from analysis).
+**Architecture (implemented):** Hybrid base class + dispatcher pattern (Option C+D from analysis).
 - `BaseTreeSitterChunker` — shared logic (parsing, line extraction, Chunk construction)
-- Language-specific subclasses (`PythonChunker`, `GoChunker`, etc.) — AST walking rules only
+- Language-specific subclasses (`PythonChunker`, `RustChunker`, etc.) — AST walking rules only
 - `MultiLanguageChunker` — dispatcher by file extension, single `ChunkerProtocol` interface
 
 **Implementation steps:**
-- [ ] Refactor `PythonChunker` into `BaseTreeSitterChunker` + `PythonChunker` subclass
-- [ ] Add `MultiLanguageChunker` dispatcher
-- [ ] Update `Indexer.scan_files()` to accept supported extensions (currently hardcodes `*.py`)
-- [ ] Wire `MultiLanguageChunker` in container
+- [x] Refactor `PythonChunker` into `BaseTreeSitterChunker` + `PythonChunker` subclass
+- [x] Add `MultiLanguageChunker` dispatcher
+- [x] Update `Indexer.scan_files()` to accept supported extensions (no longer hardcodes `*.py`)
+- [x] Wire `MultiLanguageChunker` in container
+- [x] Add Rust chunker (`tree-sitter-rust`) — impl blocks, `//!` doc comments
 - [ ] Add JavaScript/TypeScript chunker (`tree-sitter-javascript`, `tree-sitter-typescript`)
 - [ ] Add Go chunker (`tree-sitter-go`) — receiver methods, package comments
-- [ ] Add Rust chunker (`tree-sitter-rust`) — impl blocks, `//!` doc comments
+
+## Pending
 
 ### Performance Optimization
 Profiling infrastructure added (pyinstrument). Use `SEMANTIC_CODE_MCP_PROFILE=1` to generate profiles.
