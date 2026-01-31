@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP server with three tools: `search_code`, `index_codebase`, `index_status`
 - Semantic code search using sentence-transformers embeddings (all-MiniLM-L6-v2)
 - LanceDB vector storage for embeddings
-- Tree-sitter based AST chunking for Python (functions, classes, methods)
+- Module-level docstring chunking — conceptual queries now match files by their self-description (decision 003)
+- Tree-sitter based AST chunking for Python (functions, classes, methods, module docstrings)
 - Incremental indexing with mtime-based change detection
 - Debug timing info in search results (status_check_ms, embedding_ms, search_ms)
 - Hybrid search: keyword boost (up to 20%) and recency boost (up to 5% for files < 1 week old)

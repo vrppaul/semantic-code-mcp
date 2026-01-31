@@ -34,17 +34,8 @@ uv tool install semantic-code-mcp
 
 ## Claude Code Integration
 
-Add to `~/.config/claude-code/config.json`:
-
-```json
-{
-  "mcpServers": {
-    "semantic-code": {
-      "command": "uvx",
-      "args": ["semantic-code-mcp"]
-    }
-  }
-}
+```bash
+claude mcp add --scope user semantic-code -- uvx semantic-code-mcp
 ```
 
 ## MCP Tools
