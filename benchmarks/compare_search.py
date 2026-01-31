@@ -7,6 +7,7 @@ Measures:
 - Number of tool calls needed
 """
 
+import asyncio
 import subprocess  # nosec B404 - needed to simulate grep for benchmarking
 import time
 from dataclasses import dataclass
@@ -43,8 +44,6 @@ def benchmark_semantic_search(
     settings = Settings()
     container = Container(settings)
     search_service = container.create_search_service(project_path)
-
-    import asyncio
 
     start = time.perf_counter()
     outcome = asyncio.run(search_service.search(query, project_path, limit=limit))

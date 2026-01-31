@@ -5,10 +5,12 @@ Lazy: nothing is loaded until first use. Configurable: call configure()
 to override default settings (e.g. in tests).
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
-from sentence_transformers import SentenceTransformer
 
 from semantic_code_mcp.config import Settings, get_index_path, get_settings
 from semantic_code_mcp.indexer.chunker import PythonChunker
@@ -17,6 +19,9 @@ from semantic_code_mcp.indexer.indexer import Indexer
 from semantic_code_mcp.services.index_service import IndexService
 from semantic_code_mcp.services.search_service import SearchService
 from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 log = structlog.get_logger()
 
@@ -33,6 +38,9 @@ class Container:
     def model(self) -> SentenceTransformer:
         """Lazy-load the SentenceTransformer model on first access."""
         if self._model is None:
+            # Lazy: sentence-transformers pulls in torch (~4s); defer until first use
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+
             log.info("loading_embedding_model", model=self.settings.embedding_model)
             self._model = SentenceTransformer(self.settings.embedding_model)
             log.info("embedding_model_loaded", model=self.settings.embedding_model)

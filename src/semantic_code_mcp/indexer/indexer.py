@@ -4,12 +4,12 @@ import asyncio
 import fnmatch
 import subprocess  # nosec B404
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
 
-from semantic_code_mcp.config import Settings
+from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.models import (
     Chunk,
     ChunkWithEmbedding,
@@ -50,8 +50,6 @@ class Indexer:
         if self._cache_dir is not None:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
             return self._cache_dir
-        from semantic_code_mcp.config import get_index_path  # circular import guard
-
         path = get_index_path(self.settings, project_path)
         path.mkdir(parents=True, exist_ok=True)
         return path
@@ -98,11 +96,7 @@ class Indexer:
         if result.returncode != 0:
             return None
 
-        files = []
-        for line in result.stdout.strip().split("\n"):
-            if line:
-                files.append(str(project_path / line))
-        return files
+        return [str(project_path / line) for line in result.stdout.strip().split("\n") if line]
 
     def _scan_with_walk(self, project_path: Path) -> list[str]:
         """Scan using os.walk with directory pruning."""
@@ -350,7 +344,7 @@ class Indexer:
         cache_file = cache_dir / CACHE_FILENAME
         last_updated = None
         if cache_file.exists():
-            last_updated = datetime.fromtimestamp(cache_file.stat().st_mtime)
+            last_updated = datetime.fromtimestamp(cache_file.stat().st_mtime, tz=UTC)
 
         return IndexStatus(
             is_indexed=len(indexed_files) > 0,

@@ -193,9 +193,9 @@ class TestIndexer:
         await run_index(indexer, sample_project)
 
         # Modify a file
-        import time
+        import asyncio
 
-        time.sleep(0.01)  # Ensure mtime changes
+        await asyncio.sleep(0.01)  # Ensure mtime changes
         (sample_project / "main.py").write_text('''"""Modified module."""
 
 def new_function():

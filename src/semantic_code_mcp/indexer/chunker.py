@@ -90,35 +90,63 @@ class PythonChunker:
                 chunk = self._extract_function(child, file_path, lines, in_class)
                 if chunk:
                     chunks.append(chunk)
-                # Don't recurse into function body for nested functions
 
             elif child.type == NodeType.decorated_definition:
-                # Handle decorated functions and classes
-                decorated_child = self._get_decorated_definition(child)
-                if decorated_child:
-                    if decorated_child.type == NodeType.function_definition:
-                        chunk = self._extract_function(
-                            child, file_path, lines, in_class, decorated=True
-                        )
-                        if chunk:
-                            chunks.append(chunk)
-                    elif decorated_child.type == NodeType.class_definition:
-                        chunk = self._extract_class(child, file_path, lines, decorated=True)
-                        if chunk:
-                            chunks.append(chunk)
-                        # Extract methods from within the class body
-                        body = decorated_child.child_by_field_name("body")
-                        if body:
-                            self._extract_from_node(body, file_path, lines, chunks, in_class=True)
+                self._extract_decorated(child, file_path, lines, chunks, in_class)
 
             elif child.type == NodeType.class_definition:
-                chunk = self._extract_class(child, file_path, lines, decorated=False)
-                if chunk:
-                    chunks.append(chunk)
-                # Extract methods from within the class body
-                body = child.child_by_field_name("body")
-                if body:
-                    self._extract_from_node(body, file_path, lines, chunks, in_class=True)
+                self._extract_class_with_methods(
+                    child,
+                    child,
+                    file_path,
+                    lines,
+                    chunks,
+                    decorated=False,
+                )
+
+    def _extract_decorated(
+        self,
+        node: Node,
+        file_path: str,
+        lines: list[str],
+        chunks: list[Chunk],
+        in_class: bool,
+    ) -> None:
+        """Handle a decorated_definition node."""
+        decorated_child = self._get_decorated_definition(node)
+        if not decorated_child:
+            return
+
+        if decorated_child.type == NodeType.function_definition:
+            chunk = self._extract_function(node, file_path, lines, in_class, decorated=True)
+            if chunk:
+                chunks.append(chunk)
+        elif decorated_child.type == NodeType.class_definition:
+            self._extract_class_with_methods(
+                node,
+                decorated_child,
+                file_path,
+                lines,
+                chunks,
+                decorated=True,
+            )
+
+    def _extract_class_with_methods(
+        self,
+        node: Node,
+        class_node: Node,
+        file_path: str,
+        lines: list[str],
+        chunks: list[Chunk],
+        decorated: bool,
+    ) -> None:
+        """Extract a class chunk and recurse into its body for methods."""
+        chunk = self._extract_class(node, file_path, lines, decorated=decorated)
+        if chunk:
+            chunks.append(chunk)
+        body = class_node.child_by_field_name("body")
+        if body:
+            self._extract_from_node(body, file_path, lines, chunks, in_class=True)
 
     def _get_decorated_definition(self, node: Node) -> Node | None:
         """Get the actual definition from a decorated_definition node."""
@@ -160,6 +188,8 @@ class PythonChunker:
         # Get function name
         name_node = func_node.child_by_field_name("name")
         if not name_node:
+            return None
+        if name_node.text is None:
             return None
         name = name_node.text.decode()
 
@@ -210,6 +240,8 @@ class PythonChunker:
         # Get class name
         name_node = class_node.child_by_field_name("name")
         if not name_node:
+            return None
+        if name_node.text is None:
             return None
         name = name_node.text.decode()
 

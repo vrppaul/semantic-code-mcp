@@ -62,22 +62,39 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle errors
-    "F",    # pyflakes
-    "I",    # isort
-    "UP",   # pyupgrade
-    "B",    # flake8-bugbear
-    "C4",   # flake8-comprehensions
-    "N",    # pep8-naming
-    "SIM",  # flake8-simplify
-    "W",    # pycodestyle warnings
-    "RUF",  # Ruff-specific rules
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "C901",   # mccabe complexity
+    "N",      # pep8-naming
+    "SIM",    # flake8-simplify
+    "TID",    # tidy imports (banned relative imports, etc.)
+    "W",      # pycodestyle warnings
+    "RUF",    # Ruff-specific rules
+    "DTZ",    # datetime timezone safety
+    "ASYNC",  # async anti-patterns (blocking calls in async)
+    "SLF",    # private member access from outside class
+    "PIE",    # misc. lints (unnecessary pass, dict merge, etc.)
+    "T20",    # no print() in source (use structlog)
+    "RSE",    # unnecessary parens on raise
+    # "TCH" omitted — too aggressive, flags Path and other runtime imports
+    "PERF",   # performance anti-patterns
+    "FURB",   # refurb modernizations
+    "PLC0415",  # import-outside-toplevel
 ]
 ignore = [
-    "E712",    # Avoid == True comparisons (sometimes needed for SQL expressions)
-    "SIM108",  # Use ternary operator - if/else often more readable
-    "SIM103",  # Return condition directly - explicit if/return often more readable
+    "E712",    # == True comparisons (sometimes needed for SQL expressions)
+    "SIM108",  # ternary operator — if/else often more readable
+    "SIM103",  # return condition directly — explicit if/return often more readable
+    "PERF203", # try/except in loop — often necessary, not always avoidable
+    "FURB140", # Use itertools.starmap — less readable than comprehensions
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
@@ -85,10 +102,19 @@ known-first-party = ["semantic_code_mcp"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**/**.py" = ["D", "ANN"]
+"tests/**/*.py" = ["D", "ANN", "SLF001", "T20", "DTZ", "PLC0415"]
+"benchmarks/**/*.py" = ["T20"]  # print() is fine in benchmarks
 
 [tool.ty.environment]
 python-version = "3.14"
+
+[tool.ty.rules]
+possibly-missing-attribute = "warn"
+no-matching-overload = "warn"
+invalid-assignment = "warn"
+invalid-return-type = "warn"
+invalid-argument-type = "warn"
+missing-argument = "warn"
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]

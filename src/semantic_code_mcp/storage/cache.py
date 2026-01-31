@@ -138,9 +138,7 @@ class FileChangeCache:
                         modified_files.append(file_path)
 
         # Find deleted files
-        for file_path in cached_set:
-            if file_path not in current_set:
-                deleted_files.append(file_path)
+        deleted_files = [f for f in cached_set if f not in current_set]
 
         return FileChanges(new=new_files, modified=modified_files, deleted=deleted_files)
 

@@ -1,7 +1,7 @@
 """Profiling utilities for development."""
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
 from typing import ParamSpec, TypeVar
@@ -54,7 +54,7 @@ def profile_async(name: str) -> Callable[[Callable[P, Awaitable[T]]], Callable[P
                 return await func(*args, **kwargs)
 
             # Import here to avoid loading pyinstrument when not profiling
-            from pyinstrument import Profiler
+            from pyinstrument import Profiler  # noqa: PLC0415
 
             profiler = Profiler(async_mode="enabled")
             profiler.start()
@@ -81,7 +81,7 @@ def _save_profile(profiler, name: str) -> None:
     if _profiles_dir is None:
         return
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"{name}_{timestamp}.txt"
     filepath = _profiles_dir / filename
 

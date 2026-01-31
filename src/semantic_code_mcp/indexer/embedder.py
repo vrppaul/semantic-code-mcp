@@ -1,7 +1,13 @@
 """Embedding generation with sentence-transformers."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import structlog
-from sentence_transformers import SentenceTransformer
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 log = structlog.get_logger()
 

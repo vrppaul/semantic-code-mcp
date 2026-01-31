@@ -163,7 +163,7 @@ class LanceDBVectorStore:
         if table.count_rows() == 0:
             return []
 
-        results = table.search(query_embedding).metric("cosine").limit(limit).to_pandas()
+        results = table.search(query_embedding).metric("cosine").limit(limit).to_pandas()  # type: ignore[possibly-missing-attribute]  # lancedb stubs incomplete
 
         search_results = []
         for _, row in results.iterrows():

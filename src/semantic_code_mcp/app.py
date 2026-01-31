@@ -19,6 +19,6 @@ def create_app() -> FastMCP:
     configure_container(settings)
 
     # Import tools after bootstrap so they can use get_container()
-    from semantic_code_mcp.server import mcp
+    from semantic_code_mcp.server import mcp  # noqa: PLC0415
 
     return mcp
