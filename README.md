@@ -1,6 +1,6 @@
 # semantic-code-mcp
 
-Local MCP server that provides semantic code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase with embeddings and returns ranked results by meaning.
+MCP server that provides semantic code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase with embeddings and returns ranked results by meaning.
 
 **Python only** for now — multi-language support (JS/TS, Rust, Go) is planned.
 
@@ -162,7 +162,25 @@ uv run ruff check src/             # Lint
 uv run ruff format src/            # Format
 ```
 
-Architecture decisions are documented in `docs/decisions/`. Project planning lives in `TODO.md`.
+Pre-commit hooks enforce linting, formatting, type-checking (`ty`), security scanning (`bandit`), and [Conventional Commits](https://www.conventionalcommits.org/).
+
+### Releasing
+
+Versions are derived from git tags automatically (`hatch-vcs`) — there's no hardcoded version in `pyproject.toml`.
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+CI builds the package, publishes to PyPI, and creates a GitHub Release with auto-generated notes.
+
+### Project Structure
+
+- `docs/decisions/` — architecture decision records
+- `TODO.md` — epics and planning
+- `CHANGELOG.md` — completed work (Keep a Changelog format)
+- `.claude/rules/` — context-specific coding rules for AI agents
 
 ## License
 

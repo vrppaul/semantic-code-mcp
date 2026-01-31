@@ -61,6 +61,10 @@ Key conventions:
 - **Logging**: DEBUG for timing/perf, INFO for operations, WARNING for recoverable issues, ERROR for failures
 - **Commits**: Conventional Commits, required scope (`type(scope): description`). Types: `feat fix docs style refactor perf test build ci chore`
 
+## Releases
+
+Published to PyPI as `semantic-code-mcp`. Version derived from git tags (`hatch-vcs`). Push a `v*` tag to trigger automated build + publish via GitHub Actions (trusted publishers OIDC). Never hardcode a version in `pyproject.toml`.
+
 ## Boundaries
 
 **Always do:**
