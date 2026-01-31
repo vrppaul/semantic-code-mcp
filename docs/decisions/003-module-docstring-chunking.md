@@ -9,7 +9,7 @@ Searching conceptual queries like "dependency injection container" failed to fin
 
 ## Decision
 
-Extract module-level docstrings as `ChunkType.MODULE` chunks.
+Extract module-level docstrings as `ChunkType.module` chunks.
 
 **Detection algorithm:**
 1. Iterate `root.children` of the tree-sitter AST
@@ -20,7 +20,7 @@ Extract module-level docstrings as `ChunkType.MODULE` chunks.
 **PEP 257 compliance:** A module docstring must be the first statement in the file. Comments and blank lines before it are allowed, but any other statement (import, assignment) means there is no module docstring. A string literal appearing after an import is **not** a module docstring.
 
 **Chunk properties:**
-- `chunk_type`: `ChunkType.MODULE`
+- `chunk_type`: `ChunkType.module`
 - `name`: file stem (e.g., `container` for `container.py`)
 - `content`: raw source including triple-quote delimiters (consistent with other chunk types)
 - `line_start`/`line_end`: 1-indexed line range of the docstring expression

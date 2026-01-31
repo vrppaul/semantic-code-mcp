@@ -22,7 +22,7 @@ All commands use `uv` — never use pip or manually activate a virtualenv.
 - FastMCP (MCP server framework)
 - sentence-transformers (all-MiniLM-L6-v2, 384-dimensional embeddings)
 - LanceDB (embedded vector database)
-- tree-sitter + tree-sitter-python (AST-based code chunking)
+- tree-sitter + tree-sitter-python + tree-sitter-rust (AST-based code chunking)
 - structlog (structured logging)
 - pydantic + pydantic-settings (data models and configuration)
 

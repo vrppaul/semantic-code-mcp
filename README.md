@@ -2,7 +2,7 @@
 
 MCP server that provides semantic code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase with embeddings and returns ranked results by meaning.
 
-**Python only** for now — multi-language support (JS/TS, Rust, Go) is planned.
+Supports **Python** and **Rust** — more languages planned.
 
 ## How It Works
 
@@ -15,7 +15,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
              (tree-sitter)  (sentence-trans)  (vectors)
 ```
 
-1. **Chunking** — tree-sitter parses Python into functions, classes, and methods
+1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, etc.
 2. **Embedding** — sentence-transformers encodes each chunk (all-MiniLM-L6-v2, 384d)
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — hybrid semantic + keyword search with recency boosting
@@ -71,6 +71,20 @@ claude mcp add --scope user semantic-code -- \
 On macOS/Windows you can omit the `--index` and `pytorch-cpu` args.
 
 </details>
+
+### Updating
+
+`uvx` caches the installed version. To get the latest release:
+
+```bash
+uvx --upgrade semantic-code-mcp
+```
+
+Or pin a specific version in your MCP config:
+
+```bash
+claude mcp add --scope user semantic-code -- uvx semantic-code-mcp@0.2.0
+```
 
 ## MCP Tools
 
@@ -175,8 +189,59 @@ git push origin v0.2.0
 
 CI builds the package, publishes to PyPI, and creates a GitHub Release with auto-generated notes.
 
+### Adding a New Language
+
+The chunker system is designed to make adding languages straightforward. Each language needs:
+
+1. **A tree-sitter grammar package** (e.g. `tree-sitter-javascript`)
+2. **A chunker subclass** that walks the AST and extracts meaningful chunks
+
+Steps:
+
+```bash
+uv add tree-sitter-mylang
+```
+
+Create `src/semantic_code_mcp/chunkers/mylang.py`:
+
+```python
+import tree_sitter_mylang as tsmylang
+from tree_sitter import Language, Node
+
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
+from semantic_code_mcp.models import Chunk, ChunkType
+
+
+class MyLangChunker(BaseTreeSitterChunker):
+    language = Language(tsmylang.language())
+    extensions = (".ml",)
+
+    def _extract_chunks(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
+        chunks = []
+        for node in root.children:
+            match node.type:
+                case "function_definition":
+                    chunks.append(self._make_chunk(node, file_path, lines, ChunkType.function, node.child_by_field_name("name").text.decode()))
+                # ... other node types
+        return chunks
+```
+
+Register it in `src/semantic_code_mcp/container.py`:
+
+```python
+from semantic_code_mcp.chunkers.mylang import MyLangChunker
+
+def get_chunkers(self) -> list[BaseTreeSitterChunker]:
+    return [PythonChunker(), RustChunker(), MyLangChunker()]
+```
+
+The `CompositeChunker` handles dispatch by file extension automatically. Use `BaseTreeSitterChunker._make_chunk()` for consistent chunk construction. See `chunkers/python.py` and `chunkers/rust.py` for complete examples.
+
 ### Project Structure
 
+- `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`)
+- `src/semantic_code_mcp/services/` — IndexService (scan/chunk/index), SearchService (search + auto-index)
+- `src/semantic_code_mcp/indexer.py` — embed + store pipeline
 - `docs/decisions/` — architecture decision records
 - `TODO.md` — epics and planning
 - `CHANGELOG.md` — completed work (Keep a Changelog format)
