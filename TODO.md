@@ -54,6 +54,9 @@ Profiling infrastructure added (pyinstrument). Use `SEMANTIC_CODE_MCP_PROFILE=1`
 
 ## Done
 
+### Package Restructuring & Enum Standardization
+Flattened `indexer/` package — `chunkers/` and `embedder.py` at top level, `indexer/` collapsed to single module. `IndexService` now owns scanning, change detection, chunking, and status; `Indexer` is a pure embed+store pipeline. `CompositeChunker` (renamed from `MultiLanguageChunker`) passed directly to `IndexService`. All enums standardized to `StrEnum` + `auto()` with `NodeType` enums per chunker replacing raw string comparisons. Container uses `cached_property` for singletons.
+
 ### Publish to PyPI for `uvx` Distribution
 Published v0.1.0 to PyPI. Installable via `uvx semantic-code-mcp`. README updated with platform-specific install instructions (macOS/Windows vs Linux CPU-only torch). GitHub Actions workflow publishes automatically on tag push using PyPI trusted publishers (OIDC). Clean Ctrl+C shutdown fix included.
 

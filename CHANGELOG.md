@@ -7,25 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-31
+
 ### Added
-- Multi-language chunker architecture (`BaseTreeSitterChunker` + `MultiLanguageChunker` dispatcher)
+- Multi-language chunker architecture (`BaseTreeSitterChunker` + `CompositeChunker` dispatcher)
 - Rust support — functions, structs, enums, traits, impl blocks, `//!` module doc comments
 - Published to PyPI — installable via `uvx semantic-code-mcp`
 - GitHub Actions workflow for automated publishing on tag push (trusted publishers OIDC)
 - Platform-specific install docs (macOS/Windows vs Linux CPU-only torch)
+- "Adding a New Language" guide in README
 
 ### Changed
 - Flattened package — `chunkers/` and `embedder.py` at top level, `indexer/` collapsed to single module
 - `IndexService` owns scanning, change detection, chunking, status; `Indexer` handles embedding and storage only
-- `MultiLanguageChunker` renamed to `CompositeChunker` with extension collision detection
+- `CompositeChunker` with extension collision detection (renamed from `MultiLanguageChunker`)
+- `IndexService` takes `CompositeChunker` directly — no separate `supported_extensions` parameter
+- All enums standardized to `StrEnum` + `auto()` — `ChunkType`, Python `NodeType`, Rust `NodeType`
 - `__init__.py` files are docstring-only (no re-exports); all imports use full module paths
-- `Indexer.scan_files()` accepts dynamic file extensions via `supported_extensions` (no longer hardcoded `*.py`)
+- Container uses `cached_property` for model/embedder singletons, per-project store caching
 
 ### Fixed
 - Tree-sitter `Parser` thread-safety — create fresh parser per `chunk_string` call (was shared, mutates on `parse()`)
 - `mock_embedder.embed_batch` returns correct embedding count via `side_effect` (was hardcoded to 1)
 - `Indexer` is now pure data pipeline — no `Settings`, no `FileChangeCache`, no `cache_dir`; all cache bookkeeping owned by `IndexService`
 - Clean shutdown on Ctrl+C (SIGINT handler instead of traceback)
+- Removed redundant `.value` calls on `StrEnum` members
 
 ## [0.1.0] - 2026-01-31
 
