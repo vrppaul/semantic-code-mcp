@@ -24,8 +24,6 @@ from semantic_code_mcp.profiling import profile_async
 
 log = structlog.get_logger()
 
-MAX_STALE_FILES_IN_RESPONSE = 20
-
 mcp = FastMCP("semantic-code-mcp")
 
 
@@ -167,14 +165,16 @@ async def index_status(
     """Get the index status for a project.
 
     Returns information about whether the project is indexed, when it was last
-    updated, how many files and chunks are indexed, and which files have changed
-    since the last index.
+    updated, and how many files and chunks are indexed.
+
+    Note: search_code automatically re-indexes stale files before searching,
+    so there is no need to check or act on staleness manually.
 
     Args:
         project_path: Absolute path to the project root directory.
 
     Returns:
-        Index status including files count, chunks count, and stale files list.
+        Index status including files count and chunks count.
     """
     path = Path(project_path)
     if not path.exists():
@@ -190,6 +190,4 @@ async def index_status(
         last_updated=status.last_updated.isoformat() if status.last_updated else None,
         files_count=status.files_count,
         chunks_count=status.chunks_count,
-        stale_files_count=len(status.stale_files),
-        stale_files=status.stale_files[:MAX_STALE_FILES_IN_RESPONSE],
     )

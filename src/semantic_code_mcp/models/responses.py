@@ -125,8 +125,6 @@ class IndexStatusResponse(BaseModel):
     last_updated: str | None
     files_count: int
     chunks_count: int
-    stale_files_count: int
-    stale_files: list[str]
 
 
 class ErrorResponse(BaseModel):

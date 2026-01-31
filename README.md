@@ -78,7 +78,7 @@ Check indexing status for a project.
 |-----------|------|---------|-------------|
 | `project_path` | `str` | required | Absolute path to the project root |
 
-Returns `is_indexed`, `files_count`, `chunks_count`, `stale_files_count`, and `stale_files`.
+Returns `is_indexed`, `files_count`, and `chunks_count`.
 
 ## Configuration
 
