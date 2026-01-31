@@ -112,7 +112,6 @@ known-first-party = ["semantic_code_mcp"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**/*.py" = ["D", "ANN", "SLF001", "T20", "DTZ", "PLC0415"]
-"benchmarks/**/*.py" = ["T20"]  # print() is fine in benchmarks
 
 [tool.ty.environment]
 python-version = "3.14"

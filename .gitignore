@@ -22,6 +22,10 @@ wheels/
 .coverage
 htmlcov/
 
+# Linter/type checker caches
+.ruff_cache/
+.mypy_cache/
+
 # Profiling output (dev only)
 profiles/
 
