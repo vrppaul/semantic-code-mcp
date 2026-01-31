@@ -24,19 +24,53 @@ Indexing is incremental (mtime-based) and uses `git ls-files` for fast file disc
 
 ## Installation
 
-```bash
-# Via uvx (recommended)
-uvx semantic-code-mcp
+### macOS / Windows
 
-# Or install globally
-uv tool install semantic-code-mcp
+PyPI ships CPU-only torch on these platforms, so no extra flags are needed (~1.7GB install).
+
+```bash
+uvx semantic-code-mcp
 ```
 
-## Claude Code Integration
+**Claude Code integration:**
 
 ```bash
 claude mcp add --scope user semantic-code -- uvx semantic-code-mcp
 ```
+
+### Linux
+
+> [!IMPORTANT]
+> Without the `--index` flag, PyPI installs CUDA-bundled torch (~3.5GB). Unless you need GPU acceleration (you don't — embeddings run on CPU), use the command below to get the CPU-only build (~1.7GB).
+
+```bash
+uvx --index pytorch-cpu=https://download.pytorch.org/whl/cpu semantic-code-mcp
+```
+
+**Claude Code integration:**
+
+```bash
+claude mcp add --scope user semantic-code -- \
+  uvx --index pytorch-cpu=https://download.pytorch.org/whl/cpu semantic-code-mcp
+```
+
+<details>
+<summary>Claude Desktop / other MCP clients (JSON config)</summary>
+
+```json
+{
+  "mcpServers": {
+    "semantic-code": {
+      "command": "uvx",
+      "args": ["--index", "pytorch-cpu=https://download.pytorch.org/whl/cpu", "semantic-code-mcp"]
+    }
+  }
+}
+```
+
+On macOS/Windows you can omit the `--index` and `pytorch-cpu` args.
+
+</details>
 
 ## MCP Tools
 

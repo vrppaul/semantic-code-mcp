@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Published to PyPI — installable via `uvx semantic-code-mcp`
+- GitHub Actions workflow for automated publishing on tag push (trusted publishers OIDC)
+- Platform-specific install docs (macOS/Windows vs Linux CPU-only torch)
+
+### Fixed
+- Clean shutdown on Ctrl+C (SIGINT handler instead of traceback)
+
+## [0.1.0] - 2026-01-31
+
+### Added
 - `IndexService` orchestrating full index pipeline (scan → detect → chunk → embed) with progress callbacks
 - `SearchService` with auto-indexing via `IndexService` (replaces manual orchestration in server.py)
 - `services/` package replacing `search/` directory

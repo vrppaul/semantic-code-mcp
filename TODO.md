@@ -56,6 +56,9 @@ Profiling infrastructure added (pyinstrument). Use `SEMANTIC_CODE_MCP_PROFILE=1`
 
 ## Done
 
+### Publish to PyPI for `uvx` Distribution
+Published v0.1.0 to PyPI. Installable via `uvx semantic-code-mcp`. README updated with platform-specific install instructions (macOS/Windows vs Linux CPU-only torch). GitHub Actions workflow publishes automatically on tag push using PyPI trusted publishers (OIDC). Clean Ctrl+C shutdown fix included.
+
 ### Reduce Install Size (CPU-only PyTorch)
 Configured uv to pull torch from CPU-only PyTorch index. Venv reduced from 7.8GB to 1.7GB (78% smaller). No CUDA/nvidia/triton packages installed.
 

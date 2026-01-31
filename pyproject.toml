@@ -1,6 +1,6 @@
 [project]
 name = "semantic-code-mcp"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local MCP server for semantic code search"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -29,8 +29,12 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/semantic_code_mcp"]
