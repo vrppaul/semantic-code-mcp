@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from sentence_transformers import SentenceTransformer
 
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.indexer.chunker import PythonChunker
@@ -26,15 +25,6 @@ async def run_index(indexer: Indexer, project_path: Path, force: bool = False) -
 
 class TestIndexer:
     """Tests for Indexer orchestration with injected dependencies."""
-
-    @pytest.fixture
-    def model(self) -> SentenceTransformer:
-        """Load the embedding model once for tests."""
-        return SentenceTransformer("all-MiniLM-L6-v2")
-
-    @pytest.fixture
-    def embedder(self, model: SentenceTransformer) -> Embedder:
-        return Embedder(model)
 
     @pytest.fixture
     def chunker(self) -> PythonChunker:

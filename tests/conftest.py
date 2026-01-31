@@ -4,11 +4,28 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from sentence_transformers import SentenceTransformer
 
 from semantic_code_mcp.config import Settings
+from semantic_code_mcp.indexer.embedder import Embedder
 from semantic_code_mcp.models import Chunk, ChunkType
 from semantic_code_mcp.protocols import ChunkerProtocol, EmbedderProtocol, VectorStoreProtocol
 from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
+
+# Shared model fixtures (session-scoped to avoid repeated loading)
+
+
+@pytest.fixture(scope="session")
+def model() -> SentenceTransformer:
+    """Load the embedding model once for the entire test session."""
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+
+@pytest.fixture(scope="session")
+def embedder(model: SentenceTransformer) -> Embedder:
+    """Create an embedder with the session-scoped model."""
+    return Embedder(model)
+
 
 # Settings fixtures
 

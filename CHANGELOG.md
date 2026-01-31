@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timezone-aware datetimes throughout (DTZ compliance)
 
 ### Changed
+- CPU-only PyTorch via `[tool.uv.sources]` — venv reduced from 7.8GB to 1.7GB (no CUDA/nvidia/triton)
 - Lazy `sentence-transformers` import — startup no longer loads torch (~4s saved)
 - `server.py` is now a thin tool layer delegating to `IndexService`/`SearchService`
 - `SearchOutcome.index_result` always present (default zeros) — eliminates None guards

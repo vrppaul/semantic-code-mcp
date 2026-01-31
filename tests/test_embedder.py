@@ -1,6 +1,5 @@
 """Tests for embedding generation."""
 
-import pytest
 from sentence_transformers import SentenceTransformer
 
 from semantic_code_mcp.indexer.embedder import Embedder
@@ -8,16 +7,6 @@ from semantic_code_mcp.indexer.embedder import Embedder
 
 class TestEmbedder:
     """Tests for Embedder with pre-loaded model."""
-
-    @pytest.fixture
-    def model(self) -> SentenceTransformer:
-        """Load the embedding model once for all tests."""
-        return SentenceTransformer("all-MiniLM-L6-v2")
-
-    @pytest.fixture
-    def embedder(self, model: SentenceTransformer) -> Embedder:
-        """Create an embedder with pre-loaded model."""
-        return Embedder(model)
 
     def test_creates_embedder(self, model: SentenceTransformer):
         """Can create an embedder instance with a model."""

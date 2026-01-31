@@ -12,12 +12,21 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "sentence-transformers>=5.2.0",
     "structlog>=25.5.0",
+    "torch>=2.10.0",
     "tree-sitter>=0.25.2",
     "tree-sitter-python>=0.25.0",
 ]
 
 [project.scripts]
 semantic-code-mcp = "semantic_code_mcp:main"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]

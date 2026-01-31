@@ -27,19 +27,6 @@ Improve search result quality and output format for better usability.
 
 ## Pending
 
-### Code Quality & Architecture Cleanup
-Post-DI cleanup pass. Improve consistency, type safety, and modularity.
-
-**Type safety:**
-- [x] Add `ty` to pre-commit hooks
-- [x] Fix `ty` diagnostics (embedder.py return type, lancedb.py suppression, chunker.py null guards)
-- [ ] Add type hints to tree-sitter `node` params in chunker.py (4 methods)
-
-**Error handling:**
-- [ ] Replace broad `except Exception` in chunker.py:57 with specific tree-sitter exceptions
-- [ ] Replace broad `except Exception` in lancedb.py:78 (`_ensure_fts_index`) with specific exceptions
-- [ ] Review lancedb.py overall — `search_hybrid()` is 76 lines, merge logic could be extracted
-
 ### Multi-language Support
 Currently Python only. Need JS/TS for web projects, Rust/Go for systems work. Tree-sitter supports all of these, so it's mainly about adding language-specific chunking logic.
 
@@ -53,25 +40,17 @@ Profiling infrastructure added (pyinstrument). Use `SEMANTIC_CODE_MCP_PROFILE=1`
 **Remaining:**
 - [ ] LanceDB index tuning (IVF partitions, PQ compression)
 
-### Reduce Install Size (CPU-only PyTorch)
-Current .venv is ~7.8GB, mostly due to PyTorch with CUDA (nvidia: 4.3GB, torch: 1.8GB, triton: 643MB). Users installing via `uvx` don't need GPU support for a code search tool - CPU inference is sufficient for short queries.
-
-**Solution:** Configure uv to use PyTorch CPU-only index:
-```toml
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-```
-
-**Expected reduction:** ~6.8GB → ~200MB for torch portion. Total install ~1GB instead of ~8GB.
-
-**Alternative considered:** FastEmbed (ONNX-based) - even smaller but embeddings may differ from sentence-transformers, requiring index rebuilds and potentially different search quality.
-
 ## Done
+
+### Reduce Install Size (CPU-only PyTorch)
+Configured uv to pull torch from CPU-only PyTorch index. Venv reduced from 7.8GB to 1.7GB (78% smaller). No CUDA/nvidia/triton packages installed.
+
+### Code Quality & Architecture Cleanup
+Post-DI cleanup pass. Improved consistency, type safety, and modularity.
+- Specific exception types in chunker.py (`OSError`, `ValueError`, `UnicodeDecodeError`) and lancedb.py (`OSError`, `ValueError`, `RuntimeError`)
+- `search_hybrid()` split into 30-line method + extracted `_merge_results()`
+- Tree-sitter `Node` type hints already present on all chunker methods
+- `ty` in pre-commit, all diagnostics fixed
 
 ### Services Layer & Strict Linting
 Extracted `IndexService` and `SearchService`, architecture review fixes, strict lint config.
