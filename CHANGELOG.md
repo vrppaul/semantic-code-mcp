@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `IndexService` orchestrating full index pipeline (scan → detect → chunk → embed) with progress callbacks
+- `SearchService` with auto-indexing via `IndexService` (replaces manual orchestration in server.py)
+- `services/` package replacing `search/` directory
+- `duration_seconds` on `IndexResult` for end-to-end timing
+- Strict ruff rules: C901, DTZ, ASYNC, SLF, PIE, T20, PERF, FURB, PLC0415
+- ty type-checking rules in pre-commit and pyproject.toml
 - Profiling support with pyinstrument for dev (enable with `SEMANTIC_CODE_MCP_PROFILE=1`)
 - MCP server with three tools: `search_code`, `index_codebase`, `index_status`
 - Semantic code search using sentence-transformers embeddings (all-MiniLM-L6-v2)
@@ -27,9 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pre-commit hooks (ruff, bandit, conventional commits)
 
 ### Fixed
+- SQL injection in `delete_by_file` — escape single quotes in file paths
 - Force reindex now clears vector store to prevent duplicate results
+- Atomic cache writes (tempfile + rename) to prevent corruption on crash
+- FTS index failures logged at WARNING instead of DEBUG
+- Timezone-aware datetimes throughout (DTZ compliance)
 
 ### Changed
+- Lazy `sentence-transformers` import — startup no longer loads torch (~4s saved)
+- `server.py` is now a thin tool layer delegating to `IndexService`/`SearchService`
+- `SearchOutcome.index_result` always present (default zeros) — eliminates None guards
+- `container.create_search_service()` reuses indexer instead of creating duplicates
+- Removed unused `status_cache_ttl` config option
+- Chunker complexity reduced by extracting `_extract_decorated` and `_extract_class_with_methods`
 - File scanning uses `git ls-files` for 100x speedup (falls back to os.walk for non-git repos)
 - Removed sync `index()` method - only async version remains (no code duplication)
 - Removed unused Searcher class
