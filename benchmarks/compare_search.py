@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.search.searcher import Searcher
+from semantic_code_mcp.container import Container
 
 
 @dataclass
@@ -41,11 +41,15 @@ def benchmark_semantic_search(
 ) -> SearchResult:
     """Benchmark semantic search approach."""
     settings = Settings()
-    searcher = Searcher(settings)
+    container = Container(settings)
+    search_service = container.create_search_service(project_path)
+
+    import asyncio
 
     start = time.perf_counter()
-    results = searcher.search(project_path, query, limit=limit)
+    outcome = asyncio.run(search_service.search(query, project_path, limit=limit))
     elapsed = time.perf_counter() - start
+    results = outcome.results
 
     # Count tokens in returned snippets
     total_content = "\n".join(r.content for r in results)

@@ -1,4 +1,4 @@
-"""Data models for chunks, search results, and index status."""
+"""Domain models for chunks, search results, and index status."""
 
 from datetime import datetime
 from enum import Enum
@@ -77,7 +77,6 @@ class FileChanges(BaseModel):
 
     @property
     def has_changes(self) -> bool:
-        """Check if there are any changes."""
         return bool(self.new or self.modified or self.deleted)
 
     @property
@@ -86,18 +85,22 @@ class FileChanges(BaseModel):
         return self.new + self.modified
 
 
+class ScanPlan(BaseModel):
+    """Plan for what needs indexing, produced by detect_changes()."""
+
+    files_to_index: list[str]
+    files_to_delete: list[str]
+    all_files: list[str]
+
+    @property
+    def has_work(self) -> bool:
+        return bool(self.files_to_index or self.files_to_delete)
+
+
 class IndexResult(BaseModel):
     """Result of an indexing operation."""
 
     files_indexed: int
     chunks_indexed: int
     files_deleted: int
-    duration_seconds: float
-
-
-class IndexProgress(BaseModel):
-    """Progress update during indexing."""
-
-    stage: str
-    message: str
-    percent: int  # 0-100
+    duration_seconds: float = 0.0

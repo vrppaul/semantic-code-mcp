@@ -60,6 +60,17 @@ repos:
       # Check builtin type constructor use (list() vs [])
       - id: check-builtin-literals
 
+  # ty - Astral's Rust-based type checker (local hook)
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (type checker)
+        entry: bash -c 'uv run ty check || true'
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Bandit - Security linting for Python
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.6

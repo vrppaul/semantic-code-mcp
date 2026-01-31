@@ -28,9 +28,6 @@ class Settings(BaseSettings):
     chunking_target_tokens: int = 800
     chunking_max_tokens: int = 1500
 
-    # Performance settings
-    status_cache_ttl: float = 5.0  # Seconds to cache status check results
-
     # Logging
     debug: bool = False  # Enable debug logging (SEMANTIC_CODE_MCP_DEBUG=1)
 
@@ -49,6 +46,23 @@ class Settings(BaseSettings):
         ]
     )
     use_gitignore: bool = True
+
+
+_settings: Settings | None = None
+
+
+def configure_settings(settings: Settings) -> None:
+    """Set the global settings instance (call once at startup or in tests)."""
+    global _settings
+    _settings = settings
+
+
+def get_settings() -> Settings:
+    """Get the global settings, auto-creating from env if not configured."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
 
 
 def get_index_path(settings: Settings, project_path: Path) -> Path:

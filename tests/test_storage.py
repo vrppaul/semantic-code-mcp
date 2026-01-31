@@ -1,56 +1,42 @@
 """Tests for LanceDB storage layer."""
 
-import tempfile
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from semantic_code_mcp.models import Chunk, ChunkType, ChunkWithEmbedding
-from semantic_code_mcp.storage.lancedb import VectorStore
+from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
 
 
-@pytest.fixture
-def temp_db_path():
-    """Create a temporary directory for the database."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir) / "test.lance"
+class TestLanceDBConnection:
+    """Tests for LanceDBConnection (expensive, shared resource)."""
+
+    def test_create_connection(self, temp_db_path: Path):
+        """Can create a new connection."""
+        conn = LanceDBConnection(temp_db_path)
+        assert conn is not None
+        assert conn.db is not None
+
+    def test_connection_creates_table(self, temp_db_path: Path):
+        """Connection creates chunks table on init."""
+        conn = LanceDBConnection(temp_db_path)
+        # Table property should work without error
+        table = conn.table
+        assert table is not None
 
 
-@pytest.fixture
-def vector_store(temp_db_path):
-    """Create a VectorStore instance."""
-    return VectorStore(temp_db_path)
+class TestLanceDBVectorStore:
+    """Tests for LanceDBVectorStore (per-request session)."""
 
-
-@pytest.fixture
-def sample_chunk():
-    """Create a sample chunk."""
-    return Chunk(
-        file_path="/path/to/file.py",
-        line_start=10,
-        line_end=20,
-        content="def hello():\n    return 'world'",
-        chunk_type=ChunkType.FUNCTION,
-        name="hello",
-    )
-
-
-@pytest.fixture
-def sample_embedding():
-    """Create a sample 384-dim embedding (MiniLM size)."""
-    return np.random.rand(384).astype(np.float32).tolist()
-
-
-class TestVectorStore:
-    """Tests for VectorStore."""
-
-    def test_create_store(self, temp_db_path):
-        """Can create a new vector store."""
-        store = VectorStore(temp_db_path)
+    def test_create_store(self, lance_connection: LanceDBConnection):
+        """Can create a new vector store with connection."""
+        store = LanceDBVectorStore(lance_connection)
         assert store is not None
+        assert store.connection is lance_connection
 
-    def test_store_and_retrieve_chunk(self, vector_store, sample_chunk, sample_embedding):
+    def test_store_and_retrieve_chunk(
+        self, vector_store: LanceDBVectorStore, sample_chunk: Chunk, sample_embedding: list[float]
+    ):
         """Can store a chunk with embedding and retrieve it."""
         item = ChunkWithEmbedding(chunk=sample_chunk, embedding=sample_embedding)
         vector_store.add_chunks([item])
@@ -61,7 +47,7 @@ class TestVectorStore:
         assert results[0].file_path == sample_chunk.file_path
         assert results[0].name == sample_chunk.name
 
-    def test_search_returns_similar_items(self, vector_store):
+    def test_search_returns_similar_items(self, vector_store: LanceDBVectorStore):
         """Search returns items ranked by similarity."""
         chunk1 = Chunk(
             file_path="/a.py",
@@ -98,7 +84,7 @@ class TestVectorStore:
         assert results[0].name == "foo"  # More similar should be first
         assert results[0].score > results[1].score
 
-    def test_search_respects_limit(self, vector_store):
+    def test_search_respects_limit(self, vector_store: LanceDBVectorStore):
         """Search respects the limit parameter."""
         items = [
             ChunkWithEmbedding(
@@ -120,7 +106,7 @@ class TestVectorStore:
         results = vector_store.search([0.5] * 384, limit=3)
         assert len(results) == 3
 
-    def test_delete_chunks_by_file(self, vector_store):
+    def test_delete_chunks_by_file(self, vector_store: LanceDBVectorStore):
         """Can delete all chunks for a specific file."""
         chunk1 = Chunk(
             file_path="/a.py",
@@ -152,12 +138,12 @@ class TestVectorStore:
         assert len(results) == 1
         assert results[0].file_path == "/b.py"
 
-    def test_empty_store_returns_empty_results(self, vector_store):
+    def test_empty_store_returns_empty_results(self, vector_store: LanceDBVectorStore):
         """Search on empty store returns empty list."""
         results = vector_store.search([0.5] * 384, limit=10)
         assert results == []
 
-    def test_get_all_file_paths(self, vector_store):
+    def test_get_all_file_paths(self, vector_store: LanceDBVectorStore):
         """Can get list of all indexed file paths."""
         chunks = [
             Chunk(
@@ -197,7 +183,7 @@ class TestVectorStore:
         file_paths = vector_store.get_indexed_files()
         assert set(file_paths) == {"/a.py", "/b.py"}
 
-    def test_count_chunks(self, vector_store):
+    def test_count_chunks(self, vector_store: LanceDBVectorStore):
         """Can count total chunks in store."""
         assert vector_store.count() == 0
 
@@ -219,7 +205,7 @@ class TestVectorStore:
 
         assert vector_store.count() == 5
 
-    def test_clear_removes_all_chunks(self, vector_store):
+    def test_clear_removes_all_chunks(self, vector_store: LanceDBVectorStore):
         """Clear removes all chunks from the store."""
         items = [
             ChunkWithEmbedding(
@@ -242,3 +228,25 @@ class TestVectorStore:
 
         assert vector_store.count() == 0
         assert vector_store.get_indexed_files() == []
+
+    def test_shared_connection_across_stores(self, lance_connection: LanceDBConnection):
+        """Multiple stores share the same connection."""
+        store1 = LanceDBVectorStore(lance_connection)
+        store2 = LanceDBVectorStore(lance_connection)
+
+        # Add through store1
+        chunk = Chunk(
+            file_path="/test.py",
+            line_start=1,
+            line_end=5,
+            content="def test(): pass",
+            chunk_type=ChunkType.FUNCTION,
+            name="test",
+        )
+        store1.add_chunks([ChunkWithEmbedding(chunk=chunk, embedding=[0.5] * 384)])
+
+        # Should be visible through store2
+        assert store2.count() == 1
+        results = store2.search([0.5] * 384, limit=1)
+        assert len(results) == 1
+        assert results[0].name == "test"

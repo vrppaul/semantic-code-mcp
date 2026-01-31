@@ -59,8 +59,14 @@ What else did we consider and why was it rejected?
 What are the implications of this decision?
 ```
 
+## Agent Instruction Files
+- **CLAUDE.md** - Claude Code context, loaded every session. Keep under 80 lines.
+- **AGENTS.md** - Cross-agent instructions (GitHub Copilot, Codex, Cursor). Keep in sync with CLAUDE.md.
+- See `.claude/rules/agent-docs.md` for detailed maintenance rules.
+
 ## When to Create/Update
 - New epic idea → add to TODO.md
 - Starting implementation planning → create decisions/ doc
 - Completing work → move from TODO.md to CHANGELOG.md
+- Changing commands, stack, or boundaries → update both CLAUDE.md and AGENTS.md
 - Always keep these in sync with actual state

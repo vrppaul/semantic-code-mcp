@@ -1,8 +1,6 @@
 # Semantic Code MCP Server
 
-## Project Overview
-
-Local MCP server providing semantic code search for Claude Code. Replaces iterative grep with embedding-based vector search.
+Local MCP server providing semantic code search for Claude Code. Replaces iterative grep/glob with embedding-based vector search, so agents find code by meaning rather than exact text matching.
 
 ## Quick Reference
 
@@ -14,98 +12,44 @@ uv run ruff check src/                # Lint
 uv run ruff format src/               # Format
 ```
 
-## Documentation Structure
-
-- **TODO.md** - High-level epics with rationale
-- **CHANGELOG.md** - Completed work (Keep a Changelog format)
-- **docs/decisions/** - Implementation plans and architectural decisions
-
-## Rules (`.claude/rules/`)
-
-Rules are auto-loaded by Claude Code. Some apply conditionally based on file paths.
-
-| File | Applies To | Purpose |
-|------|------------|---------|
-| `python.md` | `**/*.py` | Python coding standards: type hints, structlog logging, error handling, modern syntax, no code in `__init__.py` |
-| `testing.md` | `tests/**/*.py` | TDD philosophy, test-what-not-how, spec-driven development |
-| `mcp-server.md` | `server.py`, `__init__.py` | MCP-specific: progress notifications, tool design, performance targets |
-| `documentation.md` | All files | Documentation system: TODO→decisions→CHANGELOG flow, ADR format |
-| `development-process.md` | All files | uv-only workflow, implementation steps, dependency management |
-
-## MCP Tools Available
-
-Use these tools during development:
-
-### Context7
-Use for looking up library documentation:
-- `resolve-library-id` → `query-docs`
-- Example: researching FastMCP API, LanceDB usage, tree-sitter bindings
-- When: unsure about library API, need code examples, checking latest patterns
-
-### Sequential Thinking
-Use for complex problem solving:
-- Breaking down multi-step problems
-- Analyzing trade-offs between approaches
-- Debugging complex issues
-- When: stuck on a problem, need structured analysis
-
 ## Tech Stack
 
-- **Python 3.14** - Latest, use modern syntax
-- **uv** - Package and venv management (NEVER use pip directly)
-- **FastMCP** - MCP server framework
-- **sentence-transformers** - Local embeddings (all-MiniLM-L6-v2, 384d)
-- **LanceDB** - Embedded vector database
-- **tree-sitter** - AST-based code chunking
-- **structlog** - Structured logging
-- **pydantic** - Data models and settings
+- **Python 3.14** — use modern syntax (type parameter syntax, match, walrus)
+- **uv** — package and venv management (NEVER use pip directly)
+- **FastMCP** — MCP server framework
+- **sentence-transformers** — local embeddings (all-MiniLM-L6-v2, 384d)
+- **LanceDB** — embedded vector database
+- **tree-sitter** — AST-based code chunking
+- **structlog** — structured logging
+- **pydantic + pydantic-settings** — data models and configuration
 
-## Architecture Decisions
+## Boundaries
 
-See `docs/decisions/` for detailed rationale. Key decisions:
+**Always:**
+- Use `uv run` to execute anything, `uv add` to add dependencies
+- Write tests before implementation (TDD)
+- Run tests (`uv run pytest`) and linter (`uv run ruff check src/`) after changes
+- Use structlog for logging, never print()
+- Use type hints on public functions
 
-1. **Model loading**: Lazy (on first query) with MCP progress notifications
-2. **Index storage**: Configurable (`--index-dir` or `--local-index`)
-3. **Distribution**: PyPI package, run via `uvx semantic-code-mcp`
-4. **Languages**: Python first, then JS/TS, Rust, Go
+**Ask first:**
+- Changing data models or storage schema
+- Adding new dependencies
+- Modifying MCP tool signatures
 
-## Project Structure
+**Never:**
+- Use pip or activate venv manually
+- Put code in `__init__.py` files
+- Use generic Exception for error handling
+- Commit secrets or credentials
 
-```
-src/semantic_code_mcp/
-├── __init__.py           # Re-exports only
-├── __main__.py           # python -m entry point
-├── cli.py                # main() entry point
-├── server.py             # FastMCP server and tool definitions
-├── config.py             # Pydantic settings, CLI args
-├── models.py             # Data models (Chunk, SearchResult, IndexStatus)
-├── indexer/
-│   ├── chunker.py        # tree-sitter AST parsing
-│   ├── embedder.py       # Embedding generation wrapper
-│   └── indexer.py        # Orchestration, file scanning
-├── storage/
-│   ├── lancedb.py        # Vector store operations
-│   └── cache.py          # File change detection (mtime)
-└── search/
-    └── searcher.py       # Query embedding + ranking
-tests/
-docs/
-├── decisions/            # Architecture decision records
-TODO.md
-CHANGELOG.md
-```
+## Key Architecture
 
-## Data Flow
+The server lazily loads the embedding model on first query (with MCP progress notifications). Code is chunked via tree-sitter AST parsing, embedded in batches, and stored in LanceDB. Search embeds the query and performs vector similarity lookup with optional full-text hybrid search. Context-specific coding rules live in `.claude/rules/` and activate based on file glob patterns. Architecture decisions are in `docs/decisions/`. Project planning flows through TODO.md (epics) → decisions/ (how) → CHANGELOG.md (done).
 
-**Indexing:**
-1. Scan files (respect .gitignore)
-2. Check cache (skip unchanged via mtime)
-3. Parse with tree-sitter → extract functions, classes, methods
-4. Generate embeddings (batch)
-5. Store in LanceDB
+## Maintaining This File
 
-**Search:**
-1. Embed query
-2. Vector similarity search in LanceDB
-3. Post-filter (file pattern, min score)
-4. Return file:line + snippets
+- Keep under 80 lines. Every line must prevent a concrete mistake.
+- Only universally-applicable content — domain-specific rules go in `.claude/rules/`.
+- When editing, prune outdated content first.
+- Keep AGENTS.md in sync for commands, stack, and boundaries.

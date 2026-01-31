@@ -1,47 +1,39 @@
 """Tests for embedding generation."""
 
 import pytest
+from sentence_transformers import SentenceTransformer
 
-from semantic_code_mcp.config import Settings
 from semantic_code_mcp.indexer.embedder import Embedder
 
 
 class TestEmbedder:
-    """Tests for Embedder."""
+    """Tests for Embedder with pre-loaded model."""
 
     @pytest.fixture
-    def settings(self) -> Settings:
-        """Create test settings."""
-        return Settings()
+    def model(self) -> SentenceTransformer:
+        """Load the embedding model once for all tests."""
+        return SentenceTransformer("all-MiniLM-L6-v2")
 
-    def test_creates_embedder(self, settings: Settings):
-        """Can create an embedder instance."""
-        embedder = Embedder(settings)
+    @pytest.fixture
+    def embedder(self, model: SentenceTransformer) -> Embedder:
+        """Create an embedder with pre-loaded model."""
+        return Embedder(model)
+
+    def test_creates_embedder(self, model: SentenceTransformer):
+        """Can create an embedder instance with a model."""
+        embedder = Embedder(model)
         assert embedder is not None
 
-    def test_model_not_loaded_initially(self, settings: Settings):
-        """Model is not loaded until first use (lazy loading)."""
-        embedder = Embedder(settings)
-        assert not embedder.is_loaded
-
-    def test_model_loaded_after_embed(self, settings: Settings):
-        """Model is loaded after first embedding call."""
-        embedder = Embedder(settings)
-        embedder.embed_text("hello world")
-        assert embedder.is_loaded
-
-    def test_embed_single_text(self, settings: Settings):
+    def test_embed_single_text(self, embedder: Embedder):
         """Can embed a single text string."""
-        embedder = Embedder(settings)
         embedding = embedder.embed_text("def hello(): pass")
 
         assert isinstance(embedding, list)
         assert len(embedding) == 384  # MiniLM embedding dimension
         assert all(isinstance(x, float) for x in embedding)
 
-    def test_embed_batch(self, settings: Settings):
+    def test_embed_batch(self, embedder: Embedder):
         """Can embed multiple texts in a batch."""
-        embedder = Embedder(settings)
         texts = [
             "def hello(): pass",
             "class Foo: pass",
@@ -52,16 +44,13 @@ class TestEmbedder:
         assert len(embeddings) == 3
         assert all(len(e) == 384 for e in embeddings)
 
-    def test_embed_empty_batch_returns_empty(self, settings: Settings):
+    def test_embed_empty_batch_returns_empty(self, embedder: Embedder):
         """Empty batch returns empty list."""
-        embedder = Embedder(settings)
         embeddings = embedder.embed_batch([])
         assert embeddings == []
 
-    def test_similar_texts_have_similar_embeddings(self, settings: Settings):
+    def test_similar_texts_have_similar_embeddings(self, embedder: Embedder):
         """Semantically similar texts should have similar embeddings."""
-        embedder = Embedder(settings)
-
         # Similar code
         emb1 = embedder.embed_text("def add(a, b): return a + b")
         emb2 = embedder.embed_text("def sum(x, y): return x + y")
@@ -82,23 +71,8 @@ class TestEmbedder:
         # Similar texts should have higher similarity
         assert sim_similar > sim_different
 
-    def test_embedding_dimension(self, settings: Settings):
+    def test_embedding_dimension(self, embedder: Embedder):
         """Embeddings have correct dimension for the model."""
-        embedder = Embedder(settings)
         embedding = embedder.embed_text("test")
         assert embedder.embedding_dim == 384
         assert len(embedding) == embedder.embedding_dim
-
-    def test_load_explicitly(self, settings: Settings):
-        """Can explicitly load the model."""
-        embedder = Embedder(settings)
-        assert not embedder.is_loaded
-
-        embedder.load()
-
-        assert embedder.is_loaded
-
-    def test_model_name_from_settings(self, settings: Settings):
-        """Uses model name from settings."""
-        embedder = Embedder(settings)
-        assert embedder.model_name == settings.embedding_model

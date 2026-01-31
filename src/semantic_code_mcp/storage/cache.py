@@ -1,6 +1,7 @@
 """File change detection cache for incremental indexing."""
 
 import json
+import tempfile
 from pathlib import Path
 
 import structlog
@@ -41,10 +42,16 @@ class FileChangeCache:
             self._mtimes = {}
 
     def _save(self) -> None:
-        """Save cached mtimes to disk."""
+        """Save cached mtimes to disk atomically (write to temp, then rename)."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.cache_path, "w") as f:
-            json.dump(self._mtimes, f)
+        fd, tmp_path = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
+        try:
+            with open(fd, "w") as f:
+                json.dump(self._mtimes, f)
+            Path(tmp_path).replace(self.cache_path)
+        except BaseException:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
         log.debug("cache_saved", files_count=len(self._mtimes))
 
     def get_tracked_files(self) -> list[str]:

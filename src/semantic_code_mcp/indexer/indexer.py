@@ -4,40 +4,57 @@ import asyncio
 import fnmatch
 import subprocess  # nosec B404
 import time
-from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 
 import structlog
 
-from semantic_code_mcp.config import Settings, get_index_path
-from semantic_code_mcp.indexer.chunker import PythonChunker
-from semantic_code_mcp.indexer.embedder import Embedder
+from semantic_code_mcp.config import Settings
 from semantic_code_mcp.models import (
     Chunk,
     ChunkWithEmbedding,
-    IndexProgress,
     IndexResult,
     IndexStatus,
+    ScanPlan,
 )
-from semantic_code_mcp.storage.cache import FileChangeCache
-from semantic_code_mcp.storage.lancedb import VectorStore
+from semantic_code_mcp.protocols import ChunkerProtocol, EmbedderProtocol, VectorStoreProtocol
+from semantic_code_mcp.storage.cache import CACHE_FILENAME, FileChangeCache
 
 log = structlog.get_logger()
 
+CHUNK_BATCH_SIZE = 20
+
 
 class Indexer:
-    """Orchestrates the indexing pipeline: scan, chunk, embed, store."""
+    """Orchestrates the indexing pipeline: scan, chunk, embed, store.
 
-    def __init__(self, settings: Settings) -> None:
-        """Initialize the indexer.
+    All dependencies are injected via constructor.
+    """
 
-        Args:
-            settings: Application settings.
-        """
+    def __init__(
+        self,
+        settings: Settings,
+        embedder: EmbedderProtocol,
+        store: VectorStoreProtocol,
+        chunker: ChunkerProtocol,
+        cache_dir: Path | None = None,
+    ) -> None:
         self.settings = settings
-        self.chunker = PythonChunker()
-        self.embedder = Embedder(settings)
+        self.embedder = embedder
+        self.store = store
+        self.chunker = chunker
+        self._cache_dir = cache_dir
+
+    def _resolve_cache_dir(self, project_path: Path) -> Path:
+        """Get cache dir, falling back to settings-derived path."""
+        if self._cache_dir is not None:
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+            return self._cache_dir
+        from semantic_code_mcp.config import get_index_path  # circular import guard
+
+        path = get_index_path(self.settings, project_path)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def scan_files(self, project_path: Path) -> list[str]:
         """Scan for Python files in the project.
@@ -173,51 +190,27 @@ class Indexer:
                     return True
         return False
 
-    async def index(
-        self, project_path: Path, force: bool = False
-    ) -> AsyncGenerator[IndexProgress | IndexResult]:
-        """Index a project's codebase with progress updates.
-
-        Yields IndexProgress updates during the operation, then yields
-        the final IndexResult.
+    def detect_changes(
+        self, project_path: Path, current_files: list[str], force: bool = False
+    ) -> ScanPlan:
+        """Detect which files need indexing/deletion.
 
         Args:
             project_path: Root directory of the project.
-            force: If True, re-index all files regardless of changes.
+            current_files: List of absolute file paths from scan_files().
+            force: If True, re-index all files.
 
-        Yields:
-            IndexProgress updates, then final IndexResult.
+        Returns:
+            ScanPlan describing what work needs to be done.
         """
-        start_time = time.time()
-        project_path = project_path.resolve()
+        cache_dir = self._resolve_cache_dir(project_path)
+        cache = FileChangeCache(cache_dir)
 
-        log.info("indexing_started", project=str(project_path), force=force)
-
-        yield IndexProgress(stage="init", message="Starting indexing...", percent=0)
-
-        # Get index storage path
-        index_path = get_index_path(self.settings, project_path)
-        index_path.mkdir(parents=True, exist_ok=True)
-
-        # Initialize components
-        store = VectorStore(index_path)
-        cache = FileChangeCache(index_path)
-
-        yield IndexProgress(stage="scan", message="Scanning files...", percent=5)
-
-        # Scan for Python files (run in thread to not block)
-        current_files = await asyncio.to_thread(self.scan_files, project_path)
-
-        yield IndexProgress(
-            stage="scan", message=f"Found {len(current_files)} Python files", percent=10
-        )
-
-        # Determine which files need indexing
         if force:
             files_to_index = current_files
             files_to_delete: list[str] = []
             cache.clear()
-            store.clear()
+            self.store.clear()
         else:
             changes = cache.get_changes(current_files)
             files_to_index = changes.stale_files
@@ -229,44 +222,59 @@ class Indexer:
                 deleted=len(changes.deleted),
             )
 
-        if not files_to_index and not files_to_delete:
-            yield IndexProgress(stage="done", message="No changes to index", percent=100)
-            yield IndexResult(
-                files_indexed=0,
-                chunks_indexed=0,
-                files_deleted=0,
-                duration_seconds=time.time() - start_time,
-            )
-            return
-
-        yield IndexProgress(
-            stage="prepare",
-            message=f"Indexing {len(files_to_index)} files...",
-            percent=15,
+        return ScanPlan(
+            files_to_index=files_to_index,
+            files_to_delete=files_to_delete,
+            all_files=current_files,
         )
 
+    async def embed_and_store(
+        self, project_path: Path, plan: ScanPlan, chunks: list[Chunk]
+    ) -> IndexResult:
+        """Delete stale data, embed chunks, store them, and update cache.
+
+        Args:
+            project_path: Root directory of the project (for cache resolution).
+            plan: The ScanPlan from detect_changes().
+            chunks: Chunks extracted by chunk_files().
+
+        Returns:
+            IndexResult with counts of work done.
+        """
+        cache_dir = self._resolve_cache_dir(project_path)
+        cache = FileChangeCache(cache_dir)
+
         # Delete chunks for removed/modified files
-        for file_path in files_to_delete:
-            store.delete_by_file(file_path)
+        for file_path in plan.files_to_delete:
+            self.store.delete_by_file(file_path)
             cache.remove_file(file_path)
 
-        if not force:
-            for file_path in files_to_index:
-                store.delete_by_file(file_path)
+        # For incremental: delete old chunks for files being re-indexed
+        for file_path in plan.files_to_index:
+            self.store.delete_by_file(file_path)
 
-        yield IndexProgress(stage="chunk", message="Chunking files...", percent=20)
+        if chunks:
+            await self._embed_and_store(chunks)
 
-        # Chunk files in parallel batches
+        # Update cache with indexed files
+        cache.update_files(plan.files_to_index)
+
+        return IndexResult(
+            files_indexed=len(plan.files_to_index),
+            chunks_indexed=len(chunks),
+            files_deleted=len(plan.files_to_delete),
+        )
+
+    async def chunk_files(self, files: list[str]) -> list[Chunk]:
+        """Chunk files in parallel batches."""
         all_chunks: list[Chunk] = []
-        batch_size = 20
-        total_files = len(files_to_index)
+        total_files = len(files)
 
         t0 = time.time()
-        for batch_start in range(0, total_files, batch_size):
-            batch_end = min(batch_start + batch_size, total_files)
-            batch = files_to_index[batch_start:batch_end]
+        for batch_start in range(0, total_files, CHUNK_BATCH_SIZE):
+            batch_end = min(batch_start + CHUNK_BATCH_SIZE, total_files)
+            batch = files[batch_start:batch_end]
 
-            # Process batch in parallel
             chunk_tasks = [
                 asyncio.to_thread(self.chunker.chunk_file, file_path) for file_path in batch
             ]
@@ -274,91 +282,37 @@ class Indexer:
             for chunks in batch_results:
                 all_chunks.extend(chunks)
 
-            # Yield progress after each batch
-            percent = 20 + int(30 * batch_end / total_files)
-            yield IndexProgress(
-                stage="chunk",
-                message=f"Chunked {batch_end}/{total_files} files ({len(all_chunks)} chunks)",
-                percent=percent,
-            )
-
         log.debug(
             "chunking_completed",
-            files=len(files_to_index),
+            files=total_files,
             chunks=len(all_chunks),
             duration_ms=round((time.time() - t0) * 1000, 1),
         )
+        return all_chunks
 
-        # Embed chunks
-        if all_chunks:
-            yield IndexProgress(
-                stage="embed",
-                message=f"Embedding {len(all_chunks)} chunks...",
-                percent=55,
-            )
-
-            # Load model if needed (this is the slow part on first run)
-            if not self.embedder.is_loaded:
-                yield IndexProgress(stage="embed", message="Loading embedding model...", percent=55)
-                t0 = time.time()
-                await asyncio.to_thread(self.embedder.load)
-                log.debug("model_loaded", duration_ms=round((time.time() - t0) * 1000, 1))
-
-            yield IndexProgress(
-                stage="embed",
-                message=f"Generating embeddings for {len(all_chunks)} chunks...",
-                percent=60,
-            )
-
-            # Generate embeddings (run in thread as it's CPU-bound)
-            contents = [chunk.content for chunk in all_chunks]
-            t0 = time.time()
-            embeddings = await asyncio.to_thread(self.embedder.embed_batch, contents)
-            log.debug(
-                "embedding_completed",
-                chunks=len(all_chunks),
-                duration_ms=round((time.time() - t0) * 1000, 1),
-            )
-
-            yield IndexProgress(stage="store", message="Storing in database...", percent=85)
-
-            # Create ChunkWithEmbedding objects
-            items = [
-                ChunkWithEmbedding(chunk=chunk, embedding=embedding)
-                for chunk, embedding in zip(all_chunks, embeddings, strict=True)
-            ]
-
-            # Store in vector database
-            t0 = time.time()
-            await asyncio.to_thread(store.add_chunks, items)
-            log.debug(
-                "storage_completed",
-                chunks=len(items),
-                duration_ms=round((time.time() - t0) * 1000, 1),
-            )
-
-        yield IndexProgress(stage="finalize", message="Finalizing...", percent=95)
-
-        # Update cache with indexed files
-        cache.update_files(files_to_index)
-
-        duration = time.time() - start_time
-        result = IndexResult(
-            files_indexed=len(files_to_index),
-            chunks_indexed=len(all_chunks),
-            files_deleted=len(files_to_delete),
-            duration_seconds=duration,
+    async def _embed_and_store(self, chunks: list[Chunk]) -> None:
+        """Generate embeddings and store chunks."""
+        contents = [chunk.content for chunk in chunks]
+        t0 = time.time()
+        embeddings = await asyncio.to_thread(self.embedder.embed_batch, contents)
+        log.debug(
+            "embedding_completed",
+            chunks=len(chunks),
+            duration_ms=round((time.time() - t0) * 1000, 1),
         )
 
-        log.info(
-            "indexing_completed",
-            files_indexed=result.files_indexed,
-            chunks_indexed=result.chunks_indexed,
-            duration=f"{duration:.2f}s",
-        )
+        items = [
+            ChunkWithEmbedding(chunk=chunk, embedding=embedding)
+            for chunk, embedding in zip(chunks, embeddings, strict=True)
+        ]
 
-        yield IndexProgress(stage="done", message="Indexing complete!", percent=100)
-        yield result
+        t0 = time.time()
+        await asyncio.to_thread(self.store.add_chunks, items)
+        log.debug(
+            "storage_completed",
+            chunks=len(items),
+            duration_ms=round((time.time() - t0) * 1000, 1),
+        )
 
     def get_status(self, project_path: Path) -> IndexStatus:
         """Get the index status for a project.
@@ -370,10 +324,10 @@ class Indexer:
             IndexStatus with current state information.
         """
         project_path = project_path.resolve()
-        index_path = get_index_path(self.settings, project_path)
+        cache_dir = self._resolve_cache_dir(project_path)
 
         # Check if index exists
-        if not index_path.exists():
+        if not cache_dir.exists():
             return IndexStatus(
                 is_indexed=False,
                 last_updated=None,
@@ -382,19 +336,18 @@ class Indexer:
                 stale_files=[],
             )
 
-        store = VectorStore(index_path)
-        cache = FileChangeCache(index_path)
+        cache = FileChangeCache(cache_dir)
 
         # Get current files and check for staleness
         current_files = self.scan_files(project_path)
         stale_files = cache.get_stale_files(current_files)
 
-        # Get indexed file list
-        indexed_files = store.get_indexed_files()
-        chunks_count = store.count()
+        # Get indexed file list from injected store
+        indexed_files = self.store.get_indexed_files()
+        chunks_count = self.store.count()
 
         # Determine last updated from cache file mtime
-        cache_file = index_path / "file_mtimes.json"
+        cache_file = cache_dir / CACHE_FILENAME
         last_updated = None
         if cache_file.exists():
             last_updated = datetime.fromtimestamp(cache_file.stat().st_mtime)

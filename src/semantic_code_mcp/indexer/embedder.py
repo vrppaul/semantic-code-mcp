@@ -3,65 +3,30 @@
 import structlog
 from sentence_transformers import SentenceTransformer
 
-from semantic_code_mcp.config import Settings
-
 log = structlog.get_logger()
 
 
 class Embedder:
     """Generates embeddings for code chunks using sentence-transformers.
 
-    The model is loaded lazily on first use to avoid slow startup.
+    Requires a pre-loaded SentenceTransformer model. Model loading
+    should happen once at container initialization.
     """
 
-    def __init__(self, settings: Settings) -> None:
-        """Initialize the embedder.
+    def __init__(self, model: SentenceTransformer) -> None:
+        """Initialize the embedder with a pre-loaded model.
 
         Args:
-            settings: Application settings with model configuration.
+            model: Pre-loaded SentenceTransformer model.
         """
-        self.model_name = settings.embedding_model
-        self.device = settings.embedding_device
-        self._model: SentenceTransformer | None = None
-        self._embedding_dim: int | None = None
-
-    @property
-    def is_loaded(self) -> bool:
-        """Check if the model is loaded."""
-        return self._model is not None
+        self._model = model
 
     @property
     def embedding_dim(self) -> int:
-        """Get the embedding dimension. Loads model if needed."""
-        if self._embedding_dim is None:
-            self.load()
-        return self._embedding_dim  # type: ignore[return-value]
-
-    def load(self) -> None:
-        """Explicitly load the model.
-
-        This can be called to pre-load the model before first use.
-        """
-        if self._model is not None:
-            return
-
-        log.info("loading_embedding_model", model=self.model_name, device=self.device)
-
-        device = None if self.device == "auto" else self.device
-        self._model = SentenceTransformer(self.model_name, device=device)
-        self._embedding_dim = self._model.get_sentence_embedding_dimension()
-
-        log.info(
-            "embedding_model_loaded",
-            model=self.model_name,
-            embedding_dim=self._embedding_dim,
-        )
-
-    def _ensure_loaded(self) -> SentenceTransformer:
-        """Ensure model is loaded and return it."""
-        if self._model is None:
-            self.load()
-        return self._model  # type: ignore[return-value]
+        """Get the embedding dimension."""
+        dim = self._model.get_sentence_embedding_dimension()
+        assert isinstance(dim, int)
+        return dim
 
     def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text.
@@ -72,8 +37,7 @@ class Embedder:
         Returns:
             Embedding vector as list of floats.
         """
-        model = self._ensure_loaded()
-        embedding = model.encode(text, convert_to_numpy=True)
+        embedding = self._model.encode(text, convert_to_numpy=True)
         return embedding.tolist()
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -88,8 +52,6 @@ class Embedder:
         if not texts:
             return []
 
-        model = self._ensure_loaded()
         log.debug("embedding_batch", count=len(texts))
-
-        embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+        embeddings = self._model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
         return [e.tolist() for e in embeddings]

@@ -1,23 +1,15 @@
 """Tests for hybrid search (vector + full-text)."""
 
-from pathlib import Path
-
 import pytest
 
 from semantic_code_mcp.models import Chunk, ChunkType, ChunkWithEmbedding
-from semantic_code_mcp.storage.lancedb import VectorStore
+from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
 
 
 @pytest.fixture
-def temp_db_path(tmp_path: Path) -> Path:
-    """Create a temporary database path."""
-    return tmp_path / "test_db"
-
-
-@pytest.fixture
-def store_with_chunks(temp_db_path: Path) -> VectorStore:
+def store_with_chunks(lance_connection: LanceDBConnection) -> LanceDBVectorStore:
     """Create a store with sample chunks for testing hybrid search."""
-    store = VectorStore(temp_db_path)
+    store = LanceDBVectorStore(lance_connection)
 
     # Create embeddings that are actually different (not parallel)
     # Using varied values to get different cosine similarities
@@ -71,7 +63,7 @@ def store_with_chunks(temp_db_path: Path) -> VectorStore:
 class TestHybridSearch:
     """Tests for hybrid search functionality."""
 
-    def test_vector_only_search_misses_keyword_match(self, store_with_chunks: VectorStore):
+    def test_vector_only_search_misses_keyword_match(self, store_with_chunks: LanceDBVectorStore):
         """Pure vector search may miss results with exact keyword matches."""
         # Query embedding similar to "measure_elapsed_time" chunk (emb_high pattern)
         query_embedding = [0.9 if i % 2 == 0 else 0.8 for i in range(384)]
@@ -84,19 +76,19 @@ class TestHybridSearch:
         names = [r.name for r in results]
         assert "measure_elapsed_time" in names
 
-    def test_fts_search_finds_exact_keyword(self, store_with_chunks: VectorStore):
+    def test_fts_search_finds_exact_keyword(self, store_with_chunks: LanceDBVectorStore):
         """Full-text search finds chunks containing exact keywords."""
         results = store_with_chunks.search_fts("duration_ms", limit=5)
 
         assert len(results) >= 1
         assert any("duration_ms" in r.content for r in results)
 
-    def test_fts_search_returns_empty_for_no_match(self, store_with_chunks: VectorStore):
+    def test_fts_search_returns_empty_for_no_match(self, store_with_chunks: LanceDBVectorStore):
         """FTS returns empty list when no matches found."""
         results = store_with_chunks.search_fts("nonexistent_keyword_xyz", limit=5)
         assert results == []
 
-    def test_hybrid_search_combines_both(self, store_with_chunks: VectorStore):
+    def test_hybrid_search_combines_both(self, store_with_chunks: LanceDBVectorStore):
         """Hybrid search finds both semantic and keyword matches."""
         query_embedding = [
             0.9 if i % 2 == 0 else 0.8 for i in range(384)
@@ -111,7 +103,7 @@ class TestHybridSearch:
         # Should find the keyword match in results
         assert "duration_ms" in " ".join(r.content for r in results)
 
-    def test_hybrid_search_weight_adjustable(self, store_with_chunks: VectorStore):
+    def test_hybrid_search_weight_adjustable(self, store_with_chunks: LanceDBVectorStore):
         """Can adjust weight between vector and FTS search."""
         query_embedding = [0.9 if i % 2 == 0 else 0.8 for i in range(384)]
 
