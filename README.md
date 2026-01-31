@@ -117,6 +117,32 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling |
 
+Pass environment variables via the `env` field in your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "semantic-code": {
+      "command": "uvx",
+      "args": ["semantic-code-mcp"],
+      "env": {
+        "SEMANTIC_CODE_MCP_DEBUG": "true",
+        "SEMANTIC_CODE_MCP_LOCAL_INDEX": "true"
+      }
+    }
+  }
+}
+```
+
+Or with Claude Code CLI:
+
+```bash
+claude mcp add --scope user semantic-code \
+  -e SEMANTIC_CODE_MCP_DEBUG=true \
+  -e SEMANTIC_CODE_MCP_LOCAL_INDEX=true \
+  -- uvx semantic-code-mcp
+```
+
 ## Tech Stack
 
 | Component | Choice | Rationale |
