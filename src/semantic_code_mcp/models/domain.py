@@ -13,6 +13,7 @@ class ChunkType(StrEnum):
     function = auto()
     klass = "class"
     method = auto()
+    section = auto()
 
 
 class Chunk(BaseModel):

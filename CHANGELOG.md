@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Markdown support — indexes `.md` files by heading-based sections (`ChunkType.section`)
+- Setext heading support (`Title\n=====` syntax) in addition to ATX headings (`# Title`)
+- `ChunkType.section` enum value for document sections (backward-compatible with existing indexes)
+- YAML frontmatter correctly excluded from chunks
+- Decision doc: `docs/decisions/005-markdown-chunking.md`
+
+### Changed
+- `tree-sitter-markdown` added as dependency
+- `CompositeChunker` now routes `.md` files to `MarkdownChunker`
+
 ## [0.3.0] - 2026-01-31
 
 ### Added

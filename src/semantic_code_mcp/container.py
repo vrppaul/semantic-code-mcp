@@ -15,6 +15,7 @@ import structlog
 
 from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
 from semantic_code_mcp.chunkers.composite import CompositeChunker
+from semantic_code_mcp.chunkers.markdown import MarkdownChunker
 from semantic_code_mcp.chunkers.python import PythonChunker
 from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings, get_index_path, get_settings
@@ -79,7 +80,7 @@ class Container:
 
     def get_chunkers(self) -> list[BaseTreeSitterChunker]:
         """All language-specific chunkers. Add new languages here."""
-        return [PythonChunker(), RustChunker()]
+        return [PythonChunker(), RustChunker(), MarkdownChunker()]
 
     def create_chunker(self) -> CompositeChunker:
         """Create a CompositeChunker from all registered language chunkers."""

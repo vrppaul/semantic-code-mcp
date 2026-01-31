@@ -19,7 +19,7 @@ uv run ruff format src/               # Format
 - **FastMCP** — MCP server framework
 - **sentence-transformers** — local embeddings (all-MiniLM-L6-v2, 384d)
 - **LanceDB** — embedded vector database
-- **tree-sitter** — AST-based code chunking
+- **tree-sitter** — AST-based code chunking (Python, Rust, Markdown)
 - **structlog** — structured logging
 - **pydantic + pydantic-settings** — data models and configuration
 

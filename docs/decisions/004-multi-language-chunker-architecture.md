@@ -1,6 +1,6 @@
 # 004: Multi-Language Chunker Architecture
 
-**Status**: implemented (partially — Rust done, JS/TS/Go pending)
+**Status**: implemented (partially — Rust and Markdown done, JS/TS/Go pending)
 **Date**: 2026-01-31
 
 ## Context

@@ -2,7 +2,7 @@
 
 MCP server that provides semantic code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase with embeddings and returns ranked results by meaning.
 
-Supports **Python** and **Rust** — more languages planned.
+Supports **Python**, **Rust**, and **Markdown** — more languages planned.
 
 ## How It Works
 
@@ -15,7 +15,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
              (tree-sitter)  (sentence-trans)  (vectors)
 ```
 
-1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, etc.
+1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
 2. **Embedding** — sentence-transformers encodes each chunk (all-MiniLM-L6-v2, 384d)
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — hybrid semantic + keyword search with recency boosting
@@ -240,14 +240,14 @@ Register it in `src/semantic_code_mcp/container.py`:
 from semantic_code_mcp.chunkers.mylang import MyLangChunker
 
 def get_chunkers(self) -> list[BaseTreeSitterChunker]:
-    return [PythonChunker(), RustChunker(), MyLangChunker()]
+    return [PythonChunker(), RustChunker(), MarkdownChunker(), MyLangChunker()]
 ```
 
 The `CompositeChunker` handles dispatch by file extension automatically. Use `BaseTreeSitterChunker._make_chunk()` for consistent chunk construction. See `chunkers/python.py` and `chunkers/rust.py` for complete examples.
 
 ### Project Structure
 
-- `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`)
+- `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
 - `src/semantic_code_mcp/services/` — IndexService (scan/chunk/index), SearchService (search + auto-index)
 - `src/semantic_code_mcp/indexer.py` — embed + store pipeline
 - `docs/decisions/` — architecture decision records

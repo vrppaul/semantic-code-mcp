@@ -28,7 +28,7 @@ Improve search result quality and output format for better usability.
 ## In Progress
 
 ### Multi-language Support
-Currently Python and Rust. Need JS/TS for web projects, Go for systems work. Tree-sitter supports all of these. See decision 004 for architecture and README for how to add a new language.
+Currently Python, Rust, and Markdown. Need JS/TS for web projects, Go for systems work. Tree-sitter supports all of these. See decision 004 for architecture and README for how to add a new language.
 
 **Architecture (implemented):** `BaseTreeSitterChunker` base class + `CompositeChunker` dispatcher.
 - `BaseTreeSitterChunker` — shared logic (parsing, line extraction, Chunk construction)
@@ -37,6 +37,7 @@ Currently Python and Rust. Need JS/TS for web projects, Go for systems work. Tre
 - `Container.get_chunkers()` — single registration point for all language chunkers
 
 **Remaining languages:**
+- [x] Add Markdown chunker (`tree-sitter-markdown`) — heading-based sections for documentation search. See decision 005.
 - [ ] Add JavaScript/TypeScript chunker (`tree-sitter-javascript`, `tree-sitter-typescript`)
 - [ ] Add Go chunker (`tree-sitter-go`) — receiver methods, package comments
 

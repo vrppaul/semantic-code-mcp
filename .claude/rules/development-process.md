@@ -21,6 +21,6 @@
 - mcp (FastMCP) - MCP server framework
 - sentence-transformers - embeddings
 - lancedb - vector storage
-- tree-sitter + tree-sitter-python + tree-sitter-rust - AST parsing
+- tree-sitter + tree-sitter-python + tree-sitter-rust + tree-sitter-markdown - AST parsing
 - structlog - logging
 - pydantic + pydantic-settings - models and config
