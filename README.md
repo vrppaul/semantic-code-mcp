@@ -205,11 +205,18 @@ uv add tree-sitter-mylang
 Create `src/semantic_code_mcp/chunkers/mylang.py`:
 
 ```python
+from enum import StrEnum, auto
+
 import tree_sitter_mylang as tsmylang
 from tree_sitter import Language, Node
 
 from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
 from semantic_code_mcp.models import Chunk, ChunkType
+
+
+class NodeType(StrEnum):
+    function_definition = auto()
+    # ... other node types
 
 
 class MyLangChunker(BaseTreeSitterChunker):
@@ -220,8 +227,9 @@ class MyLangChunker(BaseTreeSitterChunker):
         chunks = []
         for node in root.children:
             match node.type:
-                case "function_definition":
-                    chunks.append(self._make_chunk(node, file_path, lines, ChunkType.function, node.child_by_field_name("name").text.decode()))
+                case NodeType.function_definition:
+                    name = node.child_by_field_name("name").text.decode()
+                    chunks.append(self._make_chunk(node, file_path, lines, ChunkType.function, name))
                 # ... other node types
         return chunks
 ```
