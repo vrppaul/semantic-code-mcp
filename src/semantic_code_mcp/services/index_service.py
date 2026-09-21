@@ -2,6 +2,7 @@
 
 import asyncio
 import fnmatch
+import re
 import subprocess  # nosec B404
 import time
 from datetime import UTC, datetime
@@ -24,6 +25,45 @@ from semantic_code_mcp.storage.cache import CACHE_FILENAME, FileChangeCache
 log = structlog.get_logger()
 
 CHUNK_BATCH_SIZE = 20
+
+# Directories skipped outright during a filesystem walk: build/dep/cache junk that is
+# never source, and never worth descending into.
+WALK_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "site-packages",
+        ".cache",
+    }
+)
+
+# Directories that may hold real credentials. Never yield a file that lives under one of
+# these, anywhere in the path — not just at the project root.
+SENSITIVE_DIR_NAMES = frozenset({".config", ".ssh", ".aws", ".claude"})
+
+# Filenames that look like secrets/credentials. Matched case-insensitively against the
+# filename only (never the full path, so a source file merely mentioning "token" in a
+# containing directory name is unaffected).
+SENSITIVE_FILENAME_PATTERNS = (
+    re.compile(r"^\.env.*$", re.IGNORECASE),
+    re.compile(r".*token.*", re.IGNORECASE),
+    re.compile(r".*credential.*", re.IGNORECASE),
+    re.compile(r".*secret.*", re.IGNORECASE),
+    re.compile(r".*\.pem$", re.IGNORECASE),
+    re.compile(r"^id_rsa.*$", re.IGNORECASE),
+    re.compile(r"^id_ed25519.*$", re.IGNORECASE),
+    re.compile(r".*\.key$", re.IGNORECASE),
+    re.compile(r".*\.p12$", re.IGNORECASE),
+    re.compile(r"^\.netrc$", re.IGNORECASE),
+)
 
 
 class IndexService:
@@ -107,8 +147,15 @@ class IndexService:
     def scan_files(self, project_path: Path) -> list[str]:
         """Scan for source files with supported extensions.
 
-        Uses git ls-files if available (fast, respects .gitignore).
-        Falls back to os.walk with directory pruning.
+        Default strategy ("walk", `settings.discovery`) is a direct filesystem walk, so files
+        that exist on disk but are not tracked by git (e.g. a project whose .gitignore is a
+        blanket `/*` allowlist) are still found. Opt into the old `git ls-files`-based
+        discovery (tracked files only) with `SEMANTIC_CODE_MCP_DISCOVERY=git`; that mode still
+        falls back to the filesystem walk when the project isn't a git repo.
+
+        Every result is passed through a security filter before being returned, regardless of
+        strategy: it never yields a path that looks like a credential/secret file or lives under
+        a directory that commonly holds them.
 
         Args:
             project_path: Root directory to scan.
@@ -118,15 +165,44 @@ class IndexService:
         """
         project_path = project_path.resolve()
 
-        if self._is_git_repo(project_path):
+        if self.settings.discovery == "git" and self._is_git_repo(project_path):
             files = self._scan_with_git(project_path)
             if files is not None:
+                files = self._security_filter(files, project_path)
                 log.debug("scanned_files_git", project=str(project_path), count=len(files))
                 return files
 
         files = self._scan_with_walk(project_path)
+        files = self._security_filter(files, project_path)
         log.debug("scanned_files_walk", project=str(project_path), count=len(files))
         return files
+
+    def _security_filter(self, files: list[str], project_path: Path) -> list[str]:
+        """Drop any file that looks like a credential/secret, regardless of discovery mode.
+
+        Non-negotiable: applies to git-mode results too, in case a secret was accidentally
+        committed and tracked.
+        """
+        safe: list[str] = []
+        for file_path in files:
+            if self._is_sensitive_path(Path(file_path), project_path):
+                log.debug("skipped_sensitive_file", file_path=file_path)
+                continue
+            safe.append(file_path)
+        return safe
+
+    def _is_sensitive_path(self, file_path: Path, project_path: Path) -> bool:
+        """Check whether a path looks like a credential/secret file or lives under one."""
+        try:
+            rel_parts = file_path.relative_to(project_path).parts
+        except ValueError:
+            rel_parts = file_path.parts
+
+        if any(part in SENSITIVE_DIR_NAMES for part in rel_parts[:-1]):
+            return True
+
+        filename = file_path.name
+        return any(pattern.match(filename) for pattern in SENSITIVE_FILENAME_PATTERNS)
 
     def _is_git_repo(self, project_path: Path) -> bool:
         """Check if project is a git repository."""
@@ -153,20 +229,19 @@ class IndexService:
         return [str(project_path / line) for line in result.stdout.strip().split("\n") if line]
 
     def _scan_with_walk(self, project_path: Path) -> list[str]:
-        """Scan using os.walk with directory pruning."""
-        skip_dirs = {".venv", ".git", "node_modules", "__pycache__", ".pytest_cache", "venv"}
+        """Scan using os.walk with directory pruning.
 
-        gitignore_patterns: list[str] = []
-        if self.settings.use_gitignore:
-            gitignore_path = project_path / ".gitignore"
-            if gitignore_path.exists():
-                gitignore_patterns = self._parse_gitignore(gitignore_path)
-
-        all_ignore_patterns = self.settings.ignore_patterns + gitignore_patterns
+        Deliberately does NOT consult .gitignore: a project's .gitignore hides files from git,
+        not from disk, and a blanket ignore (e.g. `/*` plus an allowlist, used for sync-lane
+        directories) must not make source files invisible to discovery. Only junk — the fixed
+        `WALK_SKIP_DIRS` list plus `settings.ignore_patterns` — is pruned. Symlinked directories
+        are never descended into, to avoid escaping the project root or looping.
+        """
+        all_ignore_patterns = self.settings.ignore_patterns
 
         files: list[str] = []
         for root, dirs, filenames in project_path.walk():
-            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            dirs[:] = [d for d in dirs if d not in WALK_SKIP_DIRS and not (root / d).is_symlink()]
 
             for filename in filenames:
                 if not any(filename.endswith(ext) for ext in self.chunker.supported_extensions):
