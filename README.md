@@ -20,7 +20,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — hybrid semantic + keyword search with recency boosting
 
-Indexing is incremental (mtime-based) and uses `git ls-files` for fast file discovery. The embedding model loads lazily on first query.
+Indexing is incremental (mtime-based). By default, file discovery is a direct filesystem walk (not `git ls-files`), so untracked source files — e.g. a directory whose `.gitignore` is a blanket `/*` allowlist — are still indexed; see `SEMANTIC_CODE_MCP_DISCOVERY` below to opt back into git-tracked-only discovery. The embedding model loads lazily on first query.
 
 ## Installation
 
@@ -130,6 +130,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling |
+| `SEMANTIC_CODE_MCP_DISCOVERY` | `walk` | File discovery strategy: `walk` (default) scans the filesystem directly, so files that exist on disk but aren't tracked by git are still found. `git` restores the old `git ls-files`-based discovery (tracked files only) and falls back to `walk` when the project isn't a git repo. Either way, files that look like credentials/secrets are never indexed (see below). |
 
 Pass environment variables via the `env` field in your MCP config:
 
@@ -156,6 +157,18 @@ claude mcp add --scope user semantic-code \
   -e SEMANTIC_CODE_MCP_LOCAL_INDEX=true \
   -- uvx semantic-code-mcp
 ```
+
+### File discovery and security
+
+Both discovery modes prune common build/dependency/cache junk (`.git`, `.venv`, `venv`,
+`node_modules`, `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `dist`, `build`,
+`site-packages`, `.cache`) and never descend into a symlinked directory. `walk` mode does **not**
+consult `.gitignore` — a project's `.gitignore` controls what git tracks, not what exists on disk,
+and letting it hide files was the discovery bug this mode fixes.
+
+Regardless of discovery mode, a file is never indexed if its name looks like a credential or
+secret (`.env*`, `*token*`, `*credential*`, `*secret*`, `*.pem`, `id_rsa*`, `id_ed25519*`, `*.key`,
+`*.p12`, `.netrc`) or it lives under a directory named `.config`, `.ssh`, `.aws`, or `.claude`.
 
 ## Tech Stack
 

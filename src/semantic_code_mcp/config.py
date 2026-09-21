@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,7 +46,16 @@ class Settings(BaseSettings):
             ".pytest_cache/**",
         ]
     )
+    # No longer consulted by the default "walk" discovery mode (see `discovery` below): a
+    # project's .gitignore must not hide source files that exist on disk. Retained only so
+    # existing config files/env vars don't fail to parse.
     use_gitignore: bool = True
+
+    # File discovery strategy: "walk" scans the filesystem directly so files that exist on
+    # disk but aren't tracked by git (e.g. a project whose .gitignore is `/*`) are still found.
+    # "git" restores the old `git ls-files`-based discovery (tracked files only).
+    # Env var: SEMANTIC_CODE_MCP_DISCOVERY=walk|git
+    discovery: Literal["walk", "git"] = "walk"
 
 
 _settings: Settings | None = None

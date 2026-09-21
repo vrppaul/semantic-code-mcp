@@ -1,5 +1,6 @@
 """Tests for IndexService (scan, detect changes, chunk, full pipeline)."""
 
+import subprocess  # nosec B404
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -87,8 +88,15 @@ class TestIndexServiceIntegration:
         assert len(files) == 1
         assert "code.py" in files[0]
 
-    def test_scan_respects_gitignore(self, index_service: IndexService, tmp_path: Path):
-        """Respects .gitignore patterns."""
+    def test_scan_does_not_use_gitignore_to_hide_source(
+        self, index_service: IndexService, tmp_path: Path
+    ):
+        """Default (walk) discovery must NOT let .gitignore hide source files on disk.
+
+        Regression test for the root cause: a project whose .gitignore is a blanket `/*`
+        allowlist (a real sync-lane setup) hid 40 of 55 on-disk .py files from the old
+        git-ls-files-based / gitignore-respecting-walk discovery.
+        """
         project = tmp_path / "project4"
         project.mkdir()
 
@@ -98,12 +106,226 @@ class TestIndexServiceIntegration:
 
         ignored = project / "ignored"
         ignored.mkdir()
-        (ignored / "secret.py").write_text("# Secret")
+        (ignored / "untracked.py").write_text("# Untracked but real")
 
         files = index_service.scan_files(project)
 
-        assert len(files) == 1
-        assert "code.py" in files[0]
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"code.py", "model.generated.py", "untracked.py"}
+
+    def test_scan_walk_finds_untracked_file_not_in_git(
+        self, index_service: IndexService, tmp_path: Path
+    ):
+        """A real git repo with an untracked .py file: walk mode still finds it."""
+        project = tmp_path / "project_git"
+        project.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)  # nosec B603, B607
+        (project / "tracked.py").write_text("# tracked")
+        subprocess.run(  # nosec B603, B607
+            ["git", "add", "tracked.py"], cwd=project, check=True
+        )
+        subprocess.run(  # nosec B603, B607
+            ["git", "commit", "-q", "-m", "init", "--author=T <t@t.com>"],
+            cwd=project,
+            check=True,
+        )
+        (project / "untracked.py").write_text("# never committed")
+
+        files = index_service.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"tracked.py", "untracked.py"}
+
+    def test_scan_git_mode_only_finds_tracked_files(
+        self, test_settings: Settings, embedder: Embedder, tmp_path: Path
+    ):
+        """Explicit discovery=git restores the old tracked-only behavior."""
+        project = tmp_path / "project_git_mode"
+        project.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)  # nosec B603, B607
+        (project / "tracked.py").write_text("# tracked")
+        subprocess.run(  # nosec B603, B607
+            ["git", "add", "tracked.py"], cwd=project, check=True
+        )
+        subprocess.run(  # nosec B603, B607
+            ["git", "commit", "-q", "-m", "init", "--author=T <t@t.com>"],
+            cwd=project,
+            check=True,
+        )
+        (project / "untracked.py").write_text("# never committed")
+
+        git_settings = test_settings.model_copy(update={"discovery": "git"})
+        index_path = get_index_path(git_settings, project)
+        index_path.mkdir(parents=True, exist_ok=True)
+        connection = LanceDBConnection(index_path)
+        store = LanceDBVectorStore(connection)
+        indexer = Indexer(embedder=embedder, store=store)
+        svc = IndexService(
+            settings=git_settings,
+            indexer=indexer,
+            chunker=CompositeChunker([PythonChunker()]),
+            cache_dir=index_path,
+        )
+
+        files = svc.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"tracked.py"}
+
+    def test_scan_skip_list_prunes_junk_dirs(self, index_service: IndexService, tmp_path: Path):
+        """The fixed walk skip list prunes build/dep/cache junk beyond the old short list."""
+        project = tmp_path / "project_skip_list"
+        project.mkdir()
+        (project / "code.py").write_text("# Code")
+
+        for junk_dir in (".mypy_cache", ".ruff_cache", "dist", "build", "site-packages", ".cache"):
+            d = project / junk_dir
+            d.mkdir()
+            (d / "junk.py").write_text("# Junk")
+
+        files = index_service.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"code.py"}
+
+    def test_scan_skips_symlinked_directory(self, index_service: IndexService, tmp_path: Path):
+        """A symlinked directory is never descended into (avoids escaping the project root)."""
+        project = tmp_path / "project_symlink"
+        project.mkdir()
+        (project / "code.py").write_text("# Code")
+
+        real_target = tmp_path / "outside_target"
+        real_target.mkdir()
+        (real_target / "outside.py").write_text("# Outside the project")
+
+        (project / "linked").symlink_to(real_target, target_is_directory=True)
+
+        files = index_service.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"code.py"}
+
+    @pytest.mark.parametrize(
+        "sensitive_name",
+        [
+            ".env.py",
+            ".env.local.py",
+            "api_token.py",
+            "TOKEN_LOADER.py",
+            "db_credentials.py",
+            "secret_config.py",
+        ],
+    )
+    def test_scan_refuses_sensitive_filenames(
+        self, index_service: IndexService, tmp_path: Path, sensitive_name: str
+    ):
+        """Never yield a file whose name looks like a credential/secret, even with a
+        supported (.py) extension attached — the realistic shape of a leaked-secret file
+        that would otherwise pass the extension gate and reach the chunker.
+        """
+        project = tmp_path / f"project_secret_{sensitive_name.replace('.', '_')}"
+        project.mkdir()
+        (project / "code.py").write_text("# Code")
+        (project / sensitive_name).write_text("# should never be yielded")
+
+        files = index_service.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"code.py"}
+
+    @pytest.mark.parametrize(
+        "sensitive_name",
+        [
+            ".env",
+            ".env.local",
+            "server.pem",
+            "id_rsa",
+            "id_rsa.pub",
+            "id_ed25519",
+            "cert.key",
+            "client.p12",
+            ".netrc",
+        ],
+    )
+    def test_is_sensitive_path_matches_full_spec_list(
+        self, index_service: IndexService, tmp_path: Path, sensitive_name: str
+    ):
+        """Direct unit test of the security predicate for the full non-negotiable list.
+
+        These names have no supported (.py/.rs/.md) extension, so `scan_files` would never
+        reach them via the extension gate today — but the guard must hold on its own, since a
+        future extension addition (or a caller of the predicate directly) must not reintroduce
+        a leak. Exercises the predicate itself, not just its current reachability.
+        """
+        project = tmp_path / "project_predicate"
+        project.mkdir()
+        candidate = project / sensitive_name
+
+        assert index_service._is_sensitive_path(candidate, project) is True
+
+    def test_is_sensitive_path_allows_ordinary_source(
+        self, index_service: IndexService, tmp_path: Path
+    ):
+        """Sanity check: the predicate does not flag an ordinary source file."""
+        project = tmp_path / "project_predicate_ok"
+        project.mkdir()
+        candidate = project / "main.py"
+
+        assert index_service._is_sensitive_path(candidate, project) is False
+
+    def test_scan_refuses_files_under_sensitive_directories(
+        self, index_service: IndexService, tmp_path: Path
+    ):
+        """Never yield a file living under .config, .ssh, .aws, or .claude — any depth."""
+        project = tmp_path / "project_sensitive_dirs"
+        project.mkdir()
+        (project / "code.py").write_text("# Code")
+
+        for dir_name in (".config", ".ssh", ".aws", ".claude"):
+            d = project / "nested" / dir_name
+            d.mkdir(parents=True)
+            (d / "notes.py").write_text("# lives under a sensitive dir")
+
+        files = index_service.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"code.py"}
+
+    def test_scan_git_mode_security_filter_still_applies(
+        self, test_settings: Settings, embedder: Embedder, tmp_path: Path
+    ):
+        """The security filter applies even in explicit git discovery mode."""
+        project = tmp_path / "project_git_secret"
+        project.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)  # nosec B603, B607
+        (project / "tracked.py").write_text("# tracked")
+        (project / "leaked_token.py").write_text("# should never be yielded")
+        subprocess.run(  # nosec B603, B607
+            ["git", "add", "tracked.py", "leaked_token.py"], cwd=project, check=True
+        )
+        subprocess.run(  # nosec B603, B607
+            ["git", "commit", "-q", "-m", "init", "--author=T <t@t.com>"],
+            cwd=project,
+            check=True,
+        )
+
+        git_settings = test_settings.model_copy(update={"discovery": "git"})
+        index_path = get_index_path(git_settings, project)
+        index_path.mkdir(parents=True, exist_ok=True)
+        connection = LanceDBConnection(index_path)
+        store = LanceDBVectorStore(connection)
+        indexer = Indexer(embedder=embedder, store=store)
+        svc = IndexService(
+            settings=git_settings,
+            indexer=indexer,
+            chunker=CompositeChunker([PythonChunker()]),
+            cache_dir=index_path,
+        )
+
+        files = svc.scan_files(project)
+
+        filenames = {Path(f).name for f in files}
+        assert filenames == {"tracked.py"}
 
     def test_detect_changes_force(self, index_service: IndexService, sample_project: Path):
         """Force mode returns all files for indexing."""
