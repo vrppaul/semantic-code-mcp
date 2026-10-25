@@ -7,10 +7,11 @@ import numpy
 import pytest
 from filelock import FileLock, Timeout
 
-from semantic_code_mcp.domain.errors import IndexWriteError
+from semantic_code_mcp.domain.errors import IndexRebuiltElsewhereError, IndexWriteError
 from semantic_code_mcp.domain.models import (
     Chunk,
     ChunkType,
+    IndexCounts,
     IndexIdentity,
     IndexManifest,
     IndexUpdate,
@@ -185,9 +186,38 @@ def test_a_store_sees_what_another_store_on_its_directory_wrote(tmp_path: Path):
     assert (before, reader.counts().chunks) == (1, 2)
 
 
-def test_vectors_of_another_width_are_refused_with_a_way_out(filled_store: LanceDBIndexStore):
+def test_vectors_of_another_width_are_refused_before_anything_changes(
+    filled_store: LanceDBIndexStore,
+):
     """A model swapped under the same name: the index holds vectors of another width."""
-    chunk = function_chunk("wider", "/project/wider.py", "def wider(): pass")
+    edited = function_chunk("near", "/project/near.py", "def near(): return elapsed_time()")
 
     with pytest.raises(IndexWriteError, match="force=true"):
-        filled_store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY * 2))
+        filled_store.write(
+            update_of([edited], removed_paths=[Path("/project/far.py")]),
+            vectors_of(TOWARD_QUERY * 2),
+        )
+
+    assert filled_store.counts() == IndexCounts(files=3, chunks=3)
+
+
+def test_a_write_planned_before_another_process_rebuilt_the_index_is_refused(
+    filled_store: LanceDBIndexStore,
+):
+    other_model = IndexManifest(
+        identity=IndexIdentity(model_name="other-model", chunker_version=1, schema_version=1),
+        indexed_at=MANIFEST.indexed_at,
+    )
+    edited = function_chunk("near", "/project/near.py", "def near(): return elapsed_time()")
+    update = IndexUpdate(
+        scope=WriteScope.changed_files,
+        files=[record_of(edited.file_path)],
+        chunks=[edited],
+        removed_paths=[],
+        manifest=other_model,
+    )
+
+    with pytest.raises(IndexRebuiltElsewhereError):
+        filled_store.write(update, vectors_of(TOWARD_QUERY))
+
+    assert filled_store.manifest() == MANIFEST

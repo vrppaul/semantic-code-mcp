@@ -1,5 +1,6 @@
 """Tests for source file discovery."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -324,3 +325,15 @@ class TestWalkDiscovery:
         files = make_discovery(ignore_patterns=patterns, use_gitignore=False).discover(project)
 
         assert relative_names(files, project) == {"keep.py", "tools/build/module.py"}
+
+
+@pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
+def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: bool):
+    """The index cannot store such a name; one of them must not stop the rest."""
+    repository = make_repository(tmp_path / "repo")
+    (repository / "kept.py").write_text("x = 1\n")
+    (repository / os.fsdecode(b"caf\xe9.py")).write_text("x = 1\n")
+
+    files = make_discovery(use_gitignore=use_gitignore).discover(repository)
+
+    assert relative_names(files, repository) == {"kept.py"}

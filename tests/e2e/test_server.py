@@ -149,7 +149,7 @@ async def test_a_failure_inside_a_tool_reaches_the_agent_with_its_cause(
     client = Client(create_app(Settings(cache_dir=blocking_file), embedder=embedder), mode="legacy")
 
     async with client:
-        result = await client.call_tool("index_status", {"project_path": str(project)})
+        result = await client.call_tool("index_codebase", {"project_path": str(project)})
 
     assert result.is_error
     assert "not-a-directory" in str(result.content)

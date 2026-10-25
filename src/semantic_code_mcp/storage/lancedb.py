@@ -32,7 +32,7 @@ import structlog
 from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from semantic_code_mcp.domain.errors import IndexWriteError
+from semantic_code_mcp.domain.errors import IndexRebuiltElsewhereError, IndexWriteError
 from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
     HIGHEST_SCORE,
@@ -186,12 +186,11 @@ class LanceDBIndexStore(IndexStore):
 
     @override
     def manifest(self) -> IndexManifest | None:
-        try:
-            text = (self._directory / MANIFEST_FILE).read_text()
-        except FileNotFoundError:
+        path = self._directory / MANIFEST_FILE
+        if not path.is_file():
             return None
         try:
-            return IndexManifest.model_validate_json(text)
+            return IndexManifest.model_validate_json(path.read_bytes())
         except ValidationError as error:
             # Read as an index without a manifest, which the next run rebuilds
             log.warning("manifest_unreadable", directory=str(self._directory), error=str(error))
@@ -215,6 +214,7 @@ class LanceDBIndexStore(IndexStore):
             raise ValueError(message)
         database = self._created_database()
         with FileLock(self._directory / WRITE_LOCK_FILE, timeout=self._lock_timeout_seconds):
+            self._check_writable(update, vectors)
             match update.scope:
                 case WriteScope.everything:
                     self._empty(database, update, vectors)
@@ -280,37 +280,64 @@ class LanceDBIndexStore(IndexStore):
         )
         return sorted(merged, key=lambda result: result.score, reverse=True)[:limit]
 
+    def _check_writable(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+        """Refuse, under the lock and before anything changes, a write of changed files
+        that the index cannot take as it stands now: one planned against an identity
+        another process has since replaced, or chunks of another width or layout."""
+        if update.scope != WriteScope.changed_files:
+            return
+        stored = self.manifest()
+        if stored is not None and stored.identity != update.manifest.identity:
+            message = f"The index was built again as {stored.identity} after this run planned"
+            raise IndexRebuiltElsewhereError(message)
+        stored_chunks = self._open(CHUNKS_TABLE)
+        width = vectors.shape[VECTOR_LENGTH_AXIS]
+        if (
+            update.chunks
+            and stored_chunks is not None
+            and stored_chunks.schema != chunks_schema(width)
+        ):
+            # A model swapped under the same name: the manifest cannot tell, the table can
+            message = (
+                "The index holds chunks of another layout or vector width than the "
+                f"{width}-wide vectors the model now gives; "
+                "re-index with force=true to build it again"
+            )
+            raise IndexWriteError(message)
+
     def _empty(
         self, database: lancedb.DBConnection, update: IndexUpdate, vectors: VectorMatrix
     ) -> None:
-        """Remove every chunk and record before a whole index is written again.
+        """Remove every record and chunk before a whole index is written again.
 
-        Rows are deleted and the tables kept, so a reader finds them throughout. A chunks
-        table is dropped instead, to be made again, when it is not of the width and layout
-        of the chunks written, or when no chunk is written to tell what those would be.
+        The records go first: a write that stops between the two leaves chunks without
+        records, which the next run reads as incomplete and builds again, never records of
+        chunks that are gone. Rows are deleted and the tables kept, so a reader finds them
+        throughout. A chunks table is dropped instead, to be made again, when it is not of
+        the width and layout of the chunks written, or when no chunk is written to say.
         """
-        chunks = self._open(CHUNKS_TABLE)
-        if chunks is not None:
+        stored_files = self._open(FILES_TABLE)
+        if stored_files is not None:
+            stored_files.delete(MATCH_EVERY_ROW)
+        stored_chunks = self._open(CHUNKS_TABLE)
+        if stored_chunks is not None:
             width = vectors.shape[VECTOR_LENGTH_AXIS]
-            if update.chunks and chunks.schema == chunks_schema(width):
-                chunks.delete(MATCH_EVERY_ROW)
+            if update.chunks and stored_chunks.schema == chunks_schema(width):
+                stored_chunks.delete(MATCH_EVERY_ROW)
             else:
                 database.drop_table(CHUNKS_TABLE)
-        files = self._open(FILES_TABLE)
-        if files is not None:
-            files.delete(MATCH_EVERY_ROW)
         for name in LEGACY_FILES:
             (self._directory / name).unlink(missing_ok=True)
 
     def _remove_files(self, update: IndexUpdate) -> None:
         """Remove the chunks of every file written or removed, and the records of the removed."""
         written_or_removed = [*(file.path for file in update.files), *update.removed_paths]
-        chunks = self._open(CHUNKS_TABLE)
-        if chunks is not None and written_or_removed:
-            chunks.delete(path_filter(FILE_PATH_COLUMN, written_or_removed))
-        files = self._open(FILES_TABLE)
-        if files is not None and update.removed_paths:
-            files.delete(path_filter(PATH_COLUMN, update.removed_paths))
+        stored_chunks = self._open(CHUNKS_TABLE)
+        if stored_chunks is not None and written_or_removed:
+            stored_chunks.delete(path_filter(FILE_PATH_COLUMN, written_or_removed))
+        stored_files = self._open(FILES_TABLE)
+        if stored_files is not None and update.removed_paths:
+            stored_files.delete(path_filter(PATH_COLUMN, update.removed_paths))
 
     def _add_chunks(
         self, database: lancedb.DBConnection, chunks: list[Chunk], vectors: VectorMatrix
@@ -323,14 +350,6 @@ class LanceDBIndexStore(IndexStore):
         table = self._open(CHUNKS_TABLE)
         if table is None:
             table = database.create_table(CHUNKS_TABLE, data=rows)
-        elif table.schema != rows.schema:
-            # A model swapped under the same name: the manifest cannot tell, the table can
-            message = (
-                "The index holds chunks of another layout or vector width than the "
-                f"{vectors.shape[VECTOR_LENGTH_AXIS]}-wide vectors the model now gives; "
-                "re-index with force=true to build it again"
-            )
-            raise IndexWriteError(message)
         else:
             table.add(rows)
         if not has_full_text_index(table):

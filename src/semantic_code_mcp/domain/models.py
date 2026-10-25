@@ -153,6 +153,8 @@ class RebuildReason(StrEnum):
 
     # Data without a manifest: an index of 0.4 or earlier
     unversioned = auto()
+    # Chunks without file records: a whole-index write that stopped midway
+    incomplete = auto()
     schema_changed = auto()
     model_changed = auto()
     chunker_changed = auto()

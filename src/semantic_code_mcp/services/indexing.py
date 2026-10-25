@@ -18,6 +18,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.discovery import SourceDiscovery
+from semantic_code_mcp.domain.errors import IndexRebuiltElsewhereError
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, VectorMatrix
 from semantic_code_mcp.domain.models import (
     Chunk,
@@ -78,10 +79,6 @@ class StoredState(BaseModel):
     manifest: IndexManifest | None
     counts: IndexCounts
 
-    @property
-    def holds_data(self) -> bool:
-        return self.counts.files > 0 or self.counts.chunks > 0
-
 
 class ChunkedFile(BaseModel):
     """A file indexed in this run, and the chunks it gave."""
@@ -120,13 +117,18 @@ class IndexingService:
         """Bring the index up to date with the files: all of them when forced or when the
         index must be built again, else what changed."""
         async with self._lock:
-            return await self._index(project_root, force=force, progress=progress)
+            try:
+                return await self._index(project_root, force=force, progress=progress)
+            except IndexRebuiltElsewhereError:
+                # Planned again, the run now finds the identity it differs from and rebuilds
+                log.info("index_rebuilt_elsewhere_planning_again", project=str(project_root))
+                return await self._index(project_root, force=force, progress=progress)
 
     async def status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files, worked out off the event loop."""
-        return await asyncio.to_thread(self.get_status, project_root)
+        return await asyncio.to_thread(self._status, project_root)
 
-    def get_status(self, project_root: Path) -> IndexStatus:
+    def _status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files: how much it holds, how many files
         changed since (new, modified or deleted), and whether it must be built again."""
         files = self._discovery.discover(project_root)
@@ -195,9 +197,7 @@ class IndexingService:
         An index that must be built again is not read further: its records may be of
         another layout, and every file is indexed anyway.
         """
-        reason = rebuild_reason(
-            state.manifest, holds_data=state.holds_data, expected=self._identity()
-        )
+        reason = rebuild_reason(state.manifest, counts=state.counts, expected=self._identity())
         if reason is not None:
             return IndexPlan(
                 delta=IndexDelta(to_index=files, to_delete=[]),
@@ -275,12 +275,15 @@ def plan_delta(
 
 
 def rebuild_reason(
-    manifest: IndexManifest | None, *, holds_data: bool, expected: IndexIdentity
+    manifest: IndexManifest | None, *, counts: IndexCounts, expected: IndexIdentity
 ) -> RebuildReason | None:
     """Why the index must be built again whole, or None when it can be brought up to date
     file by file. A store with nothing in it and no manifest is new, not out of date."""
     if manifest is None:
+        holds_data = counts.files > 0 or counts.chunks > 0
         return RebuildReason.unversioned if holds_data else None
+    if counts.files == 0 and counts.chunks > 0:
+        return RebuildReason.incomplete
     built = manifest.identity
     if built.schema_version != expected.schema_version:
         return RebuildReason.schema_changed

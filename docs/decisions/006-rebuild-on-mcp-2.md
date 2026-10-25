@@ -332,7 +332,7 @@ As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - Property tests (hypothesis) move to stage 6, with the fusion they are most needed for. The old chunker tests still filter in comprehensions; TODO.md records it.
 - One index per repository (D10, O6) is not built: the tools resolve the path and nothing more. It moves to stage 6, with the path prefilter it needs to keep a subdirectory's results to that subdirectory.
 
-Stage 5 is under way. As built, it differs from D2, D3 and D7 in these points:
+Stage 5 is under way. As built, it differs from D2, D3, D4, D7, D8 and D11 in these points:
 - `embed_documents` takes no progress callback: the indexing service embeds in slices of `EMBEDDING_SLICE_SIZE` chunks and reports before each, so the embedder stays a plain call in a worker thread and progress stays on the event loop.
 - The domain imports numpy for one thing, the type of a vector (`Vector`, `VectorMatrix` in `domain/interfaces.py`); numpy is a declared dependency.
 - The manifest holds an `IndexIdentity` (model name, chunker version, schema version) and the time of the last write, not the vectors' dimension: the model's name fixes it and the vector column records it, so reading a manifest never needs the model. The chunks table is made by the first write that has vectors, as wide as they are.
@@ -343,13 +343,25 @@ Stage 5 is under way. As built, it differs from D2, D3 and D7 in these points:
 - One lock guards a write: the store's file lock, taken by a new `FileLock` per write, which keeps out another process and another thread of this one alike, a cancelled request's thread among them. The service holds no thread lock of its own.
 - The files table holds the scan's records (`SourceFile`), never stat'ed again at write time, so an edit or a deletion during a run is seen by the next one. It holds no chunk count: nothing read it.
 - Reads open their table again on every call, which sees another process's writes (tested with two stores on one directory); no consistency setting is needed.
-- A chunks write of another vector width or layout than the table's (a model swapped under one name) is refused with `IndexWriteError`, the first kind in `domain/errors.py`, whose message the tools pass on.
+- A write checks, under its lock and before it changes anything, that the index still has the identity the run planned against (else `IndexRebuiltElsewhereError`, and the run plans again) and that its chunks fit the table's width and layout (else `IndexWriteError`, telling the agent to force a re-index). Both are in `domain/errors.py`, whose messages the tools pass on; `RebuildReason` takes the place of D11's `IndexIncompatibleError`.
+- A whole-index write removes the file records before the chunks, so one that stops midway leaves chunks without records, which `RebuildReason.incomplete` rebuilds, never records of chunks that are gone.
+- A rebuild to another vector width drops the chunks table, and a reader at that moment can still fail on the missing table (a review's probe: 45 of about 270 reads while the width alternated); a rebuild of the same width does not drop it.
+- A file name that is not UTF-8 is skipped with a warning: no column can store it, and one such name failed every run.
 
 Open in stage 5, for the chunk-model chunk (a review's step back, 2026-10-25):
 - Project-relative POSIX paths in both tables, so a moved project keeps its local index, with `chunk_id` and `merge_insert` for a write that swaps a file's chunks in one commit.
 - A content hash per file, against an edit inside the scan's timestamp granularity that keeps the size (git's "racily clean" case), and per chunk a hash of its embedded text, so a changed file re-embeds only the chunks whose text changed. The search after an edit (1.7 s on click) is mostly that re-embedding.
 - An index directory per identity (model, chunker version, schema version), filled by a rebuild while the old one answers and switched to when complete: no rebuild in place, no two sessions of different versions rebuilding each other's index in turn.
 - A write per embedded slice, cut at file boundaries, so a cancelled first index keeps what it embedded.
+- `language` with the relative paths and `chunk_id`, in one schema bump before 0.5.0, so users rebuild once.
+
+Open for stages 6 and 7 (the same review):
+- Rows the full-text index has not folded in yet score on another scale than indexed ones (12.09 against 10.41 for one chunk); fused ranks would carry that until upkeep runs. Upkeep when a write leaves rows outside the index, measured, or score quality after edits too.
+- The store should return each channel's candidates (chunk, rank, vector) from one table version, and the services fuse; today `search_hybrid` opens the table once per channel and fusion lives in storage.
+- Path globs and subdirectory prefixes need `%` and `_` escaped in SQL `LIKE`, not only quotes.
+- One index per repository needs the work-tree root before the registry looks a project up.
+- The embedder's identity should carry more than the model's name: its revision, backend (ONNX), quantization and query/document prefixes all change the vectors without changing the name or the width.
+- A file that could not be read is recorded as indexed with no chunks and not tried again until it changes; the chunker should report a read failure apart from an empty file.
 
 
 | Stage | Content | Release |

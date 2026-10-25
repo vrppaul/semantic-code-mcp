@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `index_status` loaded the embedding model it never uses, blocking for seconds
 - Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
-- A status or search during a forced re-index could fail on a dropped table
+- A status or search during a forced re-index could fail on a dropped table; it still can while a rebuild changes the vectors' width
 - A failure inside a tool reached the agent as `Error executing tool ...` without its cause
 - With `local_index`, two spellings of one project path got separate locks and stores
 - A search of a project with nothing indexed loaded the model to embed its query
@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two server processes indexing one project at once (two Claude Code sessions) could store its chunks twice: a write now holds a lock file in the index directory
 - The index grew with every edit: old versions were never pruned
 - A project-local index (`.semantic-code/`) showed as untracked in the project's `git status`
+- A file name that is not valid UTF-8 failed every index run; such a file is now skipped with a warning
 - Files with non-ASCII names were listed in git's quoted form and never found
 - Linked worktrees, submodules and subdirectories of a repo were walked without `.gitignore`
 - A conflicted file was listed once per conflict stage; a file reached through a symlink inside the project was indexed twice

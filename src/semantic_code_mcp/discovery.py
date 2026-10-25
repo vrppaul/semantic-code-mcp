@@ -41,6 +41,16 @@ class IgnorePatterns(BaseModel):
     path: tuple[str, ...]
 
 
+def is_utf8(name: str) -> bool:
+    """Whether a name decoded from the file system is UTF-8; one that is not holds the
+    surrogates `os.fsdecode` puts for its bytes, which no index column can store."""
+    try:
+        name.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 class FoundFile(BaseModel):
     """A candidate that is a file inside the project: the file it leads to, and its record."""
 
@@ -204,10 +214,15 @@ class SourceDiscovery:
         return sorted(kept_by_target.values(), key=lambda source: source.path)
 
     def _is_wanted(self, path: Path, root: Path) -> bool:
-        """Whether a candidate has a supported extension and no pattern ignores it."""
-        return path.suffix in self._extensions and not self._is_ignored(
-            path.relative_to(root).as_posix()
-        )
+        """Whether a candidate has a supported extension, a name the index can hold, and no
+        pattern ignores it."""
+        if path.suffix not in self._extensions:
+            return False
+        relative_path = path.relative_to(root).as_posix()
+        if not is_utf8(relative_path):
+            log.warning("skipped_file_name_not_utf8", file_path=ascii(relative_path))
+            return False
+        return not self._is_ignored(relative_path)
 
     def _found_inside(self, path: Path, root: Path) -> FoundFile | None:
         """A candidate that is a file and resolves inside root, with its record as of now."""

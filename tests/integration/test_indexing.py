@@ -5,6 +5,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
@@ -17,13 +18,26 @@ from semantic_code_mcp.app import build_chunker, build_registry, open_index_stor
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
-from semantic_code_mcp.domain.models import RebuildReason
+from semantic_code_mcp.domain.models import (
+    IndexIdentity,
+    IndexManifest,
+    IndexUpdate,
+    RebuildReason,
+    WriteScope,
+)
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
-from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService, IndexPhase
+from semantic_code_mcp.services.indexing import (
+    EMBEDDING_SLICE_SIZE,
+    NO_VECTORS_SHAPE,
+    IndexingService,
+    IndexPhase,
+)
 from semantic_code_mcp.services.progress import ProgressReporter
+from semantic_code_mcp.storage.lancedb import FILES_TABLE, MATCH_EVERY_ROW, SCHEMA_VERSION
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
+    FAKE_MODEL_NAME,
     ChangingChunker,
     ChunkCountRecorder,
     EmbedderWatchingRecorder,
@@ -440,3 +454,55 @@ def test_one_project_has_one_set_of_services(test_settings: Settings, sample_pro
     registry = build_registry(test_settings, FakeEmbedder())
 
     assert registry.services_for(sample_project) is registry.services_for(sample_project)
+
+
+async def test_an_index_whose_file_records_were_lost_is_rebuilt(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """A whole-index write that stopped after removing the records leaves chunks alone."""
+    store_directory = tmp_path / "index"
+    indexing = indexing_service(
+        open_index_store(store_directory), FakeEmbedder(), test_settings, build_chunker()
+    )
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    lancedb.connect(str(store_directory)).open_table(FILES_TABLE).delete(MATCH_EVERY_ROW)
+
+    status = await indexing.status(sample_project)
+    report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+    assert (status.rebuild_reason, report.files_indexed) == (RebuildReason.incomplete, 2)
+
+
+async def test_a_run_planned_before_another_process_rebuilt_the_index_plans_again(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    store_directory = tmp_path / "index"
+    indexing = indexing_service(
+        open_index_store(store_directory),
+        FakeEmbedder(),
+        test_settings,
+        ChangingChunker(build_chunker(), partial(rebuild_as_another_model, store_directory)),
+    )
+
+    report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    status = await indexing.status(sample_project)
+
+    assert report.rebuild_reason == RebuildReason.model_changed
+    assert (status.manifest.identity.model_name, status.chunks_count) == (FAKE_MODEL_NAME, 6)
+
+
+def rebuild_as_another_model(store_directory: Path) -> None:
+    """Another process builds the index again from another model, holding nothing yet."""
+    another_model = IndexIdentity(
+        model_name="another-model", chunker_version=CHUNKER_VERSION, schema_version=SCHEMA_VERSION
+    )
+    open_index_store(store_directory).write(
+        IndexUpdate(
+            scope=WriteScope.everything,
+            files=[],
+            chunks=[],
+            removed_paths=[],
+            manifest=IndexManifest(identity=another_model, indexed_at=datetime.now(UTC)),
+        ),
+        numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32),
+    )

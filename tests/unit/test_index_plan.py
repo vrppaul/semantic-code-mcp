@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from semantic_code_mcp.domain.models import (
+    IndexCounts,
     IndexDelta,
     IndexIdentity,
     IndexManifest,
@@ -28,6 +29,9 @@ INDEXED = [
 ]
 IDENTITY = IndexIdentity(model_name="model", chunker_version=1, schema_version=1)
 WRITTEN_AT = datetime(2026, 10, 25, tzinfo=UTC)
+EMPTY = IndexCounts(files=0, chunks=0)
+FULL = IndexCounts(files=2, chunks=6)
+CHUNKS_WITHOUT_RECORDS = IndexCounts(files=0, chunks=6)
 
 
 def built_from(model_name: str, chunker_version: int, schema_version: int) -> IndexManifest:
@@ -52,23 +56,29 @@ def test_a_forced_run_indexes_every_file_and_drops_what_is_gone():
 
 
 @pytest.mark.parametrize(
-    ("manifest", "holds_data", "reason"),
+    ("manifest", "counts", "reason"),
     [
-        pytest.param(None, False, None, id="a new store"),
-        pytest.param(None, True, RebuildReason.unversioned, id="data without a manifest"),
-        pytest.param(built_from("model", 1, 1), True, None, id="built from the same"),
+        pytest.param(None, EMPTY, None, id="a new store"),
+        pytest.param(None, FULL, RebuildReason.unversioned, id="data without a manifest"),
+        pytest.param(built_from("model", 1, 1), FULL, None, id="built from the same"),
         pytest.param(
-            built_from("model", 1, 0), True, RebuildReason.schema_changed, id="another schema"
+            built_from("model", 1, 1),
+            CHUNKS_WITHOUT_RECORDS,
+            RebuildReason.incomplete,
+            id="chunks without records",
         ),
         pytest.param(
-            built_from("other", 1, 1), True, RebuildReason.model_changed, id="another model"
+            built_from("model", 1, 0), FULL, RebuildReason.schema_changed, id="another schema"
         ),
         pytest.param(
-            built_from("model", 0, 1), True, RebuildReason.chunker_changed, id="another chunker"
+            built_from("other", 1, 1), FULL, RebuildReason.model_changed, id="another model"
+        ),
+        pytest.param(
+            built_from("model", 0, 1), FULL, RebuildReason.chunker_changed, id="another chunker"
         ),
     ],
 )
 def test_an_index_is_rebuilt_when_what_built_it_changed(
-    manifest: IndexManifest | None, holds_data: bool, reason: RebuildReason | None
+    manifest: IndexManifest | None, counts: IndexCounts, reason: RebuildReason | None
 ):
-    assert rebuild_reason(manifest, holds_data=holds_data, expected=IDENTITY) == reason
+    assert rebuild_reason(manifest, counts=counts, expected=IDENTITY) == reason
