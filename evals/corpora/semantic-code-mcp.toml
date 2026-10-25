@@ -13,6 +13,8 @@ answers = [{ path = "src/semantic_code_mcp/container.py", symbol = "Container" }
 text = "detect which files changed since the last index using modification times"
 answers = [
   { path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_changes" },
+  # Added after a run, rightly: each compares the files' mtimes with the cached ones,
+  # or (`detect_changes`) asks the cache to
   { path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_stale_files" },
   { path = "src/semantic_code_mcp/storage/cache.py", symbol = "has_changes" },
   { path = "src/semantic_code_mcp/services/index_service.py", symbol = "detect_changes" },

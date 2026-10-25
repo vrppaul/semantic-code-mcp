@@ -12,11 +12,17 @@ def configure_logging(*, debug: bool) -> None:
     Args:
         debug: Debug level and readable console output; otherwise info level and JSON.
     """
+    # The console renderer prints an exception itself; JSON holds one only as text
+    renderers = (
+        [structlog.dev.ConsoleRenderer()]
+        if debug
+        else [structlog.processors.format_exc_info, structlog.processors.JSONRenderer()]
+    )
     structlog.configure(
         processors=[
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
-            structlog.dev.ConsoleRenderer() if debug else structlog.processors.JSONRenderer(),
+            *renderers,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.DEBUG if debug else logging.INFO

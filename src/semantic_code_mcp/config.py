@@ -73,10 +73,12 @@ def get_index_path(settings: Settings, project_path: Path) -> Path:
 
     Returns:
         `.semantic-code/` in the project with `local_index`, else a directory of the
-        cache named by a hash of the project's resolved path.
+        cache named by a hash of the project's path; either way every spelling of one
+        project gives the same directory.
     """
+    project_root = project_path.resolve()
     if settings.local_index:
-        return project_path / LOCAL_INDEX_DIRECTORY
+        return project_root / LOCAL_INDEX_DIRECTORY
 
-    path_hash = hashlib.sha256(str(project_path.resolve()).encode()).hexdigest()
+    path_hash = hashlib.sha256(str(project_root).encode()).hexdigest()
     return settings.cache_dir / path_hash[:INDEX_HASH_LENGTH]

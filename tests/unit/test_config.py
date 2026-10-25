@@ -37,6 +37,15 @@ def test_the_local_index_lives_in_the_project():
     assert get_index_path(Settings(local_index=True), project) == project / LOCAL_INDEX_DIRECTORY
 
 
+@pytest.mark.parametrize("local_index", [False, True], ids=["global index", "local index"])
+def test_two_spellings_of_one_project_share_its_index(local_index: bool):
+    settings = Settings(cache_dir=CACHE, local_index=local_index)
+
+    assert get_index_path(settings, Path("/home/user/other/../project")) == get_index_path(
+        settings, Path("/home/user/project")
+    )
+
+
 def test_one_project_always_has_the_same_index():
     settings = Settings(cache_dir=CACHE)
     project = Path("/home/user/project")

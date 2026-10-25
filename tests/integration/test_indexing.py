@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import threading
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EmbedderWatchingRecorder,
     FakeEmbedder,
+    FakeVectorStore,
     HeldWriteStore,
     ProgressRecorder,
 )
@@ -80,6 +82,17 @@ async def test_force_indexes_every_file_again(indexing: IndexingService, sample_
 
     assert result.files_indexed == 2
     assert status.chunks_count == 6
+
+
+async def test_a_file_deleted_after_indexing_makes_the_index_stale(
+    indexing: IndexingService, sample_project: Path
+):
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    (sample_project / "utils.py").unlink()
+
+    status = await indexing.status(sample_project)
+
+    assert len(status.stale_files) == 1
 
 
 async def test_a_deleted_file_leaves_the_index(indexing: IndexingService, sample_project: Path):
@@ -216,6 +229,18 @@ async def test_status_does_not_load_the_model(test_settings: Settings, sample_pr
     await services.indexing.status(sample_project)
 
     assert embedder.is_loaded is False
+
+
+async def test_the_model_loads_and_embeds_off_the_event_loop(
+    test_settings: Settings, sample_project: Path
+):
+    embedder = FakeEmbedder(loaded=False)
+    indexing = indexing_service(FakeVectorStore(hits=[]), embedder, test_settings, sample_project)
+
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+    assert embedder.calling_threads
+    assert threading.main_thread() not in embedder.calling_threads
 
 
 async def test_the_model_load_is_reported_before_it_happens(

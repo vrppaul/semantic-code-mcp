@@ -5,7 +5,7 @@ A tool fails with a `ToolError`, whose message reaches the agent; anything else 
 escapes is a crash, and the agent hears only that the tool failed.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
@@ -132,13 +132,13 @@ async def project_services(ctx: Context[ProjectRegistry], project_root: Path) ->
 
 
 @contextmanager
-def failures_as_tool_errors() -> Iterator[None]:
+def failures_as_tool_errors() -> Generator[None]:
     """Turn what the parts raise when the disk, git, LanceDB or the model fail into tool
     errors that carry their cause, which mcp would otherwise drop."""
     try:
         yield
     except (OSError, RuntimeError, ValueError) as error:
-        log.warning("tool_failed", error=str(error), exc_info=True)
+        log.exception("tool_failed")
         message = f"{type(error).__name__}: {error}"
         raise ToolError(message) from error
 

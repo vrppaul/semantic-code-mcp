@@ -104,6 +104,7 @@ class IndexStatus(BaseModel):
     last_updated: datetime | None
     files_count: int
     chunks_count: int
+    # Files the index no longer matches: new, modified or deleted since it was written
     stale_files: list[str]
 
 

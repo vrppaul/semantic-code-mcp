@@ -31,9 +31,9 @@ class ProjectServices:
 class ProjectRegistry:
     """Builds each project's services on first use and keeps them for the session.
 
-    Keyed by index directory, so a project reached by two spellings shares one store,
-    lock and cache as long as callers resolve its path first (the tools do). The
-    embedding model is shared by every project.
+    Keyed by index directory, which every spelling of a project's path shares, so the
+    project has one store, lock and cache. The embedding model is shared by every
+    project.
     """
 
     def __init__(self, settings: Settings, embedder: Embedder, chunker: Chunker) -> None:

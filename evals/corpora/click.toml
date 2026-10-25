@@ -49,6 +49,7 @@ answers = [{ path = "src/click/formatting.py", symbol = "wrap_text" }]
 text = "invoke a command in a test and capture what it prints"
 answers = [
   { path = "src/click/testing.py", symbol = "invoke" },
+  # Added after a run, rightly: the class a test makes to invoke a command and capture it
   { path = "src/click/testing.py", symbol = "CliRunner" },
 ]
 
@@ -68,6 +69,7 @@ answers = [{ path = "src/click/_compat.py", symbol = "_AtomicFile" }]
 text = "remove ANSI color escape codes from text"
 answers = [
   { path = "src/click/_compat.py", symbol = "strip_ansi" },
+  # Added after a run, rightly: the public function that removes ANSI styling from text
   { path = "src/click/termui.py", symbol = "unstyle" },
 ]
 

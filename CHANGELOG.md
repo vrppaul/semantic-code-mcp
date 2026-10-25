@@ -55,9 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With `local_index`, two spellings of one project path got separate locks and stores
 - A search of a project with nothing indexed loaded the model to embed its query
 - Index status and change detection ran on the event loop
-- Server failed to start on a fresh install: mcp 2.x renamed `FastMCP` to `MCPServer`, so `mcp` is now pinned below 2 until the migration (#3)
+- Server failed to start on a fresh install: mcp 2.x renamed `FastMCP` to `MCPServer`; the server now runs on mcp 2.x (#3)
 - Untracked files were never indexed (#2, #3)
 - A tracked file deleted from disk was re-indexed on every search
+- A file deleted from disk kept answering searches until an index run: the status that a search checks first did not count it as stale
+- JSON logs held `exc_info: true` instead of the failure: the traceback of a failed tool call is now in the line, logged as an error
 - Files with non-ASCII names were listed in git's quoted form and never found
 - Linked worktrees, submodules and subdirectories of a repo were walked without `.gitignore`
 - A conflicted file was listed once per conflict stage; a file reached through a symlink inside the project was indexed twice

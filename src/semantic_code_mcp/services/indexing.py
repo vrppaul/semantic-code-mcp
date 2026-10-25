@@ -191,9 +191,10 @@ class IndexingService:
         return await asyncio.to_thread(self.get_status, project_root)
 
     def get_status(self, project_root: Path) -> IndexStatus:
-        """Whether the project is indexed, how much, and which files changed since."""
+        """Whether the project is indexed, how much, and which files changed since: new,
+        modified or deleted, for a deleted file's chunks still answer searches."""
         cache = FileChangeCache(self._cache_directory)
-        stale_files = cache.get_stale_files(self.scan_files(project_root))
+        changes = cache.get_changes(self.scan_files(project_root))
         statistics = self._store.statistics()
 
         cache_file = self._cache_directory / CACHE_FILENAME
@@ -206,5 +207,5 @@ class IndexingService:
             last_updated=last_updated,
             files_count=len(statistics.indexed_files),
             chunks_count=statistics.chunks_count,
-            stale_files=stale_files,
+            stale_files=[*changes.stale_files, *changes.deleted],
         )

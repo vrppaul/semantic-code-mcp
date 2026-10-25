@@ -19,6 +19,7 @@ answers = [
 text = "run a command for every search result"
 answers = [
   { path = "src/exec/job.rs", symbol = "job" },
+  # Added after a run, rightly: runs the command set on one result
   { path = "src/exec/mod.rs", symbol = "execute" },
 ]
 
@@ -26,8 +27,9 @@ answers = [
 text = "run one command with all the results as its arguments"
 answers = [
   { path = "src/exec/job.rs", symbol = "batch" },
+  # Added after a run, rightly: runs the command once with every result as arguments.
+  # `new_batch`, added with it, only builds the command set and runs nothing: not an answer
   { path = "src/exec/mod.rs", symbol = "execute_batch" },
-  { path = "src/exec/mod.rs", symbol = "new_batch" },
 ]
 
 [[queries]]
@@ -66,6 +68,8 @@ text = "turn a path into a file URL for terminal hyperlinks"
 answers = [
   { path = "src/hyperlink.rs", symbol = "PathUrl" },
   { path = "src/hyperlink.rs", symbol = "Display for PathUrl" },
+  # Added after a run: `new` turns the path into the absolute one the URL holds, and
+  # `encode` percent-encodes each byte of it as `Display` writes the URL
   { path = "src/hyperlink.rs", symbol = "new" },
   { path = "src/hyperlink.rs", symbol = "encode" },
 ]

@@ -967,7 +967,7 @@
       "chunk": {
         "hits_at_1": 2,
         "hits_at_3": 7,
-        "mean_reciprocal_rank": 0.318
+        "mean_reciprocal_rank": 0.31
       },
       "ranks": [
         {
@@ -1114,7 +1114,7 @@
         {
           "query": "run one command with all the results as its arguments",
           "file_rank": 7,
-          "chunk_rank": 8,
+          "chunk_rank": null,
           "hits": [
             {
               "path": "README.md",

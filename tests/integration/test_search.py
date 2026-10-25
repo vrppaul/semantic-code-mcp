@@ -1,5 +1,6 @@
 """Tests for search: what it keeps of the store's hits, and the indexing it does first."""
 
+import threading
 from pathlib import Path
 
 from semantic_code_mcp.config import Settings
@@ -124,3 +125,20 @@ async def test_a_project_with_nothing_indexed_is_answered_without_the_model(
     report = await service.search("anything", empty_project, limit=LIMIT, progress=NO_PROGRESS)
 
     assert (report.results, embedder.is_loaded) == ([], False)
+
+
+async def test_a_fresh_server_loads_the_model_for_the_query_off_the_event_loop(
+    test_settings: Settings, sample_project: Path
+):
+    """An up-to-date index and a model not yet loaded: the first search after a restart."""
+    store = FakeVectorStore(hits=[])
+    await indexing_service(store, FakeEmbedder(), test_settings, sample_project).index(
+        sample_project, force=False, progress=NO_PROGRESS
+    )
+    fresh_embedder = FakeEmbedder(loaded=False)
+    service = search_service(store, test_settings, sample_project, fresh_embedder)
+
+    await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+
+    assert fresh_embedder.calling_threads
+    assert threading.main_thread() not in fresh_embedder.calling_threads

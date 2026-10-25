@@ -23,11 +23,13 @@ class FakeEmbedder(Embedder):
     """Vectors without a model: each text maps to a fixed vector derived from its hash.
 
     It starts loaded unless told otherwise; one that starts unloaded loads on `load()`
-    or on its first text, as the real one does.
+    or on its first text, as the real one does. It keeps the thread of every call, so a
+    test can tell whether the model's work ran on the event loop.
     """
 
     def __init__(self, *, loaded: bool = True) -> None:
         self.embedded_texts: list[str] = []
+        self.calling_threads: list[threading.Thread] = []
         self._loaded = loaded
 
     @property
@@ -37,16 +39,19 @@ class FakeEmbedder(Embedder):
 
     @override
     def load(self) -> None:
+        self.calling_threads.append(threading.current_thread())
         self._loaded = True
 
     @override
     def embed_query(self, text: str) -> Vector:
+        self.calling_threads.append(threading.current_thread())
         self._loaded = True
         self.embedded_texts.append(text)
         return vector_of(text)
 
     @override
     def embed_documents(self, texts: list[str]) -> VectorMatrix:
+        self.calling_threads.append(threading.current_thread())
         self._loaded = True
         self.embedded_texts.extend(texts)
         return numpy.stack([vector_of(text) for text in texts])

@@ -322,7 +322,7 @@ The project rules say to ask before changing the storage schema, the tool signat
 
 ### Stages and releases
 
-Progress: stages 0–4 are done on branch `rebuild-on-mcp-2` (2026-10-25); the 0.4.1 release is commit `84d678b`. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
+Progress: stages 0–4 are done on branch `rebuild-on-mcp-2` (2026-10-25). 0.4.1 is not tagged yet: it is to be cut on a release branch from `aec3288` (stages 0–2 and their fixes) or `84d678b` (the same and `evals/`), as the owner decides, with a CHANGELOG section of its own, since `[Unreleased]` here describes mcp 2.x. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
 
 As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - `cli.py` builds `Settings` and configures logging; `app.py` builds the server, and its lifespan yields the `ProjectRegistry` itself rather than an `AppContext` around it.
@@ -330,6 +330,7 @@ As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - Reads take no lock. A forced run empties the table instead of dropping it, so a reader sees an empty or a full index, never a missing table; stage 5's files table keeps this.
 - The model loads in a worker thread right after its own progress report; an index run inside a search reports within the search's band of progress.
 - Property tests (hypothesis) move to stage 6, with the fusion they are most needed for. The old chunker tests still filter in comprehensions; TODO.md records it.
+- One index per repository (D10, O6) is not built: the tools resolve the path and nothing more. It moves to stage 6, with the path prefilter it needs to keep a subdirectory's results to that subdirectory.
 
 Stage 5 is under way. As built, it differs from D2, D3 and D7 in these points:
 - `embed_documents` takes no progress callback: the indexing service embeds in slices of `EMBEDDING_SLICE_SIZE` chunks and reports before each, so the embedder stays a plain call in a worker thread and progress stays on the event loop.
@@ -344,7 +345,7 @@ Stage 5 is under way. As built, it differs from D2, D3 and D7 in these points:
 | 3 | Safety net: e2e tests through the in-memory client, `evals/` (quality and speed) with baselines | — |
 | 4 | Rebuild on mcp 2.x: layers, lifespan, ABCs, errors, `ToolError`, single return types, presenters, settings cleanup, middleware, code-rule gates, import-linter | — |
 | 5 | Storage and pipeline: tables, manifest, batched writes, `optimize`, locks, scan-time mtimes, Arrow, no pandas, cheap status, model loaded off the loop, embedding progress, D5/D6 remainder (skeletons, span helper, `CHUNKER_VERSION`) | 0.5.0 |
-| 6 | Search: RRF, prefilters, `search_text`, similarity threshold, prose prior, no grouping, recency decision — each on the harness | 0.6.0 |
+| 6 | Search: RRF, prefilters, `search_text`, similarity threshold, prose prior, no grouping, recency decision — each on the harness; one index per repository (O6) | 0.6.0 |
 | 7 | Speed and model: threads, ONNX, model candidates, new targets in rules | 0.7.0 (if the default model changes, the manifest rebuilds) |
 | 8 | Server `instructions`, docstrings, skill, plugin, skill gate, README, reviewer agent, MCP roots spike | 1.0.0 |
 | 9 | Replies on GitHub. Issue #3: what changed, with numbers from `evals`; take up the author's offer of their harness and compare it with ours; ask about their hardware (O4). PR #2: thank the author, explain D5 and the alternative rejected above, and close. | — |
@@ -455,12 +456,12 @@ IDs: **G** = GitHub, **R/A/S/Q/C/T/P** = code review (reliability, architecture,
 | O3 | Walk follows symlinked directories (good catch from PR #2) | read | D5, stage 1 |
 | O4 | The issue author's speed (391 files in ~7 s) is 20× ours on CPU: likely GPU/MPS | suspected | D7; ask in stage 9 |
 | O5 | Work tree detected by `(project / ".git").is_dir()`: worktrees, submodules and subdirectories fall back to the walk without `.gitignore` | verified in code | D5, stage 1 |
-| O6 | A subdirectory as `project_path` builds a second, separate index | verified in code (`config.py` hashes the resolved path) | D10, stage 4 |
+| O6 | A subdirectory as `project_path` builds a second, separate index | verified in code (`config.py` hashes the resolved path) | D10, stage 6 |
 | O7 | A tracked symlink can pull files from outside the project into the index | suspected | D5, stage 1 |
 
 ## Appendix B. Baseline measurements (v0.4.0)
 
-Taken by the review with scripts of its own. From stage 3 on, the reference numbers are `evals/baseline/`, recorded by `python -m evals`. On the 0.4.1 code: file MRR 0.698 / 0.430 / 0.523 and chunk MRR 0.531 / 0.303 / 0.300 on this repo / click / fd; 3.2 / 1.9 / 1.4 files/s; warm search p50 87 / 101 / 87 ms; first search 6.4–7.5 s; peak memory 1.0–1.35 GB. After stage 4 and with more equally right answers in the corpora: file MRR 0.698 / 0.455 / 0.549, chunk MRR 0.544 / 0.328 / 0.318; read `evals/baseline/` for the current figures.
+Taken by the review with scripts of its own. From stage 3 on, the reference numbers are `evals/baseline/`, recorded by `python -m evals`. On the 0.4.1 code: file MRR 0.698 / 0.430 / 0.523 and chunk MRR 0.531 / 0.303 / 0.300 on this repo / click / fd; 3.2 / 1.9 / 1.4 files/s; warm search p50 87 / 101 / 87 ms; first search 6.4–7.5 s; peak memory 1.0–1.35 GB. After stage 4 and with more equally right answers in the corpora: file MRR 0.698 / 0.455 / 0.549, chunk MRR 0.544 / 0.328 / 0.318. Stage 4 moved no rank: the stage-3 code scores the same on today's corpora, so the change comes from the answers added. A review's A/B on this repo, alternating runs under the same load, found indexing unchanged (20.7–20.8 s at stage 3 against 19.9–22.3 s), warm search p50 down from 91 to 57–59 ms and peak memory from 1.30–1.39 to 0.95–1.01 GB; unchanged code drifts about 10% between sessions, so one run cannot show a smaller change. Read `evals/baseline/` for the current figures.
 
 | Metric | This repo (61 files) | pydantic (105) | numpy (407) | Target (rules) |
 |---|---|---|---|---|
@@ -488,7 +489,7 @@ Taken by the review with scripts of its own. From stage 3 on, the reference numb
 Written in stage 8 against the final D10 surface. Every fact below is checked by `scripts/check_skill.py` or re-read against the code before release.
 
 1. **Which tool.** A table: exact identifier, string or regex → Grep; every call site → Grep (search_code returns the top N only); a known path → Read; behaviour without a name → search_code; a concept spread over files → search_code, then Grep the names it reveals; an unindexed language → Grep. The loop that works: search → Read the range → Grep the names.
-2. **Before the first search.** `project_path` is the repository root, absolute: a subdirectory gets its own empty index (`git rev-parse --show-toplevel`). The first call loads the model and may index, with progress; do not retry while it runs. If the tool is missing, tell the user how to install the plugin; do not install it yourself.
+2. **Before the first search.** `project_path` is absolute; a subdirectory of a repository is searched in the repository's one index and its results stay in that subdirectory (D10). The first call loads the model and may index, with progress; do not retry while it runs. If the tool is missing, tell the user how to install the plugin; do not install it yourself.
 3. **Phrasing a query.** Describe what the code does, as a docstring would; one concept per query; the domain's nouns; three to ten words; no file names. Pairs of examples that work and that do not.
 4. **Filters.** `chunk_kinds` (Rust types count as `class`), `languages`, `path_glob`/`exclude_glob` (for example, excluding `tests/**` or `docs/**`), `limit` and its cap.
 5. **Reading the answer.** Every result field. Results come in rank order. `truncated` means Read the range before quoting. `similarity` versus rank. `include_debug` only when a search was slow or odd.
