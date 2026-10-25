@@ -129,7 +129,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` within each project |
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
-| `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling |
+| `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 
@@ -178,7 +178,7 @@ uv run pytest                      # Run tests
 uv run pre-commit run --all-files  # Every gate a commit runs
 ```
 
-Pre-commit hooks run ruff, ty, bandit, deptry, typos, a check that every test module loads, a check of the agent instruction files, and [Conventional Commits](https://www.conventionalcommits.org/). CI runs the same hooks and the tests on every push to `master` and every pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Pre-commit hooks run ruff, ty, bandit, deptry, typos, a check that every test module loads and a check of the agent instruction files, and hold commit messages to [Conventional Commits](https://www.conventionalcommits.org/). CI runs the same hooks and the tests on every push to `master` and every pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Releasing
 
@@ -189,7 +189,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-CI runs the whole suite on the tagged commit, waits for the owner's approval, then builds the package, publishes to PyPI, and creates a GitHub Release with auto-generated notes.
+CI runs the whole suite on the tagged commit, then builds the package, publishes to PyPI, and creates a GitHub Release with auto-generated notes. A required reviewer on the `pypi` environment adds the owner's approval before publishing.
 
 ### Adding a New Language
 

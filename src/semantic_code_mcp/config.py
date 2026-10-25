@@ -6,8 +6,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Never source. Names match a directory at any depth; `name/**` only at the project
-# root, so a source package called `build` or `dist` deeper down is still indexed.
+# Never source. A name matches a path component at any depth; `name/**` matches only
+# at the project root, so a source package called `build` or `dist` deeper down is indexed.
 DEFAULT_IGNORE_PATTERNS = (
     ".git",
     ".venv",

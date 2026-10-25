@@ -22,6 +22,14 @@ class NodeType(StrEnum):
     string = auto()
 
 
+class FieldName(StrEnum):
+    """Tree-sitter Python field names."""
+
+    name = auto()
+    body = auto()
+    definition = auto()
+
+
 class PythonChunker(BaseTreeSitterChunker):
     """Extracts semantic chunks from Python code using tree-sitter AST.
 
@@ -59,7 +67,7 @@ class PythonChunker(BaseTreeSitterChunker):
                     self._extract_definition(child, child, file_path, lines, chunks, in_class)
                 case NodeType.decorated_definition:
                     # The `definition` field skips decorators and any comments between them.
-                    definition = child.child_by_field_name("definition")
+                    definition = child.child_by_field_name(FieldName.definition)
                     if definition is not None:
                         self._extract_definition(
                             child, definition, file_path, lines, chunks, in_class
@@ -84,7 +92,7 @@ class PythonChunker(BaseTreeSitterChunker):
             chunks: Chunks collected so far.
             in_class: Whether the definition sits in a class body.
         """
-        name = field_text(definition, "name")
+        name = field_text(definition, FieldName.name)
         if name is None:
             return
 
@@ -92,7 +100,7 @@ class PythonChunker(BaseTreeSitterChunker):
             chunks.append(
                 self._make_chunk(span_node, span_node, file_path, lines, ChunkType.klass, name)
             )
-            body = definition.child_by_field_name("body")
+            body = definition.child_by_field_name(FieldName.body)
             if body is not None:
                 self._extract_definitions(body, file_path, lines, chunks, in_class=True)
             return

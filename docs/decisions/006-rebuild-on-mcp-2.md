@@ -34,7 +34,7 @@ Fix what blocks users now, on the current code. Then rebuild the server on mcp 2
 
 ### D1. Hotfix the published package
 
-Release 0.4.1 with `mcp>=1.26.0,<2` and nothing else. Release 0.4.2 with the correctness fixes from D5 and D6 on the current structure, each with a test that fails before the fix. The chunkers keep their files through the rebuild, so these fixes carry over. The scanner fix moves into `discovery/` in stage 4.
+Release 0.4.1 with `mcp>=1.26.0,<2` and the correctness fixes from D5 and D6 on the current structure, each with a test that fails before the fix. (The plan was a 0.4.1 with the pin alone and a 0.4.2 after; both were ready before either shipped, so they ship as one.) The chunkers keep their files through the rebuild, so these fixes carry over. The scanner fix moves into `discovery/` in stage 4.
 
 ### D2. Layers and composition root
 
@@ -118,6 +118,9 @@ With `local_index=true`, the index directory `<project>/.semantic-code/` gets it
 
   Today the setting affects only the walk fallback.
 - **The walk** does not follow symlinked directories (taken from PR #2). It prunes `ignore_patterns`, which becomes the single list. The hard-coded `skip_dirs` set goes. The default grows to cover `target`, `dist`, `build`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.cache` and `site-packages`, as well as today's entries.
+- **An enclosing repository that ignores the project** (a home directory under git for dotfiles, an ignored `scratch/`) does not get to empty it: when the work tree's root is above the project and `git check-ignore .` says the project is ignored, discovery walks.
+- **Submodules** are listed with `--recurse-submodules` on the tracked listing (git does not combine it with `--others`). An untracked repository nested inside the project is not looked into.
+- **Git's environment:** `GIT_DIR`, `GIT_WORK_TREE` and the like are dropped from git's environment, so they cannot point discovery at another repository.
 - **The hand-written `.gitignore` parser goes.** It has no negation or anchoring, and outside a git work tree the walk uses `ignore_patterns` only.
 - **We add no filename-based secret filter** (PR #2 proposal). Only `.py`, `.rs` and `.md` files reach the chunkers. Git mode honours `.gitignore`, where `.env`-style files live. A pattern like `*token*` would drop `tokenizer.py` and `token_bucket.py`. The index stays on the user's disk. SECURITY.md states what we read and where we write.
 
@@ -127,7 +130,8 @@ Keep one class per language on a shared base (ADR 004). Fix the base first, beca
 
 - **Read bytes and parse bytes.** Decode the text for lines as UTF-8 with `errors="replace"`. A file that cannot be read is logged and skipped, never fatal (R1). This also removes the dependence on locale encoding (Windows cp1252).
 - **A span helper** `make_chunk(first_node, last_node, kind, name, parent)` replaces the five hand-built `Chunk`s in `rust.py` and the one in `markdown.py` (C1).
-- **Fallback module chunk:** a Python or Rust file that yields no definitions gets one `module` chunk for its top-level code, as Markdown already does for files without headings (R6).
+- **Fallback module chunks:** a Python or Rust file that yields no definitions — nothing, or only a module docstring — is indexed whole, in `module` chunks of at most 100 lines, as Markdown already covers files without headings (R6).
+- **Files skipped:** over 1 MB (generated or data), or binary by git's rule (a NUL among the first 8000 bytes, which also catches UTF-16).
 - **Python:** `_get_decorated_definition` looks for `function_definition` or `class_definition` by type, not for any `NodeType` member, which today matches `comment` (R4).
 - **Rust:**
   - name an `impl` from `child_by_field_name("type")` and `child_by_field_name("trait")`, giving `Stack`, `Display for Stack` and `Default for Stack` (verified that the fields exist);
@@ -201,16 +205,15 @@ Keep one class per language on a shared base (ADR 004). Fix the base first, beca
 
 ### D12. Evaluation harness and benchmark
 
-Both are built before the structural rebuild, so the rebuild proves it changed nothing that matters. Both live outside `src/` and outside the wheel.
+Both are built before the structural rebuild, so the rebuild proves it changed nothing that matters. They form one package, `evals/`, outside `src/` and outside the wheel, with two commands that share the corpora and the client.
 
-- **`evals/`**
-  - Queries as data: query, expected file, expected symbol. 30–50 queries over three corpora pinned by commit: this repo (docs-heavy, which reproduces GH3/GH5), one public Python repo and one public Rust repo.
-  - Metrics: hits@1, hits@3 and MRR, scored twice — for the right file and for the right code chunk — matching the two scores in issue #3.
-  - Command: `uv run python -m evals`. The baseline lives in `evals/baseline.json`. Every search or chunking change records its before and after in the commit message.
-  - It runs locally, not on every commit: it needs the model and clones. CI may run it on demand.
-- **`bench/`**
-  - Measures: indexing chunks/s and files/s, warm search p50/p95, cold start, peak RSS, and index size growth after N single-file edits, on the same pinned corpora.
-  - The performance targets in `.claude/rules/mcp-server.md` are reset from its numbers. Today all four are missed (Appendix B), and "50 files/s" on CPU is not reachable with any model we would consider [suspected]: the speed stage sets a target it can defend.
+- **The client** starts the server as an agent does, over stdio, and speaks to it only through its tools, so the harness stays valid across the rebuild; one function knows the shape of a tool's answer.
+- **Corpora** are data, one TOML file each under `evals/corpora/`: a repository pinned by commit and its questions, each naming every answer that counts (a file and a chunk name). Three corpora, 51 questions: this repo at v0.4.0 (docs-heavy, which reproduces GH3/GH5), pallets/click (Python with a large Markdown manual) and sharkdp/fd (Rust). A run fails when an answer names a file its checkout lacks.
+- **`uv run python -m evals quality`** scores hits@1, hits@3 and MRR twice — for the right file and for the right chunk — matching the two scores in issue #3.
+- **`uv run python -m evals speed`** measures a full index (files/s, chunks/s), warm search p50/p95, the first search of a freshly started server (process start and model load), the server's peak memory (Linux), and index growth per single-file edit.
+- **Baselines** live in `evals/baseline/`; each run prints its numbers beside them and `--save-baseline` replaces them. Speeds compare only on the machine they were measured on. Every search, chunking or speed change records its before and after in the commit message.
+- It runs locally, not on every commit: it needs the model and clones. CI may run it on demand.
+- The performance targets in `.claude/rules/mcp-server.md` are reset from its numbers in stage 7. Today all four are missed (Appendix B), and "50 files/s" on CPU is not reachable with any model we would consider [suspected].
 
 ### D13. Tests
 
@@ -241,7 +244,7 @@ Pre-commit (local hooks through `uv run`, `default_stages: [pre-commit]`):
 - **`scripts/check_code_rules.py`**, adapted from claude-review: nested functions, short names, models taken apart by field name. The claude-review-specific parts go, and the file says which ones (its `.claude/rules/scripts.md` explains how to mark a partial copy).
 - **`scripts/check_instruction_files.py`**, copied whole from claude-review, as livereel did (D15). We adopt livereel's rule for such copies (`../livereel/.claude/rules/scripts.md`): a script taken whole is changed in claude-review and copied here, and its tests live there.
 - **`scripts/check_skill.py`**, ported from `../livereel/scripts/check-skill.ts`. It loads the server and lists its tools. It fails if the skill misses a tool or parameter, names one that does not exist, or lists languages other than the chunker registry's (D16).
-- `pytest --collect-only` on every commit, plus deptry and typos. vulture lands in stage 4: on today's code it flags pydantic fields, MagicMock attributes and the dead settings D11 removes, so it starts on the rebuilt code.
+- `pytest --collect-only` on every commit, plus deptry and typos. vulture lands in stage 4, dependency and hook together: on today's code it flags pydantic fields, MagicMock attributes and the dead settings D11 removes, so it starts on the rebuilt code.
 
 The code-rule gates (PLR2004, check_code_rules, import-linter, banned-api) land in stage 4 with the code written to pass them. Stage 2 adds only the gates the current code passes after small fixes.
 
@@ -257,7 +260,7 @@ CI and release:
 - **`AGENTS.md`** is rewritten on the sibling template: Commands; How we work; Layers (D2 in one line, pointing at the contracts); Rules for all code (the owner's code standards); Only better; Rules by area, naming each rules file. The `searcher.search(...)` example, which names a class that no longer exists, goes.
 - **Rules files:**
   - `development-process.md` merges into `AGENTS.md`: it repeats the uv rules and lists dependencies that `pyproject.toml` already lists;
-  - `mcp-server.md` is rescoped to `server/`, drops `__init__.py` from `paths`, and its targets come from `bench/`;
+  - `mcp-server.md` is rescoped to `server/`, drops `__init__.py` from `paths`, and its targets come from `python -m evals speed`;
   - `python.md` drops the re-export rule and states the docstring-only `__init__.py`;
   - `testing.md` is rewritten from `../claude-review/.claude/rules/tests.md` and D13;
   - `instructions.md` is added from claude-review ("what a tool can hold is a gate, not a rule");
@@ -278,7 +281,7 @@ CI and release:
   - discovery semantics (D5) and `.semantic-code/`;
   - the false claim that pre-commit enforces `ty` goes, since it will be true;
   - a hardware note on CPU versus GPU/MPS speed.
-- **`.claude/agents/search-reviewer.md`:** a read-only reviewer that runs `evals/` and `bench/` on a change, reads the owner's code sections, `AGENTS.md` and the rules, and reports a verdict with `file:line` (shape: `../claude-review/.claude/agents/page-reviewer.md`).
+- **`.claude/agents/search-reviewer.md`:** a read-only reviewer that runs both `evals` commands on a change, reads the owner's code sections, `AGENTS.md` and the rules, and reports a verdict with `file:line` (shape: `../claude-review/.claude/agents/page-reviewer.md`).
 
 ### D16. Skill and plugin
 
@@ -317,16 +320,16 @@ The project rules say to ask before changing the storage schema, the tool signat
 
 | Stage | Content | Release |
 |---|---|---|
-| 0 | `mcp<2` pin | 0.4.1 |
-| 1 | Correctness on current code: R1–R7, O5, O7 and `ignore_patterns` in git mode, with failing-first tests and real git repos in tests | 0.4.2 |
-| 2 | Gates the current code passes, CI, release gated on CI, LICENSE/metadata, AGENTS.md + symlink + instruction gate, rules cleanup | — |
-| 3 | Safety net: e2e tests through the in-memory client, `evals/` with baseline, `bench/` with baseline | — |
+| 0 | `mcp<2` pin | 0.4.1, with stage 1 |
+| 1 | Correctness on current code: R1–R7, O5, O7 and `ignore_patterns` in git mode, with failing-first tests and real git repos in tests | 0.4.1 |
+| 2 | Gates the current code passes, CI, release gated on CI, LICENSE/metadata, CONTRIBUTING, SECURITY, AGENTS.md + symlink + instruction gate, rules cleanup | — |
+| 3 | Safety net: e2e tests through the in-memory client, `evals/` (quality and speed) with baselines | — |
 | 4 | Rebuild on mcp 2.x: layers, lifespan, ABCs, errors, `ToolError`, single return types, presenters, settings cleanup, middleware, code-rule gates, import-linter | — |
 | 5 | Storage and pipeline: tables, manifest, batched writes, `optimize`, locks, scan-time mtimes, Arrow, no pandas, cheap status, model loaded off the loop, embedding progress, D5/D6 remainder (skeletons, span helper, `CHUNKER_VERSION`) | 0.5.0 |
 | 6 | Search: RRF, prefilters, `search_text`, similarity threshold, prose prior, no grouping, recency decision — each on the harness | 0.6.0 |
 | 7 | Speed and model: threads, ONNX, model candidates, new targets in rules | 0.7.0 (if the default model changes, the manifest rebuilds) |
-| 8 | Server `instructions`, docstrings, skill, plugin, skill gate, README, CONTRIBUTING, SECURITY, reviewer agent, MCP roots spike | 1.0.0 |
-| 9 | Replies on GitHub. Issue #3: what changed, with numbers from `evals/` and `bench/`; take up the author's offer of their harness and compare it with ours; ask about their hardware (O4). PR #2: thank the author, explain D5 and the alternative rejected above, and close. | — |
+| 8 | Server `instructions`, docstrings, skill, plugin, skill gate, README, reviewer agent, MCP roots spike | 1.0.0 |
+| 9 | Replies on GitHub. Issue #3: what changed, with numbers from `evals`; take up the author's offer of their harness and compare it with ours; ask about their hardware (O4). PR #2: thank the author, explain D5 and the alternative rejected above, and close. | — |
 
 ## Alternatives Considered
 
@@ -350,7 +353,7 @@ The project rules say to ask before changing the storage schema, the tool signat
 - The 0.4.x line stays pinned to `mcp<2`. From 0.5.0 we require `mcp>=2`.
 - New dependencies: `filelock` (runtime); `import-linter` and `hypothesis` (dev). `pandas` leaves; torch may become optional after stage 7.
 - Commits get slower: more hooks, test collection, the skill gate. CI adds minutes and a model download, which the cache softens.
-- Search quality and speed become numbers we track (`evals/baseline.json`, `bench/`), not impressions. TODO's search epic is re-ranked by them.
+- Search quality and speed become numbers we track (`evals/baseline/`), not impressions. TODO's search epic is re-ranked by them.
 - Owner actions: approve each release tag; add the required reviewer on the `pypi` environment; read and approve the GitHub replies in stage 9.
 
 ## Appendix A. Findings inventory

@@ -23,11 +23,13 @@ paths:
 
 ## How a test is written
 
-- A test and its helpers hold no branch and no loop: no `if`, no `for`, no conditional expression. Compare whole lists instead.
+- A test and its helpers hold no branch: no `if`, no conditional expression, no `or`, no filter in a comprehension. Compare whole lists instead.
 - Cases of one rule are one test, or one parametrized test, that names every case.
 - Time is set, never waited for: `os.utime` with explicit values, not `time.sleep`.
 - A fake keeps what it was handed and is asserted on that; a mock's call count is never the assertion.
 - The tests are held to `ruff`; no type checker or spelling check reads them.
+
+Tests written before ADR 006 still loop in places and sleep for mtimes (`tests/test_cache.py`); they are rewritten in its stage 4.
 
 ## Runs
 

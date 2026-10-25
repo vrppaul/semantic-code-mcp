@@ -4,6 +4,7 @@ from pathlib import Path
 
 from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.models import ChunkType
+from tests.helpers import ChunkSummary, LineRange, line_ranges, summarize
 
 
 class TestRustChunker:
@@ -115,7 +116,7 @@ impl Point {
         assert class_chunks[0].name == "Drawable"
 
     def test_trait_with_default_methods(self):
-        """Trait with default method implementations extracts methods."""
+        """A trait yields its required method signatures and its default methods."""
         code = """trait Greetable {
     fn name(&self) -> &str;
 
@@ -127,13 +128,11 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
-
-        assert len(class_chunks) == 1
-        assert class_chunks[0].name == "Greetable"
-        assert len(method_chunks) == 1
-        assert method_chunks[0].name == "greet"
+        assert summarize(chunks) == [
+            type_definition("Greetable"),
+            method("name"),
+            method("greet"),
+        ]
 
     def test_impl_trait_for_struct(self):
         """impl Trait for Struct extracts as CLASS with methods."""
@@ -330,8 +329,20 @@ fn second() {
         assert class_chunks[0].name == "MyStruct"
 
 
-def kinds_and_names(chunks: list) -> list[tuple[ChunkType, str]]:
-    return [(chunk.chunk_type, chunk.name) for chunk in chunks]
+def function(name: str) -> ChunkSummary:
+    return ChunkSummary(chunk_type=ChunkType.function, name=name)
+
+
+def method(name: str) -> ChunkSummary:
+    return ChunkSummary(chunk_type=ChunkType.method, name=name)
+
+
+def type_definition(name: str) -> ChunkSummary:
+    return ChunkSummary(chunk_type=ChunkType.klass, name=name)
+
+
+def module(name: str) -> ChunkSummary:
+    return ChunkSummary(chunk_type=ChunkType.module, name=name)
 
 
 class TestRustChunkerSilentDrops:
@@ -354,11 +365,11 @@ impl<T> Stack<T> {
 """
         chunks = RustChunker().chunk_string(code, file_path="stack.rs")
 
-        assert kinds_and_names(chunks) == [
-            (ChunkType.klass, "Stack"),
-            (ChunkType.klass, "Stack"),
-            (ChunkType.method, "push"),
-            (ChunkType.method, "pop"),
+        assert summarize(chunks) == [
+            type_definition("Stack"),
+            type_definition("Stack"),
+            method("push"),
+            method("pop"),
         ]
 
     def test_impl_of_a_path_qualified_trait_for_a_generic_type(self):
@@ -370,10 +381,7 @@ impl<T> Stack<T> {
 """
         chunks = RustChunker().chunk_string(code, file_path="stack.rs")
 
-        assert kinds_and_names(chunks) == [
-            (ChunkType.klass, "Display for Stack"),
-            (ChunkType.method, "fmt"),
-        ]
+        assert summarize(chunks) == [type_definition("Display for Stack"), method("fmt")]
 
     def test_impl_for_a_reference_type(self):
         code = """impl PartialEq for &Stack {
@@ -384,7 +392,43 @@ impl<T> Stack<T> {
 """
         chunks = RustChunker().chunk_string(code, file_path="stack.rs")
 
-        assert kinds_and_names(chunks)[0] == (ChunkType.klass, "PartialEq for Stack")
+        assert summarize(chunks)[0] == type_definition("PartialEq for Stack")
+
+    def test_impls_of_one_generic_trait_with_different_arguments_are_told_apart(self):
+        code = """impl From<u8> for Level {
+    fn from(value: u8) -> Self { Level(value.into()) }
+}
+
+impl From<u16> for Level {
+    fn from(value: u16) -> Self { Level(value.into()) }
+}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="level.rs")
+
+        assert summarize(chunks) == [
+            type_definition("From<u8> for Level"),
+            method("from"),
+            type_definition("From<u16> for Level"),
+            method("from"),
+        ]
+
+    def test_negative_impl_keeps_its_negation(self):
+        code = "unsafe impl !Send for Handle {}\n"
+
+        chunks = RustChunker().chunk_string(code, file_path="handle.rs")
+
+        assert summarize(chunks) == [type_definition("!Send for Handle")]
+
+    def test_required_trait_method_with_its_doc_comment(self):
+        code = """trait Store {
+    /// Save the record durably.
+    fn save(&self);
+}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="store.rs")
+
+        assert summarize(chunks) == [type_definition("Store"), method("save")]
+        assert line_ranges(chunks)[1] == LineRange(line_start=2, line_end=3)
 
     def test_items_inside_an_inline_module(self):
         code = """#[cfg(test)]
@@ -403,10 +447,7 @@ mod tests {
 """
         chunks = RustChunker().chunk_string(code, file_path="lib.rs")
 
-        assert kinds_and_names(chunks) == [
-            (ChunkType.function, "helper"),
-            (ChunkType.function, "it_works"),
-        ]
+        assert summarize(chunks) == [function("helper"), function("it_works")]
         assert chunks[1].line_start == 9
         assert chunks[1].content.startswith("    #[test]")
 
@@ -417,5 +458,26 @@ const LIMIT: u32 = 10;
 """
         chunks = RustChunker().chunk_string(code, file_path="src/limits.rs")
 
-        assert kinds_and_names(chunks) == [(ChunkType.module, "limits")]
-        assert (chunks[0].line_start, chunks[0].line_end) == (1, 3)
+        assert summarize(chunks) == [module("limits")]
+        assert line_ranges(chunks) == [LineRange(line_start=1, line_end=3)]
+
+    def test_file_with_a_module_doc_and_no_items_is_indexed_whole(self):
+        code = """//! Limits shared by every command.
+
+const LIMIT: u32 = 10;
+"""
+        chunks = RustChunker().chunk_string(code, file_path="src/limits.rs")
+
+        assert summarize(chunks) == [module("limits")]
+        assert line_ranges(chunks) == [LineRange(line_start=1, line_end=3)]
+
+    def test_module_doc_after_an_inner_attribute(self):
+        code = """#![allow(dead_code)]
+//! The crate's entry point.
+
+fn main() {}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="src/main.rs")
+
+        assert summarize(chunks) == [module("main"), function("main")]
+        assert line_ranges(chunks)[0] == LineRange(line_start=2, line_end=2)

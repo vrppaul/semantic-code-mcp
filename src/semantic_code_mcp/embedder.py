@@ -30,9 +30,11 @@ class Embedder:
     @property
     def embedding_dim(self) -> int:
         """Get the embedding dimension."""
-        dim = self._model.get_sentence_embedding_dimension()
-        assert isinstance(dim, int)
-        return dim
+        dimension = self._model.get_sentence_embedding_dimension()
+        if dimension is None:
+            message = "the embedding model does not report its dimension"
+            raise UnknownEmbeddingDimensionError(message)
+        return dimension
 
     def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text.
@@ -61,3 +63,7 @@ class Embedder:
         log.debug("embedding_batch", count=len(texts))
         embeddings = self._model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
         return [e.tolist() for e in embeddings]
+
+
+class UnknownEmbeddingDimensionError(ValueError):
+    """The embedding model does not say how long its vectors are."""

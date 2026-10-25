@@ -3,20 +3,16 @@
 from enum import StrEnum, auto
 from pathlib import Path
 
-import structlog
 import tree_sitter_markdown as tsmarkdown
 from tree_sitter import Language, Node
 
 from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
 from semantic_code_mcp.models import Chunk, ChunkType
 
-log = structlog.get_logger()
-
 
 class NodeType(StrEnum):
     """Markdown tree-sitter node types."""
 
-    document = auto()
     section = auto()
     atx_heading = auto()
     setext_heading = auto()

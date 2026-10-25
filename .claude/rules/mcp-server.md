@@ -15,7 +15,7 @@ paths:
 - Include enough context in results for Claude to use them effectively
 
 ## Performance Targets
-Unmeasured until the benchmark of ADR 006 (D12) exists; v0.4.0 misses all four (ADR 006, Appendix B).
+`uv run python -m evals speed` measures them; v0.4.0 misses three of four — search latency holds on repos under about 10k chunks (ADR 006, Appendix B), and stage 7 resets them from measurements.
 - Search latency: < 100ms (excluding cold start)
 - Index speed: > 50 files/sec
 - Cold start (model load): < 3s

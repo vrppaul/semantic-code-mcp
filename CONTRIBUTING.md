@@ -15,7 +15,11 @@ Everything runs through `uv`. The first test run downloads the embedding model (
 uv run pytest                        # the tests
 uv run pre-commit run --all-files    # every gate a commit runs
 uv run python -m semantic_code_mcp   # the server over stdio
+uv run python -m evals quality       # search quality on the pinned corpora, against evals/baseline/
+uv run python -m evals speed         # indexing and search speed, memory, index growth
 ```
+
+A change to search, chunking or speed runs the matching `evals` command before and after and says both numbers in its commit.
 
 The rules every change is held to are in `AGENTS.md`, and those of each area under `.claude/rules/`. The plan the project follows is `docs/decisions/006-rebuild-on-mcp-2.md`.
 
@@ -40,5 +44,5 @@ ADR 006 (D2–D4) describes the structure this is moving to.
 
 1. Move the changelog's `[Unreleased]` entries under `[x.y.z] - date`, in one commit on `master`, and push it.
 2. Tag it `vx.y.z` and push the tag. `hatch-vcs` takes the version from the tag; nothing else holds one.
-3. `.github/workflows/publish.yml` runs the whole of `.github/workflows/ci.yml` on the tagged commit, then waits on the `pypi` environment.
-4. Approve the deployment on GitHub. Only then does the job build, publish to PyPI through trusted publishing, and create the GitHub Release.
+3. `.github/workflows/publish.yml` runs the whole of `.github/workflows/ci.yml` on the tagged commit, then enters the `pypi` environment.
+4. With a required reviewer set on that environment (Settings → Environments → pypi; not set as of 2026-10-25), approve the deployment on GitHub. Then the job builds, publishes to PyPI through trusted publishing, and creates the GitHub Release.

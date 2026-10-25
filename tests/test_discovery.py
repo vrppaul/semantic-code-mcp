@@ -133,6 +133,76 @@ class TestGitDiscovery:
 
         assert relative_names(files, repository) == {"code.py"}
 
+    def test_project_ignored_by_an_enclosing_repository_is_walked(self, tmp_path: Path):
+        """A home directory under git for dotfiles must not hide the projects inside it."""
+        home = make_repository(tmp_path / "home")
+        (home / ".gitignore").write_text("*\n!.gitignore\n")
+        project = home / "projects" / "app"
+        project.mkdir(parents=True)
+        (project / "code.py").write_text("x = 1\n")
+
+        files = make_discovery().discover(project)
+
+        assert relative_names(files, project) == {"code.py"}
+
+    def test_ignored_subdirectory_of_a_repository_is_walked(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / ".gitignore").write_text("scratch/\n")
+        experiment = repository / "scratch" / "experiment"
+        experiment.mkdir(parents=True)
+        (experiment / "trial.py").write_text("x = 1\n")
+
+        files = make_discovery().discover(experiment)
+
+        assert relative_names(files, experiment) == {"trial.py"}
+
+    def test_files_inside_a_submodule_are_found(self, tmp_path: Path):
+        library = make_repository(tmp_path / "library")
+        (library / "lib.py").write_text("x = 1\n")
+        commit_all(library)
+        application = make_repository(tmp_path / "application")
+        (application / "app.py").write_text("x = 1\n")
+        run_git(
+            application,
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "--quiet",
+            str(library),
+            "vendor/library",
+        )
+        commit_all(application)
+
+        files = make_discovery().discover(application)
+
+        assert relative_names(files, application) == {"app.py", "vendor/library/lib.py"}
+
+    def test_symlink_to_a_file_inside_the_project_is_listed_once(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "real.py").write_text("x = 1\n")
+        (repository / "alias.py").symlink_to(repository / "real.py")
+        commit_all(repository)
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"real.py"}
+
+    def test_git_variables_in_the_environment_do_not_redirect_the_listing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        other = make_repository(tmp_path / "other")
+        (other / "foreign.py").write_text("x = 1\n")
+        commit_all(other)
+        repository = make_repository(tmp_path / "repo")
+        (repository / "code.py").write_text("x = 1\n")
+        monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+        monkeypatch.setenv("GIT_WORK_TREE", str(other))
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"code.py"}
+
 
 class TestGitUnavailable:
     """Discovery falls back to walking the file system when git cannot answer."""
@@ -172,7 +242,16 @@ class TestGitUnavailable:
 
 
 class TestWalkDiscovery:
-    """A project outside any git work tree."""
+    """The file-system walk, which `use_gitignore=False` asks for."""
+
+    def test_outside_a_work_tree_discovery_walks(self, tmp_path: Path):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "code.py").write_text("x = 1\n")
+
+        files = make_discovery().discover(project)
+
+        assert relative_names(files, project) == {"code.py"}
 
     def test_finds_files_with_supported_extensions(self, tmp_path: Path):
         project = tmp_path / "project"
@@ -181,7 +260,7 @@ class TestWalkDiscovery:
         (project / "package" / "module.py").write_text("x = 1\n")
         (project / "notes.txt").write_text("text\n")
 
-        files = make_discovery().discover(project)
+        files = make_discovery(use_gitignore=False).discover(project)
 
         assert relative_names(files, project) == {"main.py", "package/module.py"}
 
@@ -192,7 +271,9 @@ class TestWalkDiscovery:
         (nested / "vendored.py").write_text("x = 1\n")
         (project / "code.py").write_text("x = 1\n")
 
-        files = make_discovery(ignore_patterns=("node_modules",)).discover(project)
+        files = make_discovery(ignore_patterns=("node_modules",), use_gitignore=False).discover(
+            project
+        )
 
         assert relative_names(files, project) == {"code.py"}
 
@@ -203,7 +284,7 @@ class TestWalkDiscovery:
         (project / "build" / "artifact.py").write_text("x = 1\n")
         (project / "tools" / "build" / "script.py").write_text("x = 1\n")
 
-        files = make_discovery(ignore_patterns=("build/**",)).discover(project)
+        files = make_discovery(ignore_patterns=("build/**",), use_gitignore=False).discover(project)
 
         assert relative_names(files, project) == {"tools/build/script.py"}
 
@@ -216,6 +297,27 @@ class TestWalkDiscovery:
         (project / "code.py").write_text("x = 1\n")
         (project / "linked").symlink_to(elsewhere, target_is_directory=True)
 
-        files = make_discovery().discover(project)
+        files = make_discovery(use_gitignore=False).discover(project)
 
         assert relative_names(files, project) == {"code.py"}
+
+    def test_pattern_spellings_follow_gitignore(self, tmp_path: Path):
+        """A leading `/` anchors at the root, `./` and a trailing `/` are dropped, and a
+        leading `**/` matches at the root too."""
+        project = tmp_path / "project"
+        for directory in (
+            "build",
+            "tools/build",
+            "dist",
+            "docs",
+            "node_modules",
+            "web/node_modules",
+        ):
+            (project / directory).mkdir(parents=True)
+            (project / directory / "module.py").write_text("x = 1\n")
+        (project / "keep.py").write_text("x = 1\n")
+        patterns = ("/build", "./dist/**", "docs/", "**/node_modules/**")
+
+        files = make_discovery(ignore_patterns=patterns, use_gitignore=False).discover(project)
+
+        assert relative_names(files, project) == {"keep.py", "tools/build/module.py"}

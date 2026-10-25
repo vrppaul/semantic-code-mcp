@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
+from semantic_code_mcp.chunkers.base import FALLBACK_WINDOW_LINES, MAX_SOURCE_BYTES
 from semantic_code_mcp.chunkers.python import PythonChunker
 from semantic_code_mcp.models import ChunkType
+from tests.helpers import ChunkSummary, LineRange, line_ranges, summarize
 
 
 class TestPythonChunker:
@@ -155,9 +157,7 @@ def second():
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        assert [(chunk.chunk_type, chunk.name) for chunk in chunks] == [
-            (ChunkType.module, "comments")
-        ]
+        assert summarize(chunks) == [ChunkSummary(chunk_type=ChunkType.module, name="comments")]
 
     def test_multiple_functions(self, tmp_path: Path):
         """Extracts multiple functions from same file."""
@@ -466,9 +466,7 @@ def compute(value):
 """
         chunks = PythonChunker().chunk_string(code, file_path="sample.py")
 
-        assert [(chunk.chunk_type, chunk.name) for chunk in chunks] == [
-            (ChunkType.function, "compute")
-        ]
+        assert summarize(chunks) == [ChunkSummary(chunk_type=ChunkType.function, name="compute")]
         assert chunks[0].line_start == 4
         assert chunks[0].content.startswith("@functools.cache")
 
@@ -481,9 +479,9 @@ class Config:
 """
         chunks = PythonChunker().chunk_string(code, file_path="sample.py")
 
-        assert [(chunk.chunk_type, chunk.name) for chunk in chunks] == [
-            (ChunkType.klass, "Config"),
-            (ChunkType.method, "load"),
+        assert summarize(chunks) == [
+            ChunkSummary(chunk_type=ChunkType.klass, name="Config"),
+            ChunkSummary(chunk_type=ChunkType.method, name="load"),
         ]
 
     def test_file_without_definitions_becomes_one_module_chunk(self):
@@ -494,11 +492,33 @@ DATABASES = {"default": {"ENGINE": "sqlite"}}
 """
         chunks = PythonChunker().chunk_string(code, file_path="project/settings.py")
 
-        assert len(chunks) == 1
-        assert chunks[0].chunk_type == ChunkType.module
-        assert chunks[0].name == "settings"
-        assert (chunks[0].line_start, chunks[0].line_end) == (1, 4)
+        assert summarize(chunks) == [ChunkSummary(chunk_type=ChunkType.module, name="settings")]
+        assert line_ranges(chunks) == [LineRange(line_start=1, line_end=4)]
         assert chunks[0].content == code.rstrip("\n")
+
+    def test_file_with_a_docstring_and_no_definitions_is_indexed_whole(self):
+        code = '''"""Project settings."""
+
+import os
+
+DEBUG = os.environ.get("DEBUG") == "1"
+'''
+        chunks = PythonChunker().chunk_string(code, file_path="project/settings.py")
+
+        assert summarize(chunks) == [ChunkSummary(chunk_type=ChunkType.module, name="settings")]
+        assert line_ranges(chunks) == [LineRange(line_start=1, line_end=5)]
+
+    def test_long_file_without_definitions_is_split_into_windows(self):
+        line_count = 2 * FALLBACK_WINDOW_LINES + 1
+        code = "\n".join(f"SETTING_{number} = {number}" for number in range(line_count)) + "\n"
+
+        chunks = PythonChunker().chunk_string(code, file_path="generated.py")
+
+        assert line_ranges(chunks) == [
+            LineRange(line_start=1, line_end=FALLBACK_WINDOW_LINES),
+            LineRange(line_start=FALLBACK_WINDOW_LINES + 1, line_end=2 * FALLBACK_WINDOW_LINES),
+            LineRange(line_start=line_count, line_end=line_count),
+        ]
 
     def test_undecodable_bytes_do_not_stop_chunking(self, tmp_path: Path):
         file_path = tmp_path / "latin1.py"
@@ -507,3 +527,15 @@ DATABASES = {"default": {"ENGINE": "sqlite"}}
         chunks = PythonChunker().chunk_file(str(file_path))
 
         assert [chunk.name for chunk in chunks] == ["order"]
+
+    def test_binary_file_is_skipped(self, tmp_path: Path):
+        file_path = tmp_path / "utf16.py"
+        file_path.write_bytes("def order():\n    return 1\n".encode("utf-16"))
+
+        assert PythonChunker().chunk_file(str(file_path)) == []
+
+    def test_file_over_the_size_limit_is_skipped(self, tmp_path: Path):
+        file_path = tmp_path / "huge.py"
+        file_path.write_text("x = 1\n" * (MAX_SOURCE_BYTES // len("x = 1\n") + 1))
+
+        assert PythonChunker().chunk_file(str(file_path)) == []

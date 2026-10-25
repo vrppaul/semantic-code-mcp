@@ -32,3 +32,9 @@ profiles/
 # OS
 .DS_Store
 .claude/settings.local.json
+
+# Eval runs; the baseline under evals/baseline/ is kept
+evals/results/
+
+# A project-local index (SEMANTIC_CODE_MCP_LOCAL_INDEX)
+.semantic-code/

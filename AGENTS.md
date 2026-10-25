@@ -9,6 +9,7 @@ uv sync                               # install dependencies
 uv run python -m semantic_code_mcp    # run the server over stdio
 uv run pytest                         # the tests
 uv run pre-commit run --all-files     # every gate a commit runs, over every file
+uv run python -m evals quality        # search quality on the pinned corpora; `speed` for speed
 ```
 
 - The gates are one list, `.pre-commit-config.yaml`, each with its command; CI runs the same list. Leave a hook out only on purpose, by naming it in `SKIP`.

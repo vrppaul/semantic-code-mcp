@@ -60,7 +60,6 @@ dev = [
     "ruff>=0.14.14",
     "ty>=0.0.13",
     "typos>=1.51.1",
-    "vulture>=2.16",
 ]
 
 [tool.pytest.ini_options]
@@ -133,7 +132,9 @@ known-first-party = ["semantic_code_mcp"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**/*.py" = ["D", "ANN", "SLF001", "T20", "DTZ", "PLC0415"]
+"tests/**/*.py" = ["SLF001", "T20", "DTZ", "PLC0415"]
+# A command-line report: printing the report is its job
+"evals/__main__.py" = ["T20"]
 
 [tool.ty.environment]
 python-version = "3.14"
@@ -165,4 +166,3 @@ extend-exclude = ["tests/"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
-skips = ["B101"]  # assert used in tests

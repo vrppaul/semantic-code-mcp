@@ -13,14 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CONTRIBUTING.md`, `SECURITY.md` and a pull request template
 
 ### Changed
-- A release now runs the whole CI suite on the tagged commit and waits for the owner's approval before publishing to PyPI
-- The gates check what they claim: `ty` fails on any warning (it used to end in `|| true`), bandit 1.9.4 replaces 1.8.6 (which crashed on every Python 3.14 file and passed), ruff runs the locked version, and hooks for deptry, typos, test collection and the agent instruction files were added
+- A release runs the whole CI suite on the tagged commit before publishing to PyPI
+- `ty` fails on any warning; the hook used to end in `|| true`
+- bandit 1.9.4 replaces 1.8.6, which crashed on every Python 3.14 file and passed
+- The ruff hook runs the locked ruff instead of an older mirror
+- New hooks: deptry, typos, a check that every test module loads, a check of the agent instruction files
 - `CLAUDE.md` is a symlink to `AGENTS.md`, rewritten on the template of the owner's other projects; ADR 002 is superseded
 - File discovery asks git for tracked files and for untracked files that `.gitignore` does not exclude; `use_gitignore=false` walks the file system instead, for repos whose `.gitignore` hides source on purpose (#2, #3)
-- `ignore_patterns` apply in git mode too. A pattern without a slash matches a directory or file name at any depth (`node_modules`); a pattern with a slash matches from the project root (`build/**`). The defaults now also skip `.mypy_cache`, `.ruff_cache`, `.tox`, `.cache`, `site-packages`, `.semantic-code` and top-level `target/`, `dist/`, `build/`
+- `ignore_patterns` apply in git mode too. A pattern without a slash matches a path component at any depth (`node_modules`); a pattern with a slash matches from the project root (`build/**`); a leading `/` anchors at the root, `./` and a trailing `/` are dropped, as in `.gitignore`
+- The default `ignore_patterns` also skip `.mypy_cache`, `.ruff_cache`, `.tox`, `.cache`, `site-packages`, `.semantic-code` and top-level `target/`, `dist/`, `build/`
+- Files inside git submodules are indexed
 - Outside a git work tree, `.gitignore` is no longer parsed by hand; only `ignore_patterns` apply
-- A Python or Rust file with no definitions (a script, a settings module, a file of comments) becomes one `module` chunk instead of nothing
-- Chunk line ranges no longer include trailing blank lines
+- A Python or Rust file with no definitions — nothing, or nothing but a module docstring — is indexed whole, in `module` chunks of up to 100 lines, instead of not at all or by its docstring alone
+- Files over 1 MB and binary files (a NUL among the first 8000 bytes, which includes UTF-16) are skipped with a warning
+- Rust: required trait methods (`fn save(&self);`) become method chunks, `/** */` doc comments attach to the item below, and the module doc may follow inner attributes (`#![...]`)
+- Rust: impls are named with their trait's type arguments and negation, as in `From<u8> for Level` and `!Send for Handle`
 
 ### Fixed
 - Server failed to start on a fresh install: mcp 2.x renamed `FastMCP` to `MCPServer`, so `mcp` is now pinned below 2 until the migration (#3)
@@ -28,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tracked file deleted from disk was re-indexed on every search
 - Files with non-ASCII names were listed in git's quoted form and never found
 - Linked worktrees, submodules and subdirectories of a repo were walked without `.gitignore`
+- A conflicted file was listed once per conflict stage; a file reached through a symlink inside the project was indexed twice
+- `GIT_DIR` or `GIT_WORK_TREE` in the server's environment pointed discovery at another repository
 - A missing `git` binary or a git timeout raised instead of falling back to the walk
 - One file that is not valid UTF-8 aborted indexing of the whole project, on every search; such bytes are now replaced
 - A tracked symlink could pull a file from outside the project into the index
@@ -83,7 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2026-01-31
 
 The first release on PyPI. No 0.1.0 was ever tagged; until 2026-10-25 this entry was headed 0.1.0.
-
 
 ### Added
 - `IndexService` orchestrating full index pipeline (scan → detect → chunk → embed) with progress callbacks
