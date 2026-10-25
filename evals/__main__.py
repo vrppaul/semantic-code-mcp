@@ -200,7 +200,8 @@ def speed_summary(entry: CorpusSpeed) -> str:
         f"in {entry.full_index_seconds}s ({entry.files_per_second} files/s, "
         f"{entry.chunks_per_second} chunks/s); search p50 "
         f"{entry.warm_search_p50_milliseconds}ms p95 {entry.warm_search_p95_milliseconds}ms; "
-        f"first search {entry.first_search_seconds}s; peak {entry.peak_memory_megabytes}MB; "
+        f"model load {entry.model_load_seconds}s; first search {entry.first_search_seconds}s; "
+        f"peak {entry.peak_memory_megabytes}MB; "
         f"index growth {entry.index_growth_megabytes_per_edit}MB per edit"
     )
 

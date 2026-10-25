@@ -5,114 +5,954 @@
       "queries": 20,
       "file": {
         "hits_at_1": 5,
-        "hits_at_3": 11,
-        "mean_reciprocal_rank": 0.43
+        "hits_at_3": 12,
+        "mean_reciprocal_rank": 0.455
       },
       "chunk": {
         "hits_at_1": 2,
-        "hits_at_3": 8,
-        "mean_reciprocal_rank": 0.303
+        "hits_at_3": 9,
+        "mean_reciprocal_rank": 0.328
       },
       "ranks": [
         {
           "query": "show a progress bar while iterating over a long list of items",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/click/termui.py",
+              "symbol": "progressbar"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "progressbar"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Showing Progress Bars"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_progressbar_yields_all_items"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_progressbar_item_show_func"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_progressbar_update_with_item_show_func"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_progressbar_is_iterator"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_progressbar_length_hint"
+            },
+            {
+              "path": "examples/termui/termui.py",
+              "symbol": "progress"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "ProgressBar"
+            }
+          ]
         },
         {
           "query": "open the user's text editor to edit a message",
           "file_rank": 3,
-          "chunk_rank": 3
+          "chunk_rank": 3,
+          "hits": [
+            {
+              "path": "examples/termui/termui.py",
+              "symbol": "edit"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Launching Editors"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "edit"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "edit"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "edit"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "edit"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_editor_unclosed_quote"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_editor_nonexistent_exception"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_editor_failure_exception"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "edit"
+            }
+          ]
         },
         {
           "query": "ask the user a yes or no question",
           "file_rank": 4,
-          "chunk_rank": 4
+          "chunk_rank": 4,
+          "hits": [
+            {
+              "path": "docs/prompts.md",
+              "symbol": "User Input Prompts"
+            },
+            {
+              "path": "docs/prompts.md",
+              "symbol": "Input Prompts"
+            },
+            {
+              "path": "docs/prompts.md",
+              "symbol": "Confirmation Prompts"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "confirm"
+            },
+            {
+              "path": "docs/option-decorators.md",
+              "symbol": "Confirmation Option"
+            },
+            {
+              "path": "tests/typing/typing_confirmation_option.py",
+              "symbol": "typing_confirmation_option"
+            },
+            {
+              "path": "src/click/decorators.py",
+              "symbol": "confirmation_option"
+            },
+            {
+              "path": "tests/test_utils/test_confirm.py",
+              "symbol": "test_prompts"
+            },
+            {
+              "path": "docs/faqs.md",
+              "symbol": "Frequently Asked Questions"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Contributing"
+            }
+          ]
         },
         {
           "query": "send long output through a pager such as less",
           "file_rank": 2,
-          "chunk_rank": 4
+          "chunk_rank": 4,
+          "hits": [
+            {
+              "path": "docs/utils.md",
+              "symbol": "Pager Support"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "_pager_contextmanager"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "_less_uses_raw_mode"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "_pipepager"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "_get_real_pager_command"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "_run_get_pager_file_with_real_pager"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_get_pager_file_with_real_pager_binary_stream"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_pipepager_less_detection_matches_stem"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_pipepager_less_raw_mode_detection"
+            },
+            {
+              "path": "tests/test_utils/test_echo_via_pager.py",
+              "symbol": "test_echo_via_pager"
+            }
+          ]
         },
         {
           "query": "find the directory where an application should keep its configuration on each operating system",
           "file_rank": 2,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "docs/utils.md",
+              "symbol": "Finding Application Folders"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "get_app_dir"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "Interleaved Commands"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "Complex Applications"
+            },
+            {
+              "path": "docs/entry-points.md",
+              "symbol": "Project Files"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "Running tests in parallel"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "File System Isolation"
+            },
+            {
+              "path": "docs/standalone-apps.md",
+              "symbol": "Configuration"
+            },
+            {
+              "path": "docs/virtualenv.md",
+              "symbol": "Why Use Virtualenv?"
+            },
+            {
+              "path": "docs/unicode-support.md",
+              "symbol": "Surrogate Handling"
+            }
+          ]
         },
         {
           "query": "split a command line string into arguments for shell completion",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "PowerShellComplete"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "split_arg_string"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "ZshComplete"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "FishComplete"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "shell_complete"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "_resolve_incomplete"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Overriding Value Completion"
+            },
+            {
+              "path": "docs/faqs.md",
+              "symbol": "Custom completions show the full value"
+            },
+            {
+              "path": "tests/test_deprecations.py",
+              "symbol": "test_attr_deprecated"
+            },
+            {
+              "path": "src/click/parser.py",
+              "symbol": "__getattr__"
+            }
+          ]
         },
         {
           "query": "completion support for the zsh shell",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "get_completion_class"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "ZshComplete"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "format_completion"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Shell Completion"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Adding Support for a Shell"
+            },
+            {
+              "path": "docs/faqs.md",
+              "symbol": "Answer"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 8.4.1"
+            },
+            {
+              "path": "tests/test_shell_completion.py",
+              "symbol": "test_full_source"
+            },
+            {
+              "path": "tests/test_shell_completion.py",
+              "symbol": "test_full_complete"
+            },
+            {
+              "path": "tests/test_shell_completion.py",
+              "symbol": "test_source_uses_lf_line_endings"
+            }
+          ]
         },
         {
           "query": "wrap paragraphs of help text to fit the terminal width",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/click/formatting.py",
+              "symbol": "HelpFormatter"
+            },
+            {
+              "path": "src/click/formatting.py",
+              "symbol": "wrap_text"
+            },
+            {
+              "path": "docs/documentation.md",
+              "symbol": "Click's Wrapping Behavior"
+            },
+            {
+              "path": "docs/documentation.md",
+              "symbol": "Escaping Click's Wrapping"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "make_formatter"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "format_help_text"
+            },
+            {
+              "path": "tests/test_formatting.py",
+              "symbol": "test_truncating_docstring"
+            },
+            {
+              "path": "tests/test_formatting.py",
+              "symbol": "test_basic_functionality"
+            },
+            {
+              "path": "tests/test_formatting.py",
+              "symbol": "test_truncating_docstring_no_help"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "_make_default_short_help"
+            }
+          ]
         },
         {
           "query": "invoke a command in a test and capture what it prints",
           "file_rank": null,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_fd_faulthandler"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_fd_os_write"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_fd_stderr_separation"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_pytest_matrix"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_fd_nesting"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_fd_logging_handler"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_sys_fileno_raises"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "Basic Example"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "`capture=\"sys\"` (default)"
+            },
+            {
+              "path": "tests/test_stream_lifecycle.py",
+              "symbol": "test_output_isolation_across_invokes"
+            }
+          ]
         },
         {
           "query": "parse several short flags grouped together like -abc",
           "file_rank": null,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "docs/options.md",
+              "symbol": "Combining short options"
+            },
+            {
+              "path": "docs/options.md",
+              "symbol": "Feature switch groups (multiple flags sharing one variable)"
+            },
+            {
+              "path": "docs/options.md",
+              "symbol": "Arbitration rules"
+            },
+            {
+              "path": "tests/test_commands.py",
+              "symbol": "test_group_parse_args_collects_base_option_prefixes"
+            },
+            {
+              "path": "tests/test_commands.py",
+              "symbol": "test_command_parse_args_collects_option_prefixes"
+            },
+            {
+              "path": "tests/test_compat.py",
+              "symbol": "test_truncate_visible"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "get_default"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "What triggers Lazy Loading?"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "Running tests in parallel"
+            },
+            {
+              "path": "docs/documentation.md",
+              "symbol": "Command Short Help"
+            }
+          ]
         },
         {
           "query": "an integer parameter type limited to a minimum and a maximum",
           "file_rank": 4,
-          "chunk_rank": 5
+          "chunk_rank": 5,
+          "hits": [
+            {
+              "path": "docs/parameter-types.md",
+              "symbol": "How to Implement Custom Types"
+            },
+            {
+              "path": "docs/parameter-types.md",
+              "symbol": "Built-in Types Listing"
+            },
+            {
+              "path": "docs/parameter-types.md",
+              "symbol": "parameter-types"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "ParamType"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "IntRange"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "IntParamType"
+            },
+            {
+              "path": "docs/prompts.md",
+              "symbol": "Input Prompts"
+            },
+            {
+              "path": "docs/wincmd.md",
+              "symbol": "Unicode Arguments"
+            },
+            {
+              "path": "docs/options.md",
+              "symbol": "Multi Value Options"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 4.0"
+            }
+          ]
         },
         {
           "query": "write a file atomically by renaming a temporary file into place",
           "file_rank": 2,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "tests/test_arguments.py",
+              "symbol": "test_file_atomics"
+            },
+            {
+              "path": "src/click/_compat.py",
+              "symbol": "open_stream"
+            },
+            {
+              "path": "tests/test_utils/test_open_file.py",
+              "symbol": "test_open_file_atomic_permissions_existing_file"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "convert"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "File"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "open_file"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "_LazyFile"
+            },
+            {
+              "path": "src/click/testing.py",
+              "symbol": "_FDCapture"
+            },
+            {
+              "path": "docs/handling-files.md",
+              "symbol": "File Opening Behaviors"
+            }
+          ]
         },
         {
           "query": "remove ANSI color escape codes from text",
-          "file_rank": null,
-          "chunk_rank": null
+          "file_rank": 2,
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "docs/utils.md",
+              "symbol": "ANSI Colors"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "unstyle"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "style"
+            },
+            {
+              "path": "examples/colors/colors.py",
+              "symbol": "cli"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_get_pager_file_nullpager_wraps_textio_stream"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "get_pager_file"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "write"
+            },
+            {
+              "path": "tests/test_compat.py",
+              "symbol": "test_strip_ansi_mixed_content"
+            },
+            {
+              "path": "tests/test_compat.py",
+              "symbol": "test_strip_ansi_leaves_plain_text"
+            },
+            {
+              "path": "tests/test_formatting.py",
+              "symbol": "test_help_formatter_write_usage_without_args_styled_prefix"
+            }
+          ]
         },
         {
           "query": "color text with foreground and background colors and make it bold",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/click/termui.py",
+              "symbol": "style"
+            },
+            {
+              "path": "examples/termui/termui.py",
+              "symbol": "colordemo"
+            },
+            {
+              "path": "examples/colors/colors.py",
+              "symbol": "cli"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "ANSI Colors"
+            },
+            {
+              "path": "tests/test_utils/test_echo.py",
+              "symbol": "test_echo_color_flag"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "write"
+            },
+            {
+              "path": "src/click/exceptions.py",
+              "symbol": "show"
+            },
+            {
+              "path": "src/click/exceptions.py",
+              "symbol": "ClickException"
+            },
+            {
+              "path": "tests/test_utils/test_style.py",
+              "symbol": "test_unstyle_other_ansi"
+            },
+            {
+              "path": "tests/test_compat.py",
+              "symbol": "test_strip_ansi_mixed_content"
+            }
+          ]
         },
         {
           "query": "suggest a similar option name when the user mistypes one",
           "file_rank": null,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_suggest_possible_options"
+            },
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_default_dual_option_callback"
+            },
+            {
+              "path": "tests/test_basic.py",
+              "symbol": "test_flag_value_dual_options"
+            },
+            {
+              "path": "docs/options.md",
+              "symbol": "Feature switch groups (multiple flags sharing one variable)"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Custom Type Completion"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Shell Completion"
+            },
+            {
+              "path": "docs/prompts.md",
+              "symbol": "Option Prompts"
+            },
+            {
+              "path": "docs/arguments.md",
+              "symbol": "Arguments"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 8.0.0"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "flag_activation_value"
+            }
+          ]
         },
         {
           "query": "read a parameter's value from an environment variable",
           "file_rank": 3,
-          "chunk_rank": 5
+          "chunk_rank": 5,
+          "hits": [
+            {
+              "path": "examples/completion/completion.py",
+              "symbol": "show_env"
+            },
+            {
+              "path": "docs/options.md",
+              "symbol": "Values from Environment Variables"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "value_from_envvar"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "consume_value"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "resolve_envvar_value"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "resolve_envvar_value"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "ParameterSource"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "value_from_envvar"
+            },
+            {
+              "path": "docs/arguments.md",
+              "symbol": "Environment Variables"
+            },
+            {
+              "path": "docs/commands-and-groups.md",
+              "symbol": "Parameter Source Priority"
+            }
+          ]
         },
         {
           "query": "the object that holds state while a command runs",
           "file_rank": 10,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "docs/complex.md",
+              "symbol": "Contexts"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "The Root Command"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "Ensuring Object Creation"
+            },
+            {
+              "path": "docs/commands.md",
+              "symbol": "Nested Handling and Contexts"
+            },
+            {
+              "path": "src/click/parser.py",
+              "symbol": "parse_args"
+            },
+            {
+              "path": "src/click/parser.py",
+              "symbol": "_process_args_for_options"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "Running tests in parallel"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "Testing Click Applications"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Custom Type Completion"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "find_object"
+            }
+          ]
         },
         {
           "query": "a command that contains subcommands and dispatches to them",
           "file_rank": 6,
-          "chunk_rank": 6
+          "chunk_rank": 6,
+          "hits": [
+            {
+              "path": "docs/complex.md",
+              "symbol": "Defining the Lazy Group"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "Lazily Loading Subcommands"
+            },
+            {
+              "path": "examples/imagepipe/imagepipe.py",
+              "symbol": "process_commands"
+            },
+            {
+              "path": "tests/test_basic.py",
+              "symbol": "test_repr"
+            },
+            {
+              "path": "tests/test_basic.py",
+              "symbol": "test_basic_group"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "Group"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "invoke"
+            },
+            {
+              "path": "docs/why.md",
+              "symbol": "Why not Docopt etc.?"
+            },
+            {
+              "path": "docs/commands-and-groups.md",
+              "symbol": "Group Separation"
+            },
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_envvar_container_type"
+            }
+          ]
         },
         {
           "query": "a file that is opened only when it is first used",
           "file_rank": 2,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "docs/handling-files.md",
+              "symbol": "File Opening Behaviors"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "_LazyFile"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "open_file"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "close_intelligently"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "File"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Intelligent File Opening"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "launch"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_get_pager_file_missing_pager_keeps_borrowed_stream_open"
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_tempfile_pager_closes_file_before_unlink"
+            },
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_file_type_help_default"
+            }
+          ]
         },
         {
           "query": "open a URL or a file in the default application",
           "file_rank": 6,
-          "chunk_rank": 6
+          "chunk_rank": 6,
+          "hits": [
+            {
+              "path": "examples/termui/termui.py",
+              "symbol": "open"
+            },
+            {
+              "path": "examples/termui/termui.py",
+              "symbol": "locate"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Launching Applications"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Finding Application Folders"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Intelligent File Opening"
+            },
+            {
+              "path": "src/click/termui.py",
+              "symbol": "launch"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "open_url"
+            },
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_file_type_help_default"
+            },
+            {
+              "path": "examples/validation/validation.py",
+              "symbol": "cli"
+            },
+            {
+              "path": "docs/advanced.md",
+              "symbol": "Parameter Modifications"
+            }
+          ]
         }
       ]
     },
@@ -122,88 +962,718 @@
       "file": {
         "hits_at_1": 7,
         "hits_at_3": 7,
-        "mean_reciprocal_rank": 0.523
+        "mean_reciprocal_rank": 0.549
       },
       "chunk": {
         "hits_at_1": 2,
         "hits_at_3": 7,
-        "mean_reciprocal_rank": 0.3
+        "mean_reciprocal_rank": 0.318
       },
       "ranks": [
         {
           "query": "parse a size filter such as +10k or -1M",
           "file_rank": 1,
-          "chunk_rank": 3
+          "chunk_rank": 3,
+          "hits": [
+            {
+              "path": "src/filter/size.rs",
+              "symbol": "SizeFilter"
+            },
+            {
+              "path": "src/filter/size.rs",
+              "symbol": "parse_opt"
+            },
+            {
+              "path": "src/filter/size.rs",
+              "symbol": "from_string"
+            },
+            {
+              "path": "src/filter/size.rs",
+              "symbol": "is_within"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Performance improvements"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_size"
+            },
+            {
+              "path": "src/filter/owner.rs",
+              "symbol": "OwnerFilter"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "parse_millis"
+            }
+          ]
         },
         {
           "query": "filter files changed before or after a date",
           "file_rank": 4,
-          "chunk_rank": 4
+          "chunk_rank": 4,
+          "hits": [
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Bugfixes"
+            },
+            {
+              "path": "src/filter/time.rs",
+              "symbol": "TimeFilter"
+            },
+            {
+              "path": "src/filter/time.rs",
+              "symbol": "is_time_filter_applicable"
+            },
+            {
+              "path": "src/filter/time.rs",
+              "symbol": "TimeFilter"
+            },
+            {
+              "path": "src/filter/time.rs",
+              "symbol": "out_of_range_unix_timestamp_is_rejected"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "change_file_modified"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_modified_absolute"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "extract_time_constraints"
+            }
+          ]
         },
         {
           "query": "run a command for every search result",
-          "file_rank": null,
-          "chunk_rank": null
+          "file_rank": 4,
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Command execution"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Using fd with `xargs` or `parallel`"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Simple search"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "ExecutionMode"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "Args for Exec"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "augment_args"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "run"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "ensure_search_pattern_is_not_a_path"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            }
+          ]
         },
         {
           "query": "run one command with all the results as its arguments",
-          "file_rank": null,
-          "chunk_rank": null
+          "file_rank": 7,
+          "chunk_rank": 8,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Command execution"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Examples"
+            },
+            {
+              "path": "README.md",
+              "symbol": "How to use"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Example"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "Args for Exec"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "augment_args"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "ExecutionMode"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "new_batch"
+            },
+            {
+              "path": "src/exec/command.rs",
+              "symbol": "execute_commands"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changes"
+            }
+          ]
         },
         {
           "query": "walk directories in parallel and collect the matching entries",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/walk.rs",
+              "symbol": "spawn_senders"
+            },
+            {
+              "path": "src/walk.rs",
+              "symbol": "scan"
+            },
+            {
+              "path": "src/walk.rs",
+              "symbol": "WorkerState"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Parallel vs. serial execution"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_exec_batch_multi"
+            },
+            {
+              "path": "src/dir_entry.rs",
+              "symbol": "DirEntryInner"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "FileTypes"
+            }
+          ]
         },
         {
           "query": "print a path in color",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry_colorized"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry_uncolorized_base"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry_uncolorized"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changes"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "v1.0.0"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "v0.3.0"
+            },
+            {
+              "path": "tests/testenv/mod.rs",
+              "symbol": "run_command"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Colorized output"
+            },
+            {
+              "path": "src/walk.rs",
+              "symbol": "scan"
+            }
+          ]
         },
         {
           "query": "check whether a file or directory is empty",
           "file_rank": null,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "empty_with_explicit_file_keeps_directories_off"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "empty_only_implies_files_and_directories"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "from_types"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "FileTypes"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "FileTypes"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_type_empty"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_empty_pattern"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "src/config.rs",
+              "symbol": "is_printing"
+            },
+            {
+              "path": "src/config.rs",
+              "symbol": "Config"
+            }
+          ]
         },
         {
           "query": "decide whether an entry has one of the requested file types",
           "file_rank": 1,
-          "chunk_rank": 3
+          "chunk_rank": 3,
+          "hits": [
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "FileTypes"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "from_types"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "should_ignore"
+            },
+            {
+              "path": "src/filesystem.rs",
+              "symbol": "is_empty"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_type"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_and_plus_type"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_min_depth_broken_symlink_overlapping_roots"
+            },
+            {
+              "path": "src/config.rs",
+              "symbol": "Config"
+            },
+            {
+              "path": "SECURITY.md",
+              "symbol": "Notes"
+            },
+            {
+              "path": "CONTRIBUTING.md",
+              "symbol": "Add an entry to the changelog"
+            }
+          ]
         },
         {
           "query": "combine the exit codes of several commands into one",
           "file_rank": null,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "exit_code"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "finish"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "CommandBuilder"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "CommandBuilder"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "main"
+            },
+            {
+              "path": "src/exec/command.rs",
+              "symbol": "execute_commands"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Using fd with `xargs` or `parallel`"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Bugfixes"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "src/exec/job.rs",
+              "symbol": "job"
+            }
+          ]
         },
         {
           "query": "parse placeholders like {} and {/} in a command template",
           "file_rank": 5,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "tokens_with_literal_braces_and_placeholder"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "CommandTemplate"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "tokens_with_placeholder"
+            },
+            {
+              "path": "src/exec/mod.rs",
+              "symbol": "new_batch"
+            },
+            {
+              "path": "src/fmt/mod.rs",
+              "symbol": "parse_no_placeholders"
+            },
+            {
+              "path": "src/fmt/mod.rs",
+              "symbol": "Token"
+            },
+            {
+              "path": "src/fmt/mod.rs",
+              "symbol": "parse_only_brace_escapes"
+            },
+            {
+              "path": "src/fmt/mod.rs",
+              "symbol": "FormatTemplate"
+            },
+            {
+              "path": "src/fmt/mod.rs",
+              "symbol": "all_placeholders"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Placeholder syntax"
+            }
+          ]
         },
         {
           "query": "filter files by the user and group that own them",
           "file_rank": 4,
-          "chunk_rank": 4
+          "chunk_rank": 4,
+          "hits": [
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "src/filter/owner.rs",
+              "symbol": "OwnerFilter"
+            },
+            {
+              "path": "src/filter/owner.rs",
+              "symbol": "from_string"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_owner_current_group"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_owner_current_user"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_owner_ignore_all"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Command-line options"
+            },
+            {
+              "path": "src/fmt/mod.rs",
+              "symbol": "replace_separator"
+            }
+          ]
         },
         {
           "query": "turn a path into a file URL for terminal hyperlinks",
           "file_rank": 7,
-          "chunk_rank": null
+          "chunk_rank": 7,
+          "hits": [
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_hyperlink"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "v0.2.0"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Bugfixes"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "HyperlinkWhen"
+            },
+            {
+              "path": "src/hyperlink.rs",
+              "symbol": "encode"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "construct_config"
+            },
+            {
+              "path": "src/dir_entry.rs",
+              "symbol": "into_path"
+            },
+            {
+              "path": "src/sanitize.rs",
+              "symbol": "sanitize_for_term"
+            }
+          ]
         },
         {
           "query": "escape control characters before printing a file name to the terminal",
           "file_rank": 1,
-          "chunk_rank": 3
+          "chunk_rank": 3,
+          "hits": [
+            {
+              "path": "src/sanitize.rs",
+              "symbol": "sanitize"
+            },
+            {
+              "path": "src/sanitize.rs",
+              "symbol": "escape_preserves_information"
+            },
+            {
+              "path": "src/sanitize.rs",
+              "symbol": "write_sanitized"
+            },
+            {
+              "path": "src/sanitize.rs",
+              "symbol": "sanitize_for_term"
+            },
+            {
+              "path": "src/sanitize.rs",
+              "symbol": "maybe_sanitize_passthrough_when_not_terminal"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Bugfixes"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changes"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Printing the output as a tree"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry_uncolorized"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "augment_args"
+            }
+          ]
         },
         {
           "query": "check if a regex pattern has an uppercase letter to choose case sensitivity",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/regex_helper.rs",
+              "symbol": "pattern_has_uppercase_char"
+            },
+            {
+              "path": "src/regex_helper.rs",
+              "symbol": "pattern_has_uppercase_char_inline_flags"
+            },
+            {
+              "path": "src/regex_helper.rs",
+              "symbol": "pattern_has_uppercase_char_advanced"
+            },
+            {
+              "path": "src/regex_helper.rs",
+              "symbol": "pattern_has_uppercase_char_simple"
+            },
+            {
+              "path": "src/regex_helper.rs",
+              "symbol": "Visitor for UppercaseVisitor"
+            },
+            {
+              "path": "src/regex_helper.rs",
+              "symbol": "visit_pre"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "construct_config"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "build_regex"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_regex_searches"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_smart_case"
+            }
+          ]
         },
         {
           "query": "strip the leading ./ from a path",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/filesystem.rs",
+              "symbol": "strip_current_dir"
+            },
+            {
+              "path": "src/filesystem.rs",
+              "symbol": "strip_current_dir_basic"
+            },
+            {
+              "path": "src/filesystem.rs",
+              "symbol": "absolute_path"
+            },
+            {
+              "path": "src/fmt/input.rs",
+              "symbol": "remove_extension"
+            },
+            {
+              "path": "src/fmt/input.rs",
+              "symbol": "dirname"
+            },
+            {
+              "path": "src/dir_entry.rs",
+              "symbol": "stripped_path"
+            },
+            {
+              "path": "src/dir_entry.rs",
+              "symbol": "into_stripped_path"
+            },
+            {
+              "path": "src/walk.rs",
+              "symbol": "search_str_for_entry_strips_dot_prefix"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_pattern_with_forward_slash_is_rejected"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "replace_path_separator"
+            }
+          ]
         }
       ]
     },
@@ -218,88 +1688,760 @@
       "chunk": {
         "hits_at_1": 6,
         "hits_at_3": 10,
-        "mean_reciprocal_rank": 0.531
+        "mean_reciprocal_rank": 0.544
       },
       "ranks": [
         {
           "query": "dependency injection container that shares the embedding model across requests",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/container.py",
+              "symbol": "container"
+            },
+            {
+              "path": "src/semantic_code_mcp/container.py",
+              "symbol": "Container"
+            },
+            {
+              "path": "src/semantic_code_mcp/container.py",
+              "symbol": "embedder"
+            },
+            {
+              "path": "src/semantic_code_mcp/protocols.py",
+              "symbol": "protocols"
+            },
+            {
+              "path": "tests/test_indexer.py",
+              "symbol": "test_indexer_accepts_injected_deps"
+            },
+            {
+              "path": "tests/test_indexer.py",
+              "symbol": "test_create_indexer"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Dependency Injection Refactor"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "ChunkType mapping"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changed"
+            },
+            {
+              "path": "tests/test_storage.py",
+              "symbol": "test_shared_connection_across_stores"
+            }
+          ]
         },
         {
           "query": "detect which files changed since the last index using modification times",
           "file_rank": 1,
-          "chunk_rank": null
+          "chunk_rank": 5,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/storage/cache.py",
+              "symbol": "cache"
+            },
+            {
+              "path": "tests/test_cache.py",
+              "symbol": "test_detect_modified_file"
+            },
+            {
+              "path": "tests/test_cache.py",
+              "symbol": "test_cache"
+            },
+            {
+              "path": "tests/test_cache.py",
+              "symbol": "test_detect_new_file"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "detect_changes"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "index"
+            },
+            {
+              "path": "tests/test_index_service.py",
+              "symbol": "test_detect_changes_no_prior_index"
+            },
+            {
+              "path": "tests/test_index_service.py",
+              "symbol": "test_detect_changes_force"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changed"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            }
+          ]
         },
         {
           "query": "create the full text search index on the content column",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "_ensure_fts_index"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search_fts"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search_hybrid"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "LanceDBConnection"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "ensure_table"
+            },
+            {
+              "path": "tests/test_hybrid_search.py",
+              "symbol": "test_hybrid_search"
+            },
+            {
+              "path": "tests/test_hybrid_search.py",
+              "symbol": "test_fts_search_finds_exact_keyword"
+            },
+            {
+              "path": "src/semantic_code_mcp/protocols.py",
+              "symbol": "search_hybrid"
+            },
+            {
+              "path": "README.md",
+              "symbol": "`search_code`"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "index_service"
+            }
+          ]
         },
         {
           "query": "merge vector and keyword search results with weighted scores",
           "file_rank": 1,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search_hybrid"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "_merge_results"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Search Quality & Output Improvements"
+            },
+            {
+              "path": "tests/test_hybrid_search.py",
+              "symbol": "test_vector_only_search_misses_keyword_match"
+            },
+            {
+              "path": "tests/test_hybrid_search.py",
+              "symbol": "test_hybrid_search_combines_both"
+            },
+            {
+              "path": "tests/test_hybrid_search.py",
+              "symbol": "TestHybridSearch"
+            },
+            {
+              "path": "tests/test_hybrid_search.py",
+              "symbol": "test_hybrid_search_weight_adjustable"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "_do_search"
+            },
+            {
+              "path": "src/semantic_code_mcp/protocols.py",
+              "symbol": "search_hybrid"
+            }
+          ]
         },
         {
           "query": "split a markdown document into sections by heading",
           "file_rank": 1,
-          "chunk_rank": 3
+          "chunk_rank": 3,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/chunkers/markdown.py",
+              "symbol": "markdown"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/markdown.py",
+              "symbol": "MarkdownChunker"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/markdown.py",
+              "symbol": "_extract_section"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "Chunking strategy: recursive section walking"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "Spike findings (tree-sitter-markdown AST)"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "Chunk naming"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_setext_heading"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_h2_heading_level"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_heading_without_content"
+            }
+          ]
         },
         {
           "query": "list source files using git",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "_scan_with_git"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "scan_files"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "_scan_with_walk"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "_is_git_repo"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/base.py",
+              "symbol": "_extract_chunks"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/base.py",
+              "symbol": "BaseTreeSitterChunker"
+            },
+            {
+              "path": ".claude/commands/ship.md",
+              "symbol": "Steps"
+            },
+            {
+              "path": "README.md",
+              "symbol": "How It Works"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changed"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "chunk_file"
+            }
+          ]
         },
         {
           "query": "boost recently modified files in the ranking",
           "file_rank": 2,
-          "chunk_rank": 2
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "TODO.md",
+              "symbol": "Search Quality & Output Improvements"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "_apply_recency_boost"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "_do_search"
+            },
+            {
+              "path": "tests/test_searcher.py",
+              "symbol": "test_boost_does_not_exceed_1"
+            },
+            {
+              "path": "src/semantic_code_mcp/models/domain.py",
+              "symbol": "FileChanges"
+            },
+            {
+              "path": "src/semantic_code_mcp/models/domain.py",
+              "symbol": "stale_files"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/cache.py",
+              "symbol": "get_changes"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/cache.py",
+              "symbol": "get_stale_files"
+            },
+            {
+              "path": "tests/test_cache.py",
+              "symbol": "test_detect_modified_file"
+            },
+            {
+              "path": "tests/test_cache.py",
+              "symbol": "test_get_stale_files_convenience_method"
+            }
+          ]
         },
         {
           "query": "MCP tool that searches code semantically",
           "file_rank": null,
-          "chunk_rank": null
+          "chunk_rank": null,
+          "hits": [
+            {
+              "path": "CLAUDE.md",
+              "symbol": "Semantic Code MCP Server"
+            },
+            {
+              "path": "AGENTS.md",
+              "symbol": "Overview"
+            },
+            {
+              "path": "README.md",
+              "symbol": "semantic-code-mcp"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Configuration"
+            },
+            {
+              "path": "src/semantic_code_mcp/cli.py",
+              "symbol": "cli"
+            },
+            {
+              "path": "tests/__init__.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "src/semantic_code_mcp/__init__.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "docs/decisions/001-initial-architecture.md",
+              "symbol": "MCP Tools"
+            },
+            {
+              "path": "src/semantic_code_mcp/logging.py",
+              "symbol": "logging"
+            },
+            {
+              "path": "src/semantic_code_mcp/__main__.py",
+              "symbol": "__main__"
+            }
+          ]
         },
         {
           "query": "detect the module docstring as the first statement of a file",
           "file_rank": 10,
-          "chunk_rank": 10
+          "chunk_rank": 10,
+          "hits": [
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_file_with_only_docstring"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_module_docstring_name_from_file_stem"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_docstring_after_import_not_extracted"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_module_docstring_with_function"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_comments_before_docstring_still_extracted"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_module_docstring_multiline_line_numbers"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Consequences"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Decision"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Alternatives Considered"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/python.py",
+              "symbol": "_extract_module_docstring"
+            }
+          ]
         },
         {
           "query": "application settings loaded from environment variables",
           "file_rank": 6,
-          "chunk_rank": 6
+          "chunk_rank": 6,
+          "hits": [
+            {
+              "path": "tests/test_config.py",
+              "symbol": "test_settings_from_env"
+            },
+            {
+              "path": "tests/test_config.py",
+              "symbol": "TestSettings"
+            },
+            {
+              "path": "tests/test_config.py",
+              "symbol": "test_no_override_uses_settings"
+            },
+            {
+              "path": "tests/test_config.py",
+              "symbol": "TestResolveCacheDir"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Configuration"
+            },
+            {
+              "path": "src/semantic_code_mcp/config.py",
+              "symbol": "Settings"
+            },
+            {
+              "path": "src/semantic_code_mcp/config.py",
+              "symbol": "get_index_path"
+            },
+            {
+              "path": "src/semantic_code_mcp/config.py",
+              "symbol": "get_settings"
+            },
+            {
+              "path": "src/semantic_code_mcp/app.py",
+              "symbol": "app"
+            },
+            {
+              "path": "src/semantic_code_mcp/container.py",
+              "symbol": "container"
+            }
+          ]
         },
         {
           "query": "profile an async function with pyinstrument",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/profiling.py",
+              "symbol": "profile_async"
+            },
+            {
+              "path": "src/semantic_code_mcp/profiling.py",
+              "symbol": "_save_profile"
+            },
+            {
+              "path": "src/semantic_code_mcp/profiling.py",
+              "symbol": "configure_profiling"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Performance Optimization"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_async_function"
+            },
+            {
+              "path": "tests/test_rust_chunker.py",
+              "symbol": "test_async_function"
+            },
+            {
+              "path": "tests/test_searcher.py",
+              "symbol": "test_search_returns_results_from_store"
+            },
+            {
+              "path": "tests/test_searcher.py",
+              "symbol": "TestSearch"
+            },
+            {
+              "path": "tests/test_index_service.py",
+              "symbol": "test_index_incremental_reindexes_changed"
+            }
+          ]
         },
         {
           "query": "truncate long search results to a maximum number of lines",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/models/responses.py",
+              "symbol": "from_domain"
+            },
+            {
+              "path": "src/semantic_code_mcp/models/responses.py",
+              "symbol": "FormattedSearchResult"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search_fts"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Search Quality & Output Improvements"
+            },
+            {
+              "path": "README.md",
+              "symbol": "`search_code`"
+            },
+            {
+              "path": "tests/test_storage.py",
+              "symbol": "test_search_respects_limit"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "SearchService"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_line_numbers_single_section"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            }
+          ]
         },
         {
           "query": "escape single quotes in a SQL filter when deleting rows",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "delete_by_file"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "LanceDBVectorStore"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "search_fts"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Fixed"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "ChunkType extension"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "SearchOutcome"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Alternatives Considered"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Option B: Generic chunker with declarative config"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/markdown.py",
+              "symbol": "_extract_section"
+            }
+          ]
         },
         {
           "query": "how to add support for a new programming language",
           "file_rank": 5,
-          "chunk_rank": 5
+          "chunk_rank": 5,
+          "hits": [
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Multi-language Support"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Context"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Option A: One class per language (no shared base)"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Adding a New Language"
+            },
+            {
+              "path": "docs/decisions/001-initial-architecture.md",
+              "symbol": "Key Design Choices"
+            },
+            {
+              "path": "src/semantic_code_mcp/container.py",
+              "symbol": "get_chunkers"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "CompositeChunker"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "ChunkType extension"
+            }
+          ]
         },
         {
           "query": "name an impl block after its trait and its type",
           "file_rank": 5,
-          "chunk_rank": 5
+          "chunk_rank": 5,
+          "hits": [
+            {
+              "path": "tests/test_rust_chunker.py",
+              "symbol": "test_impl_block_as_class_chunk"
+            },
+            {
+              "path": "tests/test_rust_chunker.py",
+              "symbol": "test_impl_trait_for_struct"
+            },
+            {
+              "path": "tests/test_rust_chunker.py",
+              "symbol": "test_trait_with_default_methods"
+            },
+            {
+              "path": "tests/test_rust_chunker.py",
+              "symbol": "test_struct_with_impl_methods"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/rust.py",
+              "symbol": "_get_impl_name"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/rust.py",
+              "symbol": "NodeType"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/rust.py",
+              "symbol": "_extract_impl"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/rust.py",
+              "symbol": "_get_type_name"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Why structural differences prevent a pure config approach"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Option B: Generic chunker with declarative config"
+            }
+          ]
         },
         {
           "query": "dispatch a file to the chunker registered for its extension",
           "file_rank": 1,
-          "chunk_rank": 1
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "chunk_file"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "composite"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "CompositeChunker"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "tests/test_composite_chunker.py",
+              "symbol": "TestCompositeChunker"
+            },
+            {
+              "path": "tests/test_composite_chunker.py",
+              "symbol": "test_unknown_extension_returns_empty"
+            },
+            {
+              "path": "tests/test_composite_chunker.py",
+              "symbol": "test_supported_extensions_empty"
+            },
+            {
+              "path": "tests/test_composite_chunker.py",
+              "symbol": "test_supported_extensions"
+            },
+            {
+              "path": "tests/test_composite_chunker.py",
+              "symbol": "test_collision_detection"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Architecture"
+            }
+          ]
         }
       ]
     }

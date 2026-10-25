@@ -47,6 +47,7 @@ class ProjectRegistry:
             git_timeout_seconds=settings.git_timeout_seconds,
         )
         self._services_by_index: dict[Path, ProjectServices] = {}
+        self._building = asyncio.Lock()
 
     async def services_for(self, project_root: Path) -> ProjectServices:
         """The services of a project, built on its first request.
@@ -55,10 +56,12 @@ class ProjectRegistry:
         registry itself is only ever changed on the event loop.
         """
         index_path = get_index_path(self._settings, project_root)
-        services = self._services_by_index.get(index_path)
-        if services is None:
-            services = await asyncio.to_thread(self._build, index_path)
-            self._services_by_index[index_path] = services
+        # Held across the build, so two first requests for one project build it once
+        async with self._building:
+            services = self._services_by_index.get(index_path)
+            if services is None:
+                services = await asyncio.to_thread(self._build, index_path)
+                self._services_by_index[index_path] = services
         return services
 
     def _build(self, index_path: Path) -> ProjectServices:

@@ -196,3 +196,17 @@ async def test_the_model_load_is_reported_before_it_happens(
     await services.indexing.index(sample_project, force=False, progress=ProgressReporter(recorder))
 
     assert "Loading the embedding model..." in recorder.messages
+
+
+async def test_two_first_requests_for_one_project_share_its_services(
+    test_settings: Settings, sample_project: Path
+):
+    registry = ProjectRegistry(
+        settings=test_settings, embedder=FakeEmbedder(), chunker=build_chunker()
+    )
+
+    first, second = await asyncio.gather(
+        registry.services_for(sample_project), registry.services_for(sample_project)
+    )
+
+    assert first is second

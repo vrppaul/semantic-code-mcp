@@ -1,7 +1,7 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own: the model load (a search of an
-empty project), a full index from scratch with the model already loaded, warm search
+Measured per corpus, in server processes of its own: the model load (a search of a
+one-file project), a full index from scratch with the model already loaded, warm search
 latency, how much the index grows with each single-file edit, the server's peak
 memory, and the first answer of a freshly started server on an up-to-date index — the
 process start and model load an agent waits for. Peak memory is read from `/proc`, so
@@ -36,7 +36,9 @@ EDIT_SUFFIX = "\n"
 PROC_ROOT = Path("/proc")
 PEAK_RESIDENT_FIELD = "VmHWM:"
 SERVER_COMMAND_MARK = b"semantic_code_mcp"
-# What the model-load search asks; the empty project has nothing to answer it with
+# The one-file project the model-load search runs on, and what it asks
+WARM_UP_FILE_NAME = "warm_up.py"
+WARM_UP_SOURCE = "def warm_up():\n    return None\n"
 WARM_UP_QUERY = "warm up"
 
 
@@ -120,10 +122,15 @@ async def measure_speed(
 
 
 async def timed_model_load_seconds(connection: ServerConnection) -> float:
-    """How long the server takes to load its model: a search of an empty project."""
-    with tempfile.TemporaryDirectory() as empty_project:
+    """How long the server takes to load its model: a search of a project of one tiny file.
+
+    The file makes the search embed something, so the model loads; an empty project
+    would be answered without it.
+    """
+    with tempfile.TemporaryDirectory() as warm_up_project:
+        (Path(warm_up_project) / WARM_UP_FILE_NAME).write_text(WARM_UP_SOURCE)
         started = time.perf_counter()
-        await connection.search(Path(empty_project), WARM_UP_QUERY, RESULTS_PER_QUERY)
+        await connection.search(Path(warm_up_project), WARM_UP_QUERY, RESULTS_PER_QUERY)
         return time.perf_counter() - started
 
 
