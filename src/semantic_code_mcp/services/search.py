@@ -3,10 +3,17 @@
 import asyncio
 import time
 from collections import defaultdict
+from enum import Enum
 from pathlib import Path
 
 from semantic_code_mcp.domain.interfaces import Embedder, VectorStore
-from semantic_code_mcp.domain.models import IndexResult, SearchReport, SearchResult, SearchTimings
+from semantic_code_mcp.domain.models import (
+    HIGHEST_SCORE,
+    IndexResult,
+    SearchReport,
+    SearchResult,
+    SearchTimings,
+)
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.timing import elapsed_milliseconds
@@ -20,18 +27,27 @@ VECTOR_WEIGHT = 0.5
 # to surface recently-touched code. 5% is small enough not to override relevance.
 ONE_WEEK_SECONDS = 7 * 24 * 60 * 60
 MAX_RECENCY_BOOST = 0.05
-HIGHEST_SCORE = 1.0
 
 # Overfetch 2x because score filtering and deduplication typically remove 30-50% of
 # raw results; 2x keeps the pipeline simple while enough candidates fill the limit.
 SEARCH_OVERFETCH_FACTOR = 2
 
-# How far along a search is at each step, out of the progress total
-CHECKING_INDEX_PROGRESS = 5
-INDEXING_PROGRESS = 10
-LOADING_MODEL_PROGRESS = 80
-SEARCHING_PROGRESS = 85
-DONE_PROGRESS = 100
+# The timings of a search that had nothing to look through
+NO_TIMINGS = SearchTimings(embedding_ms=0.0, search_ms=0.0, total_ms=0.0)
+
+
+class SearchPhase(Enum):
+    """The steps of a search, each worth how far along the search is when it starts."""
+
+    checking_index = 5.0
+    indexing = 10.0
+    loading_model = 80.0
+    searching = 85.0
+    done = 100.0
+
+
+# An index run inside a search reports within this band of the search's progress
+INDEXING_BAND_END = SearchPhase.loading_model.value
 
 
 class SearchService:
@@ -46,7 +62,7 @@ class SearchService:
         self, query: str, project_root: Path, *, limit: int, progress: ProgressReporter
     ) -> SearchReport:
         """Index stale files, then return the best hits for a query."""
-        await progress.report(CHECKING_INDEX_PROGRESS, "Checking index...")
+        await progress.report(SearchPhase.checking_index.value, "Checking index...")
         status = await self._indexing.status(project_root)
 
         index_result: IndexResult | None = None
@@ -56,14 +72,29 @@ class SearchService:
                 if status.is_indexed
                 else "Index not found, indexing..."
             )
-            await progress.report(INDEXING_PROGRESS, reason)
-            index_result = await self._indexing.index(project_root, force=False, progress=progress)
+            await progress.report(SearchPhase.indexing.value, reason)
+            index_result = await self._indexing.index(
+                project_root,
+                force=False,
+                progress=progress.within(SearchPhase.indexing.value, INDEXING_BAND_END),
+            )
+
+        nothing_indexed = status.chunks_count == 0 and (
+            index_result is None or index_result.chunks_indexed == 0
+        )
+        if nothing_indexed:
+            # No chunk to find: answer at once, without loading the model for the query
+            await progress.report(SearchPhase.done.value, "Nothing indexed")
+            return SearchReport(
+                results=[], filtered_count=0, timings=NO_TIMINGS, index_result=index_result
+            )
 
         if not self._embedder.is_loaded:
-            await progress.report(LOADING_MODEL_PROGRESS, "Loading the embedding model...")
-        await progress.report(SEARCHING_PROGRESS, "Searching...")
+            await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
+            await asyncio.to_thread(self._embedder.load)
+        await progress.report(SearchPhase.searching.value, "Searching...")
         report = await asyncio.to_thread(self._run_search, query, limit, index_result)
-        await progress.report(DONE_PROGRESS, f"Found {len(report.results)} results")
+        await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 
     def _run_search(self, query: str, limit: int, index_result: IndexResult | None) -> SearchReport:

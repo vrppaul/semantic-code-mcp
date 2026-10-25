@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `pandas` dependency
 
 ### Added
-- `search_code` takes `include_debug`; the `debug` block (timings, counts, what was indexed first) comes back only when asked for
+- `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
 - `LICENSE` (MIT) and license, author and project URLs in the package metadata; the wheel used to ship without a license
@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
-- `search_code` refuses a `limit` above 50
+- `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
+- The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project
 - A release runs the whole CI suite on the tagged commit before publishing to PyPI
@@ -47,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `index_status` loaded the embedding model it never uses, blocking for seconds
 - Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
+- A status or search during a forced re-index could fail on a dropped table; a forced run now empties the table instead
+- A failure inside a tool reached the agent as `Error executing tool ...` without its cause
+- With `local_index`, two spellings of one project path got separate locks and stores
+- A search of a project with nothing indexed loaded the model to embed its query
 - Index status and change detection ran on the event loop
 - Server failed to start on a fresh install: mcp 2.x renamed `FastMCP` to `MCPServer`, so `mcp` is now pinned below 2 until the migration (#3)
 - Untracked files were never indexed (#2, #3)

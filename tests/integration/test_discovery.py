@@ -10,6 +10,7 @@ from tests.helpers import commit_all, make_repository, run_git
 PYTHON_EXTENSIONS = (".py",)
 NO_IGNORE_PATTERNS: tuple[str, ...] = ()
 SHORT_GIT_TIMEOUT_SECONDS = 0.2
+GIT_TIMEOUT_SECONDS = 10.0
 
 
 def make_discovery(
@@ -20,6 +21,7 @@ def make_discovery(
         extensions=PYTHON_EXTENSIONS,
         ignore_patterns=ignore_patterns,
         use_gitignore=use_gitignore,
+        git_timeout_seconds=GIT_TIMEOUT_SECONDS,
     )
 
 

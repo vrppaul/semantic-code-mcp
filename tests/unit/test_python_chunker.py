@@ -66,8 +66,8 @@ class TestPythonChunker:
         chunks = chunker.chunk_file(str(file_path))
 
         # Should get class and its method
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
+        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
 
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "Person"
@@ -93,10 +93,10 @@ class TestPythonChunker:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
+        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
         assert len(method_chunks) == 2
 
-        names = {c.name for c in method_chunks}
+        names = {chunk.name for chunk in method_chunks}
         assert "add" in names
         assert "subtract" in names
 
@@ -117,8 +117,8 @@ def second():
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        first_fn = next(c for c in chunks if c.name == "first")
-        second_fn = next(c for c in chunks if c.name == "second")
+        first_fn = next(chunk for chunk in chunks if chunk.name == "first")
+        second_fn = next(chunk for chunk in chunks if chunk.name == "second")
 
         # Line numbers are 1-indexed
         assert first_fn.line_start == 3
@@ -177,7 +177,7 @@ def three():
         chunks = chunker.chunk_file(str(file_path))
 
         assert len(chunks) == 3
-        names = {c.name for c in chunks}
+        names = {chunk.name for chunk in chunks}
         assert names == {"one", "two", "three"}
 
     def test_nested_function_is_included_in_parent(self, tmp_path: Path):
@@ -248,7 +248,7 @@ class User:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert "@dataclass" in class_chunks[0].content
 
@@ -283,7 +283,7 @@ class User:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert "DEBUG = True" in class_chunks[0].content
         assert "VERSION" in class_chunks[0].content
@@ -305,10 +305,10 @@ class User:
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
+        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
         assert len(method_chunks) == 2
 
-        names = {c.name for c in method_chunks}
+        names = {chunk.name for chunk in method_chunks}
         assert "create" in names
         assert "from_dict" in names
 
@@ -336,8 +336,8 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="important.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
-        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.function]
+        module_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.module]
+        func_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.function]
 
         assert len(module_chunks) == 1
         assert len(func_chunks) == 1
@@ -358,7 +358,7 @@ def foo():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="multi.py")
 
-        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.module)
+        module_chunk = next(chunk for chunk in chunks if chunk.chunk_type == ChunkType.module)
         assert module_chunk.line_start == 1
         assert module_chunk.line_end == 5
 
@@ -372,7 +372,7 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="no_doc.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
+        module_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.module]
         assert len(module_chunks) == 0
 
     def test_docstring_after_import_not_extracted(self):
@@ -387,7 +387,7 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="after_import.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
+        module_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.module]
         assert len(module_chunks) == 0
 
     def test_file_with_only_docstring(self):
@@ -408,7 +408,7 @@ def hello():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="/some/path/my_module.py")
 
-        module_chunk = next(c for c in chunks if c.chunk_type == ChunkType.module)
+        module_chunk = next(chunk for chunk in chunks if chunk.chunk_type == ChunkType.module)
         assert module_chunk.name == "my_module"
 
     def test_comments_before_docstring_still_extracted(self):
@@ -424,7 +424,7 @@ def foo():
         chunker = PythonChunker()
         chunks = chunker.chunk_string(code, file_path="commented.py")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
+        module_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.module]
         assert len(module_chunks) == 1
         assert "Module docstring after comments" in module_chunks[0].content
 
@@ -446,10 +446,10 @@ def foo():
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
+        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
         # Both getter and setter are methods named "full_name"
         assert len(method_chunks) == 2
-        assert all(c.name == "full_name" for c in method_chunks)
+        assert all(chunk.name == "full_name" for chunk in method_chunks)
 
 
 class TestPythonChunkerSilentDrops:

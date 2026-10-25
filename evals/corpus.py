@@ -4,6 +4,7 @@ Each corpus is a TOML file under `evals/corpora/`. A question names every answer
 counts — a file and the chunk name inside it — so a score never depends on taste.
 """
 
+import shutil
 import subprocess  # nosec B404
 import tomllib
 from collections.abc import Sequence
@@ -15,7 +16,7 @@ CORPORA_DIRECTORY = Path(__file__).parent / "corpora"
 CORPUS_FILE_SUFFIX = ".toml"
 # A checkout's directory is named after the corpus and this many characters of its commit
 COMMIT_PREFIX_LENGTH = 12
-# Where a clone is made before it is moved into place, so a failed clone leaves nothing behind
+# Where a clone is made before it is moved into place; a failed clone or checkout is removed
 PARTIAL_CHECKOUT_SUFFIX = ".partial"
 
 
@@ -73,15 +74,25 @@ def load_corpora(names: Sequence[str]) -> list[Corpus]:
 
 
 def checkout(source: CorpusSource, checkouts_root: Path) -> Path:
-    """A working tree of the corpus at its pinned commit, cloned on first use and reused after."""
+    """A clean working tree of the corpus at its pinned commit, cloned on first use.
+
+    A checkout kept from an earlier run is restored first, so edits a killed speed run
+    left behind are not indexed.
+    """
     target = checkouts_root / f"{source.name}-{source.commit[:COMMIT_PREFIX_LENGTH]}"
     if target.is_dir():
+        restore(target)
         return target
 
     partial = target.with_name(target.name + PARTIAL_CHECKOUT_SUFFIX)
     checkouts_root.mkdir(parents=True, exist_ok=True)
-    run_git(["clone", "--quiet", "--filter=blob:none", source.repository, str(partial)])
-    run_git(["-C", str(partial), "checkout", "--quiet", "--detach", source.commit])
+    shutil.rmtree(partial, ignore_errors=True)
+    try:
+        run_git(["clone", "--quiet", "--filter=blob:none", source.repository, str(partial)])
+        run_git(["-C", str(partial), "checkout", "--quiet", "--detach", source.commit])
+    except subprocess.CalledProcessError:
+        shutil.rmtree(partial, ignore_errors=True)
+        raise
     partial.rename(target)
     return target
 

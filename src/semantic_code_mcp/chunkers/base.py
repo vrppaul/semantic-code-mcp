@@ -125,15 +125,17 @@ class BaseTreeSitterChunker(ABC):
         Returns:
             List of Chunk objects; empty when the file cannot be read, is binary or too large.
         """
+        path = Path(file_path)
         try:
-            source = Path(file_path).read_bytes()
+            size_bytes = path.stat().st_size
+            if size_bytes > MAX_SOURCE_BYTES:
+                log.warning("skipped_large_file", file_path=file_path, size_bytes=size_bytes)
+                return []
+            source = path.read_bytes()
         except OSError as error:
             log.warning("failed_to_read_file", file_path=file_path, error=str(error))
             return []
 
-        if len(source) > MAX_SOURCE_BYTES:
-            log.warning("skipped_large_file", file_path=file_path, size_bytes=len(source))
-            return []
         if NUL_BYTE in source[:BINARY_SNIFF_BYTES]:
             log.warning("skipped_binary_file", file_path=file_path)
             return []

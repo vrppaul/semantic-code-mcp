@@ -47,7 +47,10 @@ answers = [{ path = "src/click/formatting.py", symbol = "wrap_text" }]
 
 [[queries]]
 text = "invoke a command in a test and capture what it prints"
-answers = [{ path = "src/click/testing.py", symbol = "invoke" }]
+answers = [
+  { path = "src/click/testing.py", symbol = "invoke" },
+  { path = "src/click/testing.py", symbol = "CliRunner" },
+]
 
 [[queries]]
 text = "parse several short flags grouped together like -abc"
@@ -63,7 +66,10 @@ answers = [{ path = "src/click/_compat.py", symbol = "_AtomicFile" }]
 
 [[queries]]
 text = "remove ANSI color escape codes from text"
-answers = [{ path = "src/click/_compat.py", symbol = "strip_ansi" }]
+answers = [
+  { path = "src/click/_compat.py", symbol = "strip_ansi" },
+  { path = "src/click/termui.py", symbol = "unstyle" },
+]
 
 [[queries]]
 text = "color text with foreground and background colors and make it bold"

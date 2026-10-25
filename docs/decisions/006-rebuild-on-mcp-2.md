@@ -213,7 +213,8 @@ Both are built before the structural rebuild, so the rebuild proves it changed n
 - **The client** starts the server as an agent does, over stdio, and speaks to it only through its tools, so the harness stays valid across the rebuild; one function knows the shape of a tool's answer.
 - **Corpora** are data, one TOML file each under `evals/corpora/`: a repository pinned by commit and its questions, each naming every answer that counts (a file and a chunk name). Three corpora, 51 questions: this repo at v0.4.0 (docs-heavy, which reproduces GH3/GH5), pallets/click (Python with a large Markdown manual) and sharkdp/fd (Rust). A run fails when an answer names a file its checkout lacks.
 - **`uv run python -m evals quality`** scores hits@1, hits@3 and MRR twice — for the right file and for the right chunk — matching the two scores in issue #3.
-- **`uv run python -m evals speed`** measures a full index (files/s, chunks/s), warm search p50/p95, the first search of a freshly started server (process start and model load), the server's peak memory (Linux), and index growth per single-file edit.
+- **`uv run python -m evals speed`** measures the model load (a search of an empty project), a full index with the model already loaded (files/s, chunks/s), warm search p50/p95, the first search of a freshly started server on an up-to-date index (process start and model load), the server's peak memory (Linux), and index growth per single-file edit. With 15–20 questions a corpus, p95 is close to the slowest search.
+- **Answers are checked before a run:** every answer's file must exist in the checkout and its chunk name must be one the server's chunker gives that file; a run fails otherwise. Results keep each question's top hits, so a miss can be read without running the model again.
 - **Baselines** live in `evals/baseline/`; each run prints its numbers beside them and `--save-baseline` replaces them. Speeds compare only on the machine they were measured on. Every search, chunking or speed change records its before and after in the commit message.
 - It runs locally, not on every commit: it needs the model and clones. CI may run it on demand.
 - The performance targets in `.claude/rules/mcp-server.md` are reset from its numbers in stage 7. Today all four are missed (Appendix B), and "50 files/s" on CPU is not reachable with any model we would consider [suspected].
@@ -322,6 +323,13 @@ The project rules say to ask before changing the storage schema, the tool signat
 ### Stages and releases
 
 Progress: stages 0–4 are done on branch `rebuild-on-mcp-2` (2026-10-25); the 0.4.1 release is commit `84d678b`. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
+
+As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
+- `cli.py` builds `Settings` and configures logging; `app.py` builds the server, and its lifespan yields the `ProjectRegistry` itself rather than an `AppContext` around it.
+- The tools check the project path at the edge (absolute, existing, a directory, resolved) and turn the failure families of the parts (`OSError`, `RuntimeError`, `ValueError`) into `ToolError` with their cause; mcp 2.x drops the message of anything else. A domain error hierarchy still waits for its second kind.
+- Reads take no lock. A forced run empties the table instead of dropping it, so a reader sees an empty or a full index, never a missing table; stage 5's files table keeps this.
+- The model loads in a worker thread right after its own progress report; an index run inside a search reports within the search's band of progress.
+- Property tests (hypothesis) move to stage 6, with the fusion they are most needed for. The old chunker tests still filter in comprehensions; TODO.md records it.
 
 
 | Stage | Content | Release |

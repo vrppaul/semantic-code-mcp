@@ -11,6 +11,7 @@ from semantic_code_mcp.server.responses import (
     SearchStatsView,
     SearchTimingsView,
 )
+from semantic_code_mcp.services.timing import MILLISECOND_DECIMALS, MILLISECONDS_PER_SECOND
 
 # A hit's content is cut to this many lines; the agent reads the file for the rest
 MAX_RESULT_LINES = 50
@@ -18,8 +19,6 @@ TRUNCATION_MARK = "\n... (truncated)"
 SCORE_DECIMALS = 3
 # A rough count of tokens in English text and code
 CHARACTERS_PER_TOKEN = 4
-MILLISECONDS_PER_SECOND = 1000
-MILLISECOND_DECIMALS = 1
 
 
 def present_search(report: SearchReport, *, include_debug: bool) -> SearchCodeResponse:

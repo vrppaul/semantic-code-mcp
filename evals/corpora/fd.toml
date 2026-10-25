@@ -17,11 +17,18 @@ answers = [
 
 [[queries]]
 text = "run a command for every search result"
-answers = [{ path = "src/exec/job.rs", symbol = "job" }]
+answers = [
+  { path = "src/exec/job.rs", symbol = "job" },
+  { path = "src/exec/mod.rs", symbol = "execute" },
+]
 
 [[queries]]
 text = "run one command with all the results as its arguments"
-answers = [{ path = "src/exec/job.rs", symbol = "batch" }]
+answers = [
+  { path = "src/exec/job.rs", symbol = "batch" },
+  { path = "src/exec/mod.rs", symbol = "execute_batch" },
+  { path = "src/exec/mod.rs", symbol = "new_batch" },
+]
 
 [[queries]]
 text = "walk directories in parallel and collect the matching entries"
@@ -59,6 +66,8 @@ text = "turn a path into a file URL for terminal hyperlinks"
 answers = [
   { path = "src/hyperlink.rs", symbol = "PathUrl" },
   { path = "src/hyperlink.rs", symbol = "Display for PathUrl" },
+  { path = "src/hyperlink.rs", symbol = "new" },
+  { path = "src/hyperlink.rs", symbol = "encode" },
 ]
 
 [[queries]]

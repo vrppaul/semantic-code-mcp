@@ -1,5 +1,6 @@
 """End-to-end tests: the MCP tools driven through a client, as an agent calls them."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,9 @@ def load_config(path: str) -> dict:
         return json.load(config_file)
 '''
 
+# An mtime well after any the test wrote, so the change is seen on any file system
+LATER_MTIME_SECONDS = 4_000_000_000
+
 RETRY_FUNCTION = '''
 
 def retry_with_backoff(operation, attempts: int):
@@ -53,7 +57,8 @@ def project(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(test_settings: Settings, embedder: SentenceTransformerEmbedder) -> Client:
-    return Client(create_app(test_settings, embedder=embedder))
+    # "legacy" goes through JSON-RPC framing, as a real client does
+    return Client(create_app(test_settings, embedder=embedder), mode="legacy")
 
 
 async def test_search_returns_the_function_the_query_describes(project: Path, client: Client):
@@ -100,8 +105,9 @@ async def test_index_status_counts_the_indexed_project(project: Path, client: Cl
 async def test_search_sees_a_function_added_after_indexing(project: Path, client: Client):
     async with client:
         await client.call_tool("index_codebase", {"project_path": str(project)})
-        with (project / "config.py").open("a") as config_module:
-            config_module.write(RETRY_FUNCTION)
+        config_module = project / "config.py"
+        config_module.write_text(config_module.read_text() + RETRY_FUNCTION)
+        os.utime(config_module, (LATER_MTIME_SECONDS, LATER_MTIME_SECONDS))
         result = await client.call_tool(
             "search_code",
             {"query": "try again after waiting longer", "project_path": str(project)},
@@ -131,3 +137,40 @@ async def test_a_limit_over_the_maximum_is_refused(project: Path, client: Client
         )
 
     assert result.is_error
+
+
+async def test_a_failure_inside_a_tool_reaches_the_agent_with_its_cause(
+    project: Path, tmp_path: Path, embedder: SentenceTransformerEmbedder
+):
+    """An index directory that cannot be made: the agent must hear why, not just that."""
+    blocking_file = tmp_path / "not-a-directory"
+    blocking_file.write_text("")
+    client = Client(create_app(Settings(cache_dir=blocking_file), embedder=embedder), mode="legacy")
+
+    async with client:
+        result = await client.call_tool("index_status", {"project_path": str(project)})
+
+    assert result.is_error
+    assert "not-a-directory" in str(result.content)
+
+
+async def test_a_relative_project_path_is_refused(client: Client):
+    async with client:
+        result = await client.call_tool("index_status", {"project_path": "relative/project"})
+
+    assert result.is_error
+    assert "absolute" in str(result.content)
+
+
+async def test_two_spellings_of_one_project_share_its_local_index(
+    project: Path, tmp_path: Path, embedder: SentenceTransformerEmbedder
+):
+    settings = Settings(cache_dir=tmp_path / "cache", local_index=True)
+    client = Client(create_app(settings, embedder=embedder), mode="legacy")
+    roundabout = project / ".." / project.name
+
+    async with client:
+        await client.call_tool("index_codebase", {"project_path": str(roundabout)})
+        result = await client.call_tool("index_status", {"project_path": str(project)})
+
+    assert IndexStatusResponse.model_validate(structured(result)).stale_files_count == 0

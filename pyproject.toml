@@ -158,7 +158,7 @@ known-first-party = ["semantic_code_mcp"]
 [tool.ruff.lint.per-file-ignores]
 # The tests are held to formatting and to what keeps them readable; the rules for
 # shipped code (annotations, named values, booleans, argument counts) are not theirs
-"tests/**/*.py" = ["ANN", "PLR2004", "FBT", "PLR0913", "ARG", "S", "SLF001", "T20", "DTZ", "PLC0415", "INP001"]
+"tests/**/*.py" = ["ANN", "PLR2004", "FBT", "PLR0913", "ARG", "SLF001", "T20", "DTZ", "PLC0415", "INP001"]
 # A command-line report: printing the report is its job
 "evals/__main__.py" = ["T20"]
 # Scripts are run by path, not imported from a package, and what they find is their
@@ -232,21 +232,83 @@ source_modules = [
 forbidden_modules = ["mcp"]
 
 [[tool.importlinter.contracts]]
-name = "Each library stays in the part that wraps it"
+name = "LanceDB stays in the store"
 type = "forbidden"
-# LanceDB in the store, sentence-transformers in the embedder, tree-sitter in the
-# chunkers: replacing one touches one part
+# Replacing the vector database touches one part
 source_modules = [
     "semantic_code_mcp.app",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.__main__",
     "semantic_code_mcp.server",
     "semantic_code_mcp.services",
     "semantic_code_mcp.discovery",
-    "semantic_code_mcp.domain",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.embedding",
     "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
 ]
-forbidden_modules = ["lancedb", "pyarrow", "sentence_transformers", "torch", "tree_sitter"]
+forbidden_modules = ["lancedb", "pyarrow"]
 # Through the part that wraps it, a library is meant to be reached
 allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "sentence-transformers stays in the embedder"
+type = "forbidden"
+# Replacing the model's library touches one part
+source_modules = [
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.storage",
+    "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+forbidden_modules = ["sentence_transformers", "torch"]
+# Through the part that wraps it, a library is meant to be reached
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "tree-sitter stays in the chunkers"
+type = "forbidden"
+# A new grammar or parser touches one part
+source_modules = [
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.embedding",
+    "semantic_code_mcp.storage",
+    "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+forbidden_modules = ["tree_sitter", "tree_sitter_python", "tree_sitter_rust", "tree_sitter_markdown"]
+# Through the part that wraps it, a library is meant to be reached
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "The domain is pure"
+type = "forbidden"
+# Models, interfaces and errors import pydantic and the standard library alone
+source_modules = ["semantic_code_mcp.domain"]
+forbidden_modules = [
+    "structlog",
+    "pydantic_settings",
+    "mcp",
+    "lancedb",
+    "pyarrow",
+    "sentence_transformers",
+    "torch",
+    "tree_sitter",
+]
 
 [tool.vulture]
 paths = ["src", "evals", "tests", "scripts"]

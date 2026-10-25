@@ -5,9 +5,12 @@ A tool fails with a `ToolError`, whose message reaches the agent; anything else 
 escapes is a crash, and the agent hears only that the tool failed.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
 
+import structlog
 from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
@@ -19,7 +22,9 @@ from semantic_code_mcp.server.responses import (
     SearchCodeResponse,
 )
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.services.projects import ProjectRegistry
+from semantic_code_mcp.services.projects import ProjectRegistry, ProjectServices
+
+log = structlog.get_logger()
 
 DEFAULT_RESULTS = 10
 MAX_RESULTS = 50
@@ -56,12 +61,13 @@ async def search_code(
     Returns:
         Matching chunks with file path, line range, name, type, content and score.
     """
-    project_root = existing_project_root(project_path)
-    services = ctx.request_context.lifespan_context.services_for(project_root)
-    report = await services.search.search(
-        query, project_root, limit=limit, progress=ProgressReporter(ctx.report_progress)
-    )
-    return present_search(report, include_debug=include_debug)
+    with failures_as_tool_errors():
+        project_root = existing_project_root(project_path)
+        services = await project_services(ctx, project_root)
+        report = await services.search.search(
+            query, project_root, limit=limit, progress=ProgressReporter(ctx.report_progress)
+        )
+        return present_search(report, include_debug=include_debug)
 
 
 async def index_codebase(
@@ -86,12 +92,13 @@ async def index_codebase(
     Returns:
         Statistics about the indexing operation.
     """
-    project_root = existing_project_root(project_path)
-    services = ctx.request_context.lifespan_context.services_for(project_root)
-    result = await services.indexing.index(
-        project_root, force=force, progress=ProgressReporter(ctx.report_progress)
-    )
-    return present_index(result)
+    with failures_as_tool_errors():
+        project_root = existing_project_root(project_path)
+        services = await project_services(ctx, project_root)
+        result = await services.indexing.index(
+            project_root, force=force, progress=ProgressReporter(ctx.report_progress)
+        )
+        return present_index(result)
 
 
 async def index_status(
@@ -113,19 +120,41 @@ async def index_status(
     Returns:
         Index status including files count and chunks count.
     """
-    project_root = existing_project_root(project_path)
-    services = ctx.request_context.lifespan_context.services_for(project_root)
-    status = await services.indexing.status(project_root)
-    return present_status(status)
+    with failures_as_tool_errors():
+        project_root = existing_project_root(project_path)
+        services = await project_services(ctx, project_root)
+        return present_status(await services.indexing.status(project_root))
+
+
+async def project_services(ctx: Context[ProjectRegistry], project_root: Path) -> ProjectServices:
+    """The services of a project, from the registry the session shares."""
+    return await ctx.request_context.lifespan_context.services_for(project_root)
+
+
+@contextmanager
+def failures_as_tool_errors() -> Iterator[None]:
+    """Turn what the parts raise when the disk, git, LanceDB or the model fail into tool
+    errors that carry their cause, which mcp would otherwise drop."""
+    try:
+        yield
+    except ToolError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        log.exception("tool_failed")
+        message = f"{type(error).__name__}: {error}"
+        raise ToolError(message) from error
 
 
 def existing_project_root(project_path: str) -> Path:
-    """The project path as a directory that exists, or a tool error saying what is wrong."""
+    """The project path, resolved, as a directory that exists; or a tool error saying why not."""
     path = Path(project_path)
+    if not path.is_absolute():
+        message = f"Project path must be absolute: {project_path}"
+        raise ToolError(message)
     if not path.exists():
         message = f"Project path does not exist: {project_path}"
         raise ToolError(message)
     if not path.is_dir():
         message = f"Project path is not a directory: {project_path}"
         raise ToolError(message)
-    return path
+    return path.resolve()

@@ -1,7 +1,8 @@
 """The server as an agent meets it: a process started over stdio, spoken to through its tools.
 
 Measuring through the tools, not the package's modules, keeps the harness valid across a
-rebuild of everything behind them. Only `tool_payload` knows the shape of a tool's answer.
+rebuild of everything behind them. This module alone knows the tools' names and the fields
+of their answers the harness reads.
 """
 
 import os
@@ -19,6 +20,8 @@ from pydantic import BaseModel, ConfigDict
 SETTINGS_PREFIX = "SEMANTIC_CODE_MCP_"
 CACHE_DIR_VARIABLE = f"{SETTINGS_PREFIX}CACHE_DIR"
 SERVER_MODULE = "semantic_code_mcp"
+# Long enough for a full index of the largest corpus with a cold model download
+READ_TIMEOUT_SECONDS = 900.0
 
 
 class SearchHit(BaseModel):
@@ -85,7 +88,9 @@ async def connect(index_directory: Path, server_log: TextIO) -> AsyncGenerator[S
     )
     async with (
         stdio_client(parameters, errlog=server_log) as (read_stream, write_stream),
-        ClientSession(read_stream, write_stream) as session,
+        ClientSession(
+            read_stream, write_stream, read_timeout_seconds=READ_TIMEOUT_SECONDS
+        ) as session,
     ):
         await session.initialize()
         yield ServerConnection(session)

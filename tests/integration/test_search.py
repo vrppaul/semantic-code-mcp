@@ -9,7 +9,7 @@ from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.projects import build_chunker
 from semantic_code_mcp.services.search import MIN_SCORE, SearchService
-from tests.fakes import FakeEmbedder, FakeVectorStore
+from tests.fakes import FakeEmbedder, FakeVectorStore, ProgressRecorder
 
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
@@ -30,16 +30,21 @@ def hit(name: str, score: float, file_path: str = OLD_FILE) -> SearchResult:
     )
 
 
-def search_service(store: FakeVectorStore, settings: Settings, project: Path) -> SearchService:
+def search_service(
+    store: FakeVectorStore,
+    settings: Settings,
+    project: Path,
+    embedder: FakeEmbedder,
+) -> SearchService:
     chunker = build_chunker()
     index_path = get_index_path(settings, project)
     index_path.mkdir(parents=True)
-    embedder = FakeEmbedder()
     indexing = IndexingService(
         discovery=SourceDiscovery(
             extensions=chunker.supported_extensions,
             ignore_patterns=settings.ignore_patterns,
             use_gitignore=settings.use_gitignore,
+            git_timeout_seconds=settings.git_timeout_seconds,
         ),
         chunker=chunker,
         embedder=embedder,
@@ -53,7 +58,7 @@ async def test_hits_below_the_minimum_score_are_dropped(
     test_settings: Settings, sample_project: Path
 ):
     store = FakeVectorStore(hits=[hit("kept", 0.9), hit("dropped", BELOW_MIN_SCORE)])
-    service = search_service(store, test_settings, sample_project)
+    service = search_service(store, test_settings, sample_project, FakeEmbedder())
 
     report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
@@ -63,7 +68,7 @@ async def test_hits_below_the_minimum_score_are_dropped(
 
 async def test_no_more_hits_than_the_limit(test_settings: Settings, sample_project: Path):
     store = FakeVectorStore(hits=[hit(f"function_{rank}", 0.9) for rank in range(LIMIT)])
-    service = search_service(store, test_settings, sample_project)
+    service = search_service(store, test_settings, sample_project, FakeEmbedder())
 
     report = await service.search("anything", sample_project, limit=3, progress=NO_PROGRESS)
 
@@ -80,7 +85,7 @@ async def test_hits_of_one_file_stand_together_best_file_first(
             hit("third", 0.7, "/nowhere/a.py"),
         ]
     )
-    service = search_service(store, test_settings, sample_project)
+    service = search_service(store, test_settings, sample_project, FakeEmbedder())
 
     report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
@@ -91,7 +96,7 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
     test_settings: Settings, sample_project: Path
 ):
     store = FakeVectorStore(hits=[])
-    service = search_service(store, test_settings, sample_project)
+    service = search_service(store, test_settings, sample_project, FakeEmbedder())
 
     report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
@@ -101,9 +106,37 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
 
 async def test_an_index_up_to_date_is_not_touched(test_settings: Settings, sample_project: Path):
     store = FakeVectorStore(hits=[])
-    service = search_service(store, test_settings, sample_project)
+    service = search_service(store, test_settings, sample_project, FakeEmbedder())
     await service.search("first", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
     report = await service.search("second", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
     assert report.index_result is None
+
+
+async def test_progress_of_a_search_that_indexes_only_moves_forward(
+    test_settings: Settings, sample_project: Path
+):
+    recorder = ProgressRecorder()
+    service = search_service(
+        FakeVectorStore(hits=[]), test_settings, sample_project, FakeEmbedder()
+    )
+
+    await service.search(
+        "anything", sample_project, limit=LIMIT, progress=ProgressReporter(recorder)
+    )
+
+    assert recorder.progress_values == sorted(recorder.progress_values)
+
+
+async def test_a_project_with_nothing_indexed_is_answered_without_the_model(
+    test_settings: Settings, tmp_path: Path
+):
+    empty_project = tmp_path / "empty"
+    empty_project.mkdir()
+    embedder = FakeEmbedder(loaded=False)
+    service = search_service(FakeVectorStore(hits=[]), test_settings, empty_project, embedder)
+
+    report = await service.search("anything", empty_project, limit=LIMIT, progress=NO_PROGRESS)
+
+    assert (report.results, embedder.is_loaded) == ([], False)

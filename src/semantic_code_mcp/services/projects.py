@@ -1,5 +1,6 @@
 """The services of each project the server has been asked about, built once and kept."""
 
+import asyncio
 from pathlib import Path
 
 from semantic_code_mcp.chunkers.composite import CompositeChunker
@@ -30,8 +31,9 @@ class ProjectServices:
 class ProjectRegistry:
     """Builds each project's services on first use and keeps them for the session.
 
-    Keyed by index directory, so two spellings of one project share a store, a lock
-    and a cache. The embedding model is shared by every project.
+    Keyed by index directory, so a project reached by two spellings shares one store,
+    lock and cache as long as callers resolve its path first (the tools do). The
+    embedding model is shared by every project.
     """
 
     def __init__(self, settings: Settings, embedder: Embedder, chunker: Chunker) -> None:
@@ -46,12 +48,16 @@ class ProjectRegistry:
         )
         self._services_by_index: dict[Path, ProjectServices] = {}
 
-    def services_for(self, project_root: Path) -> ProjectServices:
-        """The services of a project, built on its first request."""
+    async def services_for(self, project_root: Path) -> ProjectServices:
+        """The services of a project, built on its first request.
+
+        Opening the store touches the disk, so it happens in a worker thread; the
+        registry itself is only ever changed on the event loop.
+        """
         index_path = get_index_path(self._settings, project_root)
         services = self._services_by_index.get(index_path)
         if services is None:
-            services = self._build(index_path)
+            services = await asyncio.to_thread(self._build, index_path)
             self._services_by_index[index_path] = services
         return services
 

@@ -6,23 +6,27 @@
 Each run indexes into a fresh temporary directory; checkouts of the corpora are kept
 under ~/.cache/semantic-code-mcp-evals and reused. Prints one line per corpus next to the
 saved baseline, writes the whole report as JSON to `evals/results/`, and with
---save-baseline makes it the new baseline. Exits 0, or 1 when a tool call fails or a
-corpus names an answer file its checkout lacks.
+--save-baseline makes it the new baseline. Exits 0, or 1 when a tool call fails or
+times out, a clone fails, or a corpus names an answer its checkout lacks.
 """
 
 import argparse
 import asyncio
+import subprocess  # nosec B404
 import sys
 import tempfile
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from mcp.shared.exceptions import MCPError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from evals.corpus import Corpus, available_corpus_names, checkout, load_corpora
 from evals.quality import CorpusMistakeError, CorpusQuality, RankScores, measure_quality
 from evals.server import ToolCallFailedError, connect
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
+from semantic_code_mcp.logging import configure_logging
 
 CHECKOUTS_ROOT = Path.home() / ".cache" / "semantic-code-mcp-evals"
 EVALS_DIRECTORY = Path(__file__).parent
@@ -56,6 +60,8 @@ class SpeedReport(BaseModel):
 
 def main() -> int:
     arguments = parse_arguments(sys.argv[1:])
+    # The answer check runs the chunker in this process; its debug lines are noise here
+    configure_logging(debug=False)
     RESULTS_DIRECTORY.mkdir(exist_ok=True)
     BASELINE_DIRECTORY.mkdir(exist_ok=True)
     corpora = load_corpora(arguments.corpus)
@@ -65,7 +71,12 @@ def main() -> int:
                 run_quality(corpora, save_baseline=arguments.save_baseline)
             case "speed":
                 run_speed(corpora, edits=arguments.edits, save_baseline=arguments.save_baseline)
-    except (ToolCallFailedError, CorpusMistakeError) as error:
+    except (
+        ToolCallFailedError,
+        CorpusMistakeError,
+        MCPError,
+        subprocess.CalledProcessError,
+    ) as error:
         print(error, file=sys.stderr)
         return EXIT_FAILED
     return EXIT_OK
@@ -81,8 +92,17 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
             "--corpus", action="append", default=[], choices=available_corpus_names()
         )
         command.add_argument("--save-baseline", action="store_true")
-    speed.add_argument("--edits", type=int, default=DEFAULT_EDITS)
+    speed.add_argument("--edits", type=positive_integer, default=DEFAULT_EDITS)
     return parser.parse_args(argv)
+
+
+def positive_integer(text: str) -> int:
+    """An argument that must be a whole number above zero."""
+    value = int(text)
+    if value < 1:
+        message = f"must be at least 1, not {value}"
+        raise argparse.ArgumentTypeError(message)
+    return value
 
 
 def run_quality(corpora: list[Corpus], *, save_baseline: bool) -> None:
@@ -118,6 +138,7 @@ async def collect_quality(corpora: list[Corpus]) -> list[CorpusQuality]:
             tempfile.TemporaryDirectory() as index_directory,
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
+            server_log.write(log_header("quality", corpus))
             async with connect(Path(index_directory), server_log) as connection:
                 measured.append(await measure_quality(corpus, working_tree, connection))
     return measured
@@ -131,10 +152,16 @@ async def collect_speed(corpora: list[Corpus], edits: int) -> list[CorpusSpeed]:
             tempfile.TemporaryDirectory() as index_directory,
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
+            server_log.write(log_header("speed", corpus))
             measured.append(
                 await measure_speed(corpus, working_tree, Path(index_directory), edits, server_log)
             )
     return measured
+
+
+def log_header(command: str, corpus: Corpus) -> str:
+    """The line that opens one corpus's server log in the shared log file."""
+    return f"\n===== {command} {corpus.corpus.name} {datetime.now(tz=UTC).isoformat()} =====\n"
 
 
 def describe_quality(entry: CorpusQuality, baseline: CorpusQuality | None) -> str:
@@ -179,9 +206,14 @@ def speed_summary(entry: CorpusSpeed) -> str:
 
 
 def read_report[Report: BaseModel](path: Path, report_type: type[Report]) -> Report | None:
+    """A saved report, or None when there is none or it was saved in an older shape."""
     if not path.is_file():
         return None
-    return report_type.model_validate_json(path.read_text())
+    try:
+        return report_type.model_validate_json(path.read_text())
+    except ValidationError:
+        print(f"{path} was saved in an older shape; compare after --save-baseline", file=sys.stderr)
+        return None
 
 
 def write_report(report: BaseModel, file_name: str, *, save_baseline: bool) -> None:

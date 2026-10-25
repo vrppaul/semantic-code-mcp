@@ -3,34 +3,32 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from functools import partial
+from importlib.metadata import version
 
 from mcp.server.mcpserver import MCPServer
 
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.interfaces import Embedder
-from semantic_code_mcp.embedding import SentenceTransformerEmbedder
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
 from semantic_code_mcp.services.projects import ProjectRegistry, build_chunker
 
 SERVER_NAME = "semantic-code-mcp"
+PACKAGE_NAME = "semantic-code-mcp"
 
 
-def create_app(settings: Settings, embedder: Embedder | None = None) -> MCPServer[ProjectRegistry]:
+def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegistry]:
     """The MCP server with its tools, sharing one registry of projects.
 
     Args:
         settings: Application settings.
-        embedder: The embedder to share; by default one over `settings.embedding_model`,
-            loaded on first use. Tests hand in one already loaded.
+        embedder: The embedder every project shares.
     """
-    shared_embedder = (
-        embedder if embedder is not None else SentenceTransformerEmbedder(settings.embedding_model)
-    )
     middleware = [ProfilingMiddleware(settings.profiles_dir)] if settings.profile else []
     server = MCPServer(
         SERVER_NAME,
-        lifespan=partial(project_registry_lifespan, settings=settings, embedder=shared_embedder),
+        version=version(PACKAGE_NAME),
+        lifespan=partial(project_registry_lifespan, settings=settings, embedder=embedder),
         middleware=middleware,
     )
     for tool in (search_code, index_codebase, index_status):

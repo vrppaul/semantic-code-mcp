@@ -3,7 +3,7 @@
 import asyncio
 import time
 from datetime import UTC, datetime
-from enum import StrEnum, auto
+from enum import Enum
 from pathlib import Path
 
 import structlog
@@ -26,24 +26,14 @@ log = structlog.get_logger()
 DURATION_DECIMALS = 3
 
 
-class IndexPhase(StrEnum):
-    """The steps of an index run, each reported to the client as it starts."""
+class IndexPhase(Enum):
+    """The steps of an index run, each worth how far along the run is when it starts."""
 
-    scanning = auto()
-    detecting_changes = auto()
-    chunking = auto()
-    loading_model = auto()
-    embedding = auto()
-
-
-# How far along an index run is when each phase starts, out of PROGRESS_TOTAL
-PHASE_PROGRESS: dict[IndexPhase, float] = {
-    IndexPhase.scanning: 5,
-    IndexPhase.detecting_changes: 10,
-    IndexPhase.chunking: 20,
-    IndexPhase.loading_model: 60,
-    IndexPhase.embedding: 70,
-}
+    scanning = 5.0
+    detecting_changes = 10.0
+    chunking = 20.0
+    loading_model = 60.0
+    embedding = 70.0
 
 
 class IndexingService:
@@ -80,11 +70,11 @@ class IndexingService:
     ) -> IndexResult:
         started = time.perf_counter()
 
-        await progress.report(PHASE_PROGRESS[IndexPhase.scanning], "Scanning files...")
+        await progress.report(IndexPhase.scanning.value, "Scanning files...")
         files = await asyncio.to_thread(self.scan_files, project_root)
 
         await progress.report(
-            PHASE_PROGRESS[IndexPhase.detecting_changes],
+            IndexPhase.detecting_changes.value,
             f"Found {len(files)} files, detecting changes...",
         )
         plan = await asyncio.to_thread(self.detect_changes, files, force=force)
@@ -92,7 +82,7 @@ class IndexingService:
         chunks: list[Chunk] = []
         if plan.has_work:
             await progress.report(
-                PHASE_PROGRESS[IndexPhase.chunking], f"Chunking {len(plan.files_to_index)} files..."
+                IndexPhase.chunking.value, f"Chunking {len(plan.files_to_index)} files..."
             )
             chunks = await asyncio.to_thread(self.chunk_files, plan.files_to_index)
             await self._embed_and_store(plan, chunks, progress)
@@ -153,11 +143,10 @@ class IndexingService:
         if chunks:
             if not self._embedder.is_loaded:
                 await progress.report(
-                    PHASE_PROGRESS[IndexPhase.loading_model], "Loading the embedding model..."
+                    IndexPhase.loading_model.value, "Loading the embedding model..."
                 )
-            await progress.report(
-                PHASE_PROGRESS[IndexPhase.embedding], f"Embedding {len(chunks)} chunks..."
-            )
+                await asyncio.to_thread(self._embedder.load)
+            await progress.report(IndexPhase.embedding.value, f"Embedding {len(chunks)} chunks...")
             started = time.perf_counter()
             embeddings = await asyncio.to_thread(
                 self._embedder.embed_batch, [chunk.content for chunk in chunks]
@@ -171,6 +160,10 @@ class IndexingService:
             ]
             await asyncio.to_thread(self._store.add_chunks, items)
 
+        await asyncio.to_thread(self._record_files, plan)
+
+    def _record_files(self, plan: ScanPlan) -> None:
+        """Record in the cache which files the index now holds, and drop the deleted."""
         cache = FileChangeCache(self._cache_directory)
         cache.remove_files(plan.files_to_delete)
         cache.update_files(plan.files_to_index)

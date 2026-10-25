@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from evals.corpus import Answer, Corpus, Query, missing_answer_paths
 from evals.server import SearchHit, ServerConnection
+from semantic_code_mcp.services.projects import build_chunker
 
 # How many results each question asks for, as an agent's default call does
 RESULTS_PER_QUERY = 10
@@ -28,6 +29,8 @@ class QueryRanks(BaseModel):
     query: str
     file_rank: int | None
     chunk_rank: int | None
+    # What came back, best first, so a miss can be read without running the model again
+    hits: tuple[Answer, ...]
 
 
 class RankScores(BaseModel):
@@ -56,9 +59,13 @@ async def measure_quality(
     corpus: Corpus, working_tree: Path, connection: ServerConnection
 ) -> CorpusQuality:
     """Index a corpus, ask every question, and score where the answers landed."""
-    missing = missing_answer_paths(corpus, working_tree)
-    if missing:
-        message = f"{corpus.corpus.name}: answers name files the checkout lacks: {missing}"
+    missing_files = missing_answer_paths(corpus, working_tree)
+    if missing_files:
+        message = f"{corpus.corpus.name}: answers name files the checkout lacks: {missing_files}"
+        raise CorpusMistakeError(message)
+    missing_chunks = missing_answer_chunks(corpus, working_tree)
+    if missing_chunks:
+        message = f"{corpus.corpus.name}: answers name chunks no file holds: {missing_chunks}"
         raise CorpusMistakeError(message)
     await connection.index(working_tree)
     ranks = [await rank_query(query, working_tree, connection) for query in corpus.queries]
@@ -80,6 +87,25 @@ async def rank_query(query: Query, working_tree: Path, connection: ServerConnect
         query=query.text,
         file_rank=first_rank([hit.path in answer_paths for hit in relative_hits]),
         chunk_rank=first_rank([hit in query.answers for hit in relative_hits]),
+        hits=tuple(relative_hits),
+    )
+
+
+def missing_answer_chunks(corpus: Corpus, working_tree: Path) -> list[Answer]:
+    """Answers whose chunk name the server's chunker never gives in that file.
+
+    Answers name chunks as the chunker names them, so a mistyped name would score as a
+    miss forever; this asks the chunker itself, without the model.
+    """
+    chunker = build_chunker()
+    answers = {answer for query in corpus.queries for answer in query.answers}
+    names_by_path = {
+        path: {chunk.name for chunk in chunker.chunk_file(str(working_tree / path))}
+        for path in {answer.path for answer in answers}
+    }
+    return sorted(
+        (answer for answer in answers if answer.symbol not in names_by_path[answer.path]),
+        key=lambda answer: (answer.path, answer.symbol),
     )
 
 

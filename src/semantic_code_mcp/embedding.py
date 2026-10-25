@@ -35,6 +35,10 @@ class SentenceTransformerEmbedder(Embedder):
         return self._model is not None
 
     @override
+    def load(self) -> None:
+        self._loaded_model()
+
+    @override
     def embed_text(self, text: str) -> list[float]:
         return self._loaded_model().encode(text, convert_to_numpy=True).tolist()
 

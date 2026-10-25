@@ -96,9 +96,10 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 |-----------|------|---------|-------------|
 | `query` | `str` | required | Natural language description of what you're looking for |
 | `project_path` | `str` | required | Absolute path to the project root |
-| `limit` | `int` | `10` | Maximum number of results |
+| `limit` | `int` | `10` | Maximum number of results, at most 50 |
+| `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 
-Returns ranked results with `file_path`, `line_start`, `line_end`, `name`, `chunk_type`, `content`, and `score`.
+Returns ranked results with `file_path`, `line_start`, `line_end`, `name`, `chunk_type`, `content` (cut to 50 lines, `truncated` says so) and `score`. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
 
 ### `index_codebase`
 
@@ -117,7 +118,7 @@ Check indexing status for a project.
 |-----------|------|---------|-------------|
 | `project_path` | `str` | required | Absolute path to the project root |
 
-Returns `is_indexed`, `files_count`, and `chunks_count`.
+Returns `is_indexed`, `last_updated`, `files_count`, `chunks_count` and `stale_files_count`.
 
 ## Configuration
 
@@ -131,6 +132,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
+| `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS` | `10` | How long git may take to list the files before discovery walks the file system instead |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 
 Pass environment variables via the `env` field in your MCP config:
@@ -163,7 +165,7 @@ claude mcp add --scope user semantic-code \
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| MCP Framework | FastMCP | Python decorators, STDIO transport |
+| MCP Framework | mcp 2.x (`MCPServer`) | The official Python SDK, STDIO transport |
 | Embeddings | sentence-transformers | Local, no API costs, good quality |
 | Vector Store | LanceDB | Embedded (like SQLite), no server needed |
 | Chunking | tree-sitter | AST-based, respects code structure |

@@ -1,15 +1,18 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own: a full index from scratch, warm
-search latency, how much the index grows with each single-file edit, the server's peak
-memory, and the first answer of a freshly started server on the built index — the
+Measured per corpus, in server processes of its own: the model load (a search of an
+empty project), a full index from scratch with the model already loaded, warm search
+latency, how much the index grows with each single-file edit, the server's peak
+memory, and the first answer of a freshly started server on an up-to-date index — the
 process start and model load an agent waits for. Peak memory is read from `/proc`, so
-it is reported on Linux only.
+it is reported on Linux only. With 15 to 20 questions per corpus, p95 is close to the
+slowest search: read it as that.
 """
 
 import os
 import platform
 import statistics
+import tempfile
 import time
 from pathlib import Path
 from typing import TextIO
@@ -33,6 +36,8 @@ EDIT_SUFFIX = "\n"
 PROC_ROOT = Path("/proc")
 PEAK_RESIDENT_FIELD = "VmHWM:"
 SERVER_COMMAND_MARK = b"semantic_code_mcp"
+# What the model-load search asks; the empty project has nothing to answer it with
+WARM_UP_QUERY = "warm up"
 
 
 class Machine(BaseModel):
@@ -60,6 +65,7 @@ class CorpusSpeed(BaseModel):
     warm_search_p95_milliseconds: float
     index_growth_megabytes_per_edit: float
     peak_memory_megabytes: float | None
+    model_load_seconds: float
     first_search_seconds: float
 
 
@@ -79,6 +85,7 @@ async def measure_speed(
     queries = [query.text for query in corpus.queries]
 
     async with connect(index_directory, server_log) as connection:
+        model_load_seconds = await timed_model_load_seconds(connection)
         report = await connection.index(working_tree)
         latencies = [
             await timed_search_seconds(connection, working_tree, query) for query in queries
@@ -86,6 +93,9 @@ async def measure_speed(
         growth_bytes = await index_growth_bytes(
             connection, corpus, working_tree, index_directory, edits
         )
+        # Restoring the checkout touched the edited file: index it now, so the fresh
+        # server below answers its first search without re-indexing anything
+        await connection.index(working_tree)
         peak_memory = server_peak_memory_megabytes()
 
     started = time.perf_counter()
@@ -104,8 +114,17 @@ async def measure_speed(
         warm_search_p95_milliseconds=percentile_milliseconds(latencies, NINETY_FIFTH_CUT),
         index_growth_megabytes_per_edit=rounded(growth_bytes / BYTES_PER_MEGABYTE / edits),
         peak_memory_megabytes=peak_memory,
+        model_load_seconds=rounded(model_load_seconds),
         first_search_seconds=rounded(first_search_seconds),
     )
+
+
+async def timed_model_load_seconds(connection: ServerConnection) -> float:
+    """How long the server takes to load its model: a search of an empty project."""
+    with tempfile.TemporaryDirectory() as empty_project:
+        started = time.perf_counter()
+        await connection.search(Path(empty_project), WARM_UP_QUERY, RESULTS_PER_QUERY)
+        return time.perf_counter() - started
 
 
 async def timed_search_seconds(
@@ -167,11 +186,15 @@ def server_process_ids() -> list[int]:
     """Child processes of this one whose command line runs the server."""
     children_files = (PROC_ROOT / str(os.getpid()) / "task").glob("*/children")
     child_ids = [int(pid) for children in children_files for pid in children.read_text().split()]
-    return [
-        pid
-        for pid in child_ids
-        if SERVER_COMMAND_MARK in (PROC_ROOT / str(pid) / "cmdline").read_bytes()
-    ]
+    return [pid for pid in child_ids if runs_the_server(pid)]
+
+
+def runs_the_server(process_id: int) -> bool:
+    """Whether a process runs the server; False for one that has already exited."""
+    try:
+        return SERVER_COMMAND_MARK in (PROC_ROOT / str(process_id) / "cmdline").read_bytes()
+    except OSError:
+        return False
 
 
 def peak_resident_kilobytes(status_path: Path) -> int:

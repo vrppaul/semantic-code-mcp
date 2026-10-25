@@ -11,8 +11,6 @@ from pydantic import BaseModel, ConfigDict
 
 log = structlog.get_logger()
 
-# Git normally answers in milliseconds; past this, discovery walks the file system instead.
-DEFAULT_GIT_TIMEOUT_SECONDS = 10.0
 # `git ls-files -z` separates paths with NUL, so any file name survives unquoted.
 GIT_PATH_SEPARATOR = b"\0"
 SUCCESS_EXIT_CODE = 0
@@ -85,7 +83,7 @@ class SourceDiscovery:
         extensions: Sequence[str],
         ignore_patterns: Sequence[str],
         use_gitignore: bool,
-        git_timeout_seconds: float = DEFAULT_GIT_TIMEOUT_SECONDS,
+        git_timeout_seconds: float,
     ) -> None:
         self._extensions = frozenset(extensions)
         self._patterns = parse_ignore_patterns(ignore_patterns)
@@ -179,24 +177,27 @@ class SourceDiscovery:
     def _indexable(self, candidates: list[Path], root: Path) -> list[Path]:
         """The candidates worth indexing, each file once, sorted.
 
-        A file reached both directly and through a symlink keeps its direct path.
+        The checks that need no file system run first, over every candidate; only what
+        passes them is stat'ed. A file reached both directly and through a symlink keeps
+        its direct path.
         """
-        # A stable sort by "is a symlink" keeps the path order within direct paths and links
-        direct_paths_first = sorted(sorted(set(candidates)), key=Path.is_symlink)
+        wanted = sorted(path for path in set(candidates) if self._is_wanted(path, root))
+        # A stable sort by "is a symlink" keeps the path order among direct paths and links
         kept_by_target: dict[Path, Path] = {}
-        for path in direct_paths_first:
-            target = self._indexable_target(path, root)
+        for path in sorted(wanted, key=Path.is_symlink):
+            target = self._target_inside(path, root)
             if target is not None:
                 kept_by_target.setdefault(target, path)
         return sorted(kept_by_target.values())
 
-    def _indexable_target(self, path: Path, root: Path) -> Path | None:
-        """The file a candidate resolves to, when it is supported, not ignored, existing
-        and inside root; None otherwise. The cheap checks run first."""
-        if path.suffix not in self._extensions:
-            return None
-        if self._is_ignored(path.relative_to(root).as_posix()):
-            return None
+    def _is_wanted(self, path: Path, root: Path) -> bool:
+        """Whether a candidate has a supported extension and no pattern ignores it."""
+        return path.suffix in self._extensions and not self._is_ignored(
+            path.relative_to(root).as_posix()
+        )
+
+    def _target_inside(self, path: Path, root: Path) -> Path | None:
+        """The file a candidate resolves to when it exists and stays inside root."""
         if not path.is_file():
             return None
         target = path.resolve()

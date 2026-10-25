@@ -11,7 +11,12 @@ answers = [{ path = "src/semantic_code_mcp/container.py", symbol = "Container" }
 
 [[queries]]
 text = "detect which files changed since the last index using modification times"
-answers = [{ path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_changes" }]
+answers = [
+  { path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_changes" },
+  { path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_stale_files" },
+  { path = "src/semantic_code_mcp/storage/cache.py", symbol = "has_changes" },
+  { path = "src/semantic_code_mcp/services/index_service.py", symbol = "detect_changes" },
+]
 
 [[queries]]
 text = "create the full text search index on the content column"

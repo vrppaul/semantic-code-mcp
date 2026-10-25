@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.interfaces import VectorStore
 from semantic_code_mcp.domain.models import (
+    HIGHEST_SCORE,
+    LOWEST_SCORE,
     ChunkLocation,
     ChunkType,
     ChunkWithEmbedding,
@@ -21,8 +23,15 @@ log = structlog.get_logger()
 
 EMBEDDING_DIMENSION = 384  # all-MiniLM-L6-v2
 TABLE_NAME = "chunks"
-CONTENT_COLUMN = "content"
+VECTOR_COLUMN = "vector"
 FILE_PATH_COLUMN = "file_path"
+LINE_START_COLUMN = "line_start"
+LINE_END_COLUMN = "line_end"
+CONTENT_COLUMN = "content"
+CHUNK_TYPE_COLUMN = "chunk_type"
+NAME_COLUMN = "name"
+# A filter every row matches
+MATCH_EVERY_ROW = "true"
 FULL_TEXT_QUERY_TYPE = "fts"
 COSINE_METRIC = "cosine"
 # Columns LanceDB adds to a hit: the cosine distance of a vector hit, the score of a text hit
@@ -33,21 +42,19 @@ FULL_TEXT_SCORE_COLUMN = "_score"
 COSINE_DISTANCE_MAX = 2.0  # cosine distance range is [0, 2] by definition
 FULL_TEXT_SCORE_DIVISOR = 10.0  # empirical: the full-text scores seen peak around 5-15
 FULL_TEXT_DEFAULT_SCORE = 0.5  # fallback when a text hit carries no score
-LOWEST_SCORE = 0.0
-HIGHEST_SCORE = 1.0
 # How a single quote is written inside a quoted SQL string
 SQL_QUOTE = "'"
 SQL_ESCAPED_QUOTE = "''"
 
 CHUNKS_SCHEMA = pyarrow.schema(
     [
-        pyarrow.field("vector", pyarrow.list_(pyarrow.float32(), EMBEDDING_DIMENSION)),
+        pyarrow.field(VECTOR_COLUMN, pyarrow.list_(pyarrow.float32(), EMBEDDING_DIMENSION)),
         pyarrow.field(FILE_PATH_COLUMN, pyarrow.utf8()),
-        pyarrow.field("line_start", pyarrow.int32()),
-        pyarrow.field("line_end", pyarrow.int32()),
+        pyarrow.field(LINE_START_COLUMN, pyarrow.int32()),
+        pyarrow.field(LINE_END_COLUMN, pyarrow.int32()),
         pyarrow.field(CONTENT_COLUMN, pyarrow.utf8()),
-        pyarrow.field("chunk_type", pyarrow.utf8()),
-        pyarrow.field("name", pyarrow.utf8()),
+        pyarrow.field(CHUNK_TYPE_COLUMN, pyarrow.utf8()),
+        pyarrow.field(NAME_COLUMN, pyarrow.utf8()),
     ]
 )
 
@@ -94,13 +101,13 @@ class LanceDBVectorStore(VectorStore):
             return
         rows = [
             {
-                "vector": item.embedding,
+                VECTOR_COLUMN: item.embedding,
                 FILE_PATH_COLUMN: item.chunk.file_path,
-                "line_start": item.chunk.line_start,
-                "line_end": item.chunk.line_end,
+                LINE_START_COLUMN: item.chunk.line_start,
+                LINE_END_COLUMN: item.chunk.line_end,
                 CONTENT_COLUMN: item.chunk.content,
-                "chunk_type": item.chunk.chunk_type,
-                "name": item.chunk.name,
+                CHUNK_TYPE_COLUMN: item.chunk.chunk_type,
+                NAME_COLUMN: item.chunk.name,
             }
             for item in items
         ]
@@ -180,8 +187,8 @@ class LanceDBVectorStore(VectorStore):
 
     @override
     def clear(self) -> None:
-        self._database.drop_table(TABLE_NAME)
-        self._database.create_table(TABLE_NAME, schema=CHUNKS_SCHEMA)
+        """Delete every row and keep the table, so a reader never finds it missing."""
+        self._table.delete(MATCH_EVERY_ROW)
 
     def _rebuild_full_text_index(self) -> None:
         """Rebuild the full-text index over the chunk contents after a write."""

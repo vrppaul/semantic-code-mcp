@@ -88,13 +88,13 @@ repos:
 
       # The code rules no linter here can be told to keep: no function inside
       # another, no name too short to say what it holds, no model taken apart by
-      # the names of its fields
+      # the names of its fields. Tests are held to them too.
       - id: code-rules
         name: code rules (nested functions, short names, models by field names)
         entry: uv run python scripts/check_code_rules.py
         language: system
         types: [python]
-        exclude: ^(tests/|scripts/check_instruction_files\.py$)
+        exclude: ^scripts/check_instruction_files\.py$
 
   # Bandit — security linting. 1.8 fails on every file of Python 3.14's ast
   # that holds a call with a keyword, skips the file and passes: 1.9 reads them

@@ -5,7 +5,6 @@ fails when it is defined, not when a request first reaches the gap.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
 
 from semantic_code_mcp.domain.models import (
     Chunk,
@@ -13,9 +12,6 @@ from semantic_code_mcp.domain.models import (
     SearchResult,
     StoreStatistics,
 )
-
-# Matches MCP's ctx.report_progress(progress, total, message) signature
-type ProgressCallback = Callable[[float, float, str], Awaitable[None]]
 
 
 class Embedder(ABC):
@@ -25,6 +21,10 @@ class Embedder(ABC):
     @abstractmethod
     def is_loaded(self) -> bool:
         """Whether the model is in memory, so the next call does not wait for it."""
+
+    @abstractmethod
+    def load(self) -> None:
+        """Load the model now, if it is not in memory; blocks while it loads."""
 
     @abstractmethod
     def embed_text(self, text: str) -> list[float]:

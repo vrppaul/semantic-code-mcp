@@ -76,13 +76,13 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
+        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
 
         # struct + impl block
         assert len(class_chunks) == 2
         assert len(method_chunks) == 2
-        names = {c.name for c in method_chunks}
+        names = {chunk.name for chunk in method_chunks}
         assert "new" in names
         assert "distance" in names
 
@@ -111,7 +111,7 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "Drawable"
 
@@ -149,8 +149,8 @@ impl Point {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
-        method_chunks = [c for c in chunks if c.chunk_type == ChunkType.method]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
+        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
 
         assert len(class_chunks) == 1
         # impl name should include trait info
@@ -196,8 +196,8 @@ fn configure() {}
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="config.rs")
 
-        module_chunks = [c for c in chunks if c.chunk_type == ChunkType.module]
-        func_chunks = [c for c in chunks if c.chunk_type == ChunkType.function]
+        module_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.module]
+        func_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.function]
 
         assert len(module_chunks) == 1
         assert module_chunks[0].name == "config"
@@ -280,8 +280,8 @@ fn second() {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        first = next(c for c in chunks if c.name == "first")
-        second = next(c for c in chunks if c.name == "second")
+        first = next(chunk for chunk in chunks if chunk.name == "first")
+        second = next(chunk for chunk in chunks if chunk.name == "second")
 
         assert first.line_start == 3
         assert first.line_end == 5
@@ -324,7 +324,7 @@ fn second() {
         chunker = RustChunker()
         chunks = chunker.chunk_string(code, file_path="test.rs")
 
-        class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
+        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "MyStruct"
 
@@ -481,3 +481,12 @@ fn main() {}
 
         assert summarize(chunks) == [module("main"), function("main")]
         assert line_ranges(chunks)[0] == LineRange(line_start=2, line_end=2)
+
+    def test_block_module_doc_comment(self):
+        code = """/*! The crate's entry point. */
+
+fn main() {}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="src/main.rs")
+
+        assert summarize(chunks) == [module("main"), function("main")]

@@ -18,6 +18,7 @@ class NodeType(StrEnum):
     """Tree-sitter Rust AST node types."""
 
     line_comment = auto()
+    block_comment = auto()
     inner_doc_comment_marker = auto()
     outer_doc_comment_marker = auto()
     inner_attribute_item = auto()
@@ -56,6 +57,11 @@ TYPE_WRAPPER_FIELDS: dict[str, FieldName] = {
     NodeType.scoped_type_identifier: FieldName.name,
 }
 
+# What may stand before a module's own items: comments, its doc, inner attributes
+MODULE_PREAMBLE_TYPES = frozenset(
+    {NodeType.line_comment, NodeType.block_comment, NodeType.inner_attribute_item}
+)
+
 # Items that become chunks or hold items that do; anything else (`use`, `const`, a
 # comment) is passed over without looking for its attributes.
 CHUNKED_ITEM_TYPES = frozenset(
@@ -90,13 +96,13 @@ class RustChunker(BaseTreeSitterChunker):
         self._walk_items(root, collector, ChunkType.function)
 
     def _extract_module_doc(self, root: Node, collector: ChunkCollector) -> None:
-        """Extract the `//!` inner doc comments at the top of a module.
+        """Extract the `//!` and `/*! */` inner doc comments at the top of a module.
 
         Inner attributes (`#![...]`) and plain comments may stand among them.
         """
         doc_comments: list[Node] = []
         for child in root.children:
-            if child.type not in (NodeType.line_comment, NodeType.inner_attribute_item):
+            if child.type not in MODULE_PREAMBLE_TYPES:
                 break
             if self._is_inner_doc_comment(child):
                 doc_comments.append(child)
