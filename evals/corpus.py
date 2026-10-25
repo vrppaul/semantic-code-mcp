@@ -1,0 +1,102 @@
+"""Pinned corpora: which repository at which commit, and the questions asked of it.
+
+Each corpus is a TOML file under `evals/corpora/`. A question names every answer that
+counts — a file and the chunk name inside it — so a score never depends on taste.
+"""
+
+import subprocess  # nosec B404
+import tomllib
+from collections.abc import Sequence
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict
+
+CORPORA_DIRECTORY = Path(__file__).parent / "corpora"
+CORPUS_FILE_SUFFIX = ".toml"
+# A checkout's directory is named after the corpus and this many characters of its commit
+COMMIT_PREFIX_LENGTH = 12
+# Where a clone is made before it is moved into place, so a failed clone leaves nothing behind
+PARTIAL_CHECKOUT_SUFFIX = ".partial"
+
+
+class Answer(BaseModel):
+    """A result that answers a question: a file, relative to the corpus root, and a chunk name."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    symbol: str
+
+
+class Query(BaseModel):
+    """A question in plain words and every answer that counts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    text: str
+    answers: tuple[Answer, ...]
+
+
+class CorpusSource(BaseModel):
+    """Where a corpus comes from: a repository pinned to one commit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    repository: str
+    commit: str
+
+
+class Corpus(BaseModel):
+    """A corpus file as written: its source and its questions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    corpus: CorpusSource
+    queries: tuple[Query, ...]
+
+
+def available_corpus_names() -> list[str]:
+    """The names of every corpus under `evals/corpora/`."""
+    return sorted(path.stem for path in CORPORA_DIRECTORY.glob(f"*{CORPUS_FILE_SUFFIX}"))
+
+
+def load_corpus(name: str) -> Corpus:
+    """Read one corpus file by name."""
+    path = CORPORA_DIRECTORY / f"{name}{CORPUS_FILE_SUFFIX}"
+    return Corpus.model_validate(tomllib.loads(path.read_text()))
+
+
+def load_corpora(names: Sequence[str]) -> list[Corpus]:
+    """Read the named corpora, or every corpus when no name is given."""
+    return [load_corpus(name) for name in names or available_corpus_names()]
+
+
+def checkout(source: CorpusSource, checkouts_root: Path) -> Path:
+    """A working tree of the corpus at its pinned commit, cloned on first use and reused after."""
+    target = checkouts_root / f"{source.name}-{source.commit[:COMMIT_PREFIX_LENGTH]}"
+    if target.is_dir():
+        return target
+
+    partial = target.with_name(target.name + PARTIAL_CHECKOUT_SUFFIX)
+    checkouts_root.mkdir(parents=True, exist_ok=True)
+    run_git(["clone", "--quiet", "--filter=blob:none", source.repository, str(partial)])
+    run_git(["-C", str(partial), "checkout", "--quiet", "--detach", source.commit])
+    partial.rename(target)
+    return target
+
+
+def missing_answer_paths(corpus: Corpus, working_tree: Path) -> list[str]:
+    """Answer paths that name no file in the checkout: a mistake in the corpus file."""
+    answer_paths = {answer.path for query in corpus.queries for answer in query.answers}
+    return sorted(path for path in answer_paths if not (working_tree / path).is_file())
+
+
+def restore(working_tree: Path) -> None:
+    """Undo every change to the tracked files of a checkout."""
+    run_git(["-C", str(working_tree), "checkout", "--quiet", "--", "."])
+
+
+def run_git(arguments: list[str]) -> None:
+    """Run git with a fixed argument list, failing loudly."""
+    subprocess.run(["git", *arguments], check=True, capture_output=True)  # nosec B603, B607

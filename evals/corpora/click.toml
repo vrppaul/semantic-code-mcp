@@ -1,0 +1,100 @@
+# pallets/click: a mid-size Python library with a large Markdown manual
+[corpus]
+name = "click"
+repository = "https://github.com/pallets/click.git"
+commit = "2247b35ea1c47c727d7a06e51fa280e12a863ff6"
+
+[[queries]]
+text = "show a progress bar while iterating over a long list of items"
+answers = [
+  { path = "src/click/termui.py", symbol = "progressbar" },
+  { path = "src/click/_termui_impl.py", symbol = "ProgressBar" },
+]
+
+[[queries]]
+text = "open the user's text editor to edit a message"
+answers = [
+  { path = "src/click/termui.py", symbol = "edit" },
+  { path = "src/click/_termui_impl.py", symbol = "Editor" },
+]
+
+[[queries]]
+text = "ask the user a yes or no question"
+answers = [{ path = "src/click/termui.py", symbol = "confirm" }]
+
+[[queries]]
+text = "send long output through a pager such as less"
+answers = [
+  { path = "src/click/termui.py", symbol = "echo_via_pager" },
+  { path = "src/click/_termui_impl.py", symbol = "_pipepager" },
+]
+
+[[queries]]
+text = "find the directory where an application should keep its configuration on each operating system"
+answers = [{ path = "src/click/utils.py", symbol = "get_app_dir" }]
+
+[[queries]]
+text = "split a command line string into arguments for shell completion"
+answers = [{ path = "src/click/shell_completion.py", symbol = "split_arg_string" }]
+
+[[queries]]
+text = "completion support for the zsh shell"
+answers = [{ path = "src/click/shell_completion.py", symbol = "ZshComplete" }]
+
+[[queries]]
+text = "wrap paragraphs of help text to fit the terminal width"
+answers = [{ path = "src/click/formatting.py", symbol = "wrap_text" }]
+
+[[queries]]
+text = "invoke a command in a test and capture what it prints"
+answers = [{ path = "src/click/testing.py", symbol = "invoke" }]
+
+[[queries]]
+text = "parse several short flags grouped together like -abc"
+answers = [{ path = "src/click/parser.py", symbol = "_match_short_opt" }]
+
+[[queries]]
+text = "an integer parameter type limited to a minimum and a maximum"
+answers = [{ path = "src/click/types.py", symbol = "IntRange" }]
+
+[[queries]]
+text = "write a file atomically by renaming a temporary file into place"
+answers = [{ path = "src/click/_compat.py", symbol = "_AtomicFile" }]
+
+[[queries]]
+text = "remove ANSI color escape codes from text"
+answers = [{ path = "src/click/_compat.py", symbol = "strip_ansi" }]
+
+[[queries]]
+text = "color text with foreground and background colors and make it bold"
+answers = [{ path = "src/click/termui.py", symbol = "style" }]
+
+[[queries]]
+text = "suggest a similar option name when the user mistypes one"
+answers = [
+  { path = "src/click/exceptions.py", symbol = "NoSuchOption" },
+  { path = "src/click/parser.py", symbol = "_match_long_opt" },
+]
+
+[[queries]]
+text = "read a parameter's value from an environment variable"
+answers = [{ path = "src/click/core.py", symbol = "resolve_envvar_value" }]
+
+[[queries]]
+text = "the object that holds state while a command runs"
+answers = [{ path = "src/click/core.py", symbol = "Context" }]
+
+[[queries]]
+text = "a command that contains subcommands and dispatches to them"
+answers = [{ path = "src/click/core.py", symbol = "Group" }]
+
+[[queries]]
+text = "a file that is opened only when it is first used"
+answers = [{ path = "src/click/utils.py", symbol = "_LazyFile" }]
+
+[[queries]]
+text = "open a URL or a file in the default application"
+answers = [
+  { path = "src/click/termui.py", symbol = "launch" },
+  { path = "src/click/_termui_impl.py", symbol = "open_url" },
+]

@@ -1,0 +1,77 @@
+# sharkdp/fd: a small Rust command-line tool
+[corpus]
+name = "fd"
+repository = "https://github.com/sharkdp/fd.git"
+commit = "c44735ec0f130c2486afe9c976937c03b57a8c62"
+
+[[queries]]
+text = "parse a size filter such as +10k or -1M"
+answers = [{ path = "src/filter/size.rs", symbol = "from_string" }]
+
+[[queries]]
+text = "filter files changed before or after a date"
+answers = [
+  { path = "src/filter/time.rs", symbol = "TimeFilter" },
+  { path = "src/filter/time.rs", symbol = "applies_to" },
+]
+
+[[queries]]
+text = "run a command for every search result"
+answers = [{ path = "src/exec/job.rs", symbol = "job" }]
+
+[[queries]]
+text = "run one command with all the results as its arguments"
+answers = [{ path = "src/exec/job.rs", symbol = "batch" }]
+
+[[queries]]
+text = "walk directories in parallel and collect the matching entries"
+answers = [{ path = "src/walk.rs", symbol = "scan" }]
+
+[[queries]]
+text = "print a path in color"
+answers = [{ path = "src/output.rs", symbol = "print_entry_colorized" }]
+
+[[queries]]
+text = "check whether a file or directory is empty"
+answers = [{ path = "src/filesystem.rs", symbol = "is_empty" }]
+
+[[queries]]
+text = "decide whether an entry has one of the requested file types"
+answers = [{ path = "src/filetypes.rs", symbol = "should_ignore" }]
+
+[[queries]]
+text = "combine the exit codes of several commands into one"
+answers = [{ path = "src/exit_codes.rs", symbol = "merge_exitcodes" }]
+
+[[queries]]
+text = "parse placeholders like {} and {/} in a command template"
+answers = [{ path = "src/fmt/mod.rs", symbol = "parse" }]
+
+[[queries]]
+text = "filter files by the user and group that own them"
+answers = [
+  { path = "src/filter/owner.rs", symbol = "OwnerFilter" },
+  { path = "src/filter/owner.rs", symbol = "matches" },
+]
+
+[[queries]]
+text = "turn a path into a file URL for terminal hyperlinks"
+answers = [
+  { path = "src/hyperlink.rs", symbol = "PathUrl" },
+  { path = "src/hyperlink.rs", symbol = "Display for PathUrl" },
+]
+
+[[queries]]
+text = "escape control characters before printing a file name to the terminal"
+answers = [
+  { path = "src/sanitize.rs", symbol = "sanitize_for_term" },
+  { path = "src/sanitize.rs", symbol = "write_sanitized" },
+]
+
+[[queries]]
+text = "check if a regex pattern has an uppercase letter to choose case sensitivity"
+answers = [{ path = "src/regex_helper.rs", symbol = "pattern_has_uppercase_char" }]
+
+[[queries]]
+text = "strip the leading ./ from a path"
+answers = [{ path = "src/filesystem.rs", symbol = "strip_current_dir" }]

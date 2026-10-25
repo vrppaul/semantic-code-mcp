@@ -1,0 +1,307 @@
+{
+  "corpora": [
+    {
+      "corpus": "click",
+      "queries": 20,
+      "file": {
+        "hits_at_1": 5,
+        "hits_at_3": 11,
+        "mean_reciprocal_rank": 0.43
+      },
+      "chunk": {
+        "hits_at_1": 2,
+        "hits_at_3": 8,
+        "mean_reciprocal_rank": 0.303
+      },
+      "ranks": [
+        {
+          "query": "show a progress bar while iterating over a long list of items",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "open the user's text editor to edit a message",
+          "file_rank": 3,
+          "chunk_rank": 3
+        },
+        {
+          "query": "ask the user a yes or no question",
+          "file_rank": 4,
+          "chunk_rank": 4
+        },
+        {
+          "query": "send long output through a pager such as less",
+          "file_rank": 2,
+          "chunk_rank": 4
+        },
+        {
+          "query": "find the directory where an application should keep its configuration on each operating system",
+          "file_rank": 2,
+          "chunk_rank": 2
+        },
+        {
+          "query": "split a command line string into arguments for shell completion",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "completion support for the zsh shell",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "wrap paragraphs of help text to fit the terminal width",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "invoke a command in a test and capture what it prints",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "parse several short flags grouped together like -abc",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "an integer parameter type limited to a minimum and a maximum",
+          "file_rank": 4,
+          "chunk_rank": 5
+        },
+        {
+          "query": "write a file atomically by renaming a temporary file into place",
+          "file_rank": 2,
+          "chunk_rank": null
+        },
+        {
+          "query": "remove ANSI color escape codes from text",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "color text with foreground and background colors and make it bold",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "suggest a similar option name when the user mistypes one",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "read a parameter's value from an environment variable",
+          "file_rank": 3,
+          "chunk_rank": 5
+        },
+        {
+          "query": "the object that holds state while a command runs",
+          "file_rank": 10,
+          "chunk_rank": null
+        },
+        {
+          "query": "a command that contains subcommands and dispatches to them",
+          "file_rank": 6,
+          "chunk_rank": 6
+        },
+        {
+          "query": "a file that is opened only when it is first used",
+          "file_rank": 2,
+          "chunk_rank": 2
+        },
+        {
+          "query": "open a URL or a file in the default application",
+          "file_rank": 6,
+          "chunk_rank": 6
+        }
+      ]
+    },
+    {
+      "corpus": "fd",
+      "queries": 15,
+      "file": {
+        "hits_at_1": 7,
+        "hits_at_3": 7,
+        "mean_reciprocal_rank": 0.523
+      },
+      "chunk": {
+        "hits_at_1": 2,
+        "hits_at_3": 7,
+        "mean_reciprocal_rank": 0.3
+      },
+      "ranks": [
+        {
+          "query": "parse a size filter such as +10k or -1M",
+          "file_rank": 1,
+          "chunk_rank": 3
+        },
+        {
+          "query": "filter files changed before or after a date",
+          "file_rank": 4,
+          "chunk_rank": 4
+        },
+        {
+          "query": "run a command for every search result",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "run one command with all the results as its arguments",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "walk directories in parallel and collect the matching entries",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "print a path in color",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "check whether a file or directory is empty",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "decide whether an entry has one of the requested file types",
+          "file_rank": 1,
+          "chunk_rank": 3
+        },
+        {
+          "query": "combine the exit codes of several commands into one",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "parse placeholders like {} and {/} in a command template",
+          "file_rank": 5,
+          "chunk_rank": null
+        },
+        {
+          "query": "filter files by the user and group that own them",
+          "file_rank": 4,
+          "chunk_rank": 4
+        },
+        {
+          "query": "turn a path into a file URL for terminal hyperlinks",
+          "file_rank": 7,
+          "chunk_rank": null
+        },
+        {
+          "query": "escape control characters before printing a file name to the terminal",
+          "file_rank": 1,
+          "chunk_rank": 3
+        },
+        {
+          "query": "check if a regex pattern has an uppercase letter to choose case sensitivity",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "strip the leading ./ from a path",
+          "file_rank": 1,
+          "chunk_rank": 1
+        }
+      ]
+    },
+    {
+      "corpus": "semantic-code-mcp",
+      "queries": 16,
+      "file": {
+        "hits_at_1": 10,
+        "hits_at_3": 11,
+        "mean_reciprocal_rank": 0.698
+      },
+      "chunk": {
+        "hits_at_1": 6,
+        "hits_at_3": 10,
+        "mean_reciprocal_rank": 0.531
+      },
+      "ranks": [
+        {
+          "query": "dependency injection container that shares the embedding model across requests",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "detect which files changed since the last index using modification times",
+          "file_rank": 1,
+          "chunk_rank": null
+        },
+        {
+          "query": "create the full text search index on the content column",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "merge vector and keyword search results with weighted scores",
+          "file_rank": 1,
+          "chunk_rank": 2
+        },
+        {
+          "query": "split a markdown document into sections by heading",
+          "file_rank": 1,
+          "chunk_rank": 3
+        },
+        {
+          "query": "list source files using git",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "boost recently modified files in the ranking",
+          "file_rank": 2,
+          "chunk_rank": 2
+        },
+        {
+          "query": "MCP tool that searches code semantically",
+          "file_rank": null,
+          "chunk_rank": null
+        },
+        {
+          "query": "detect the module docstring as the first statement of a file",
+          "file_rank": 10,
+          "chunk_rank": 10
+        },
+        {
+          "query": "application settings loaded from environment variables",
+          "file_rank": 6,
+          "chunk_rank": 6
+        },
+        {
+          "query": "profile an async function with pyinstrument",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "truncate long search results to a maximum number of lines",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "escape single quotes in a SQL filter when deleting rows",
+          "file_rank": 1,
+          "chunk_rank": 1
+        },
+        {
+          "query": "how to add support for a new programming language",
+          "file_rank": 5,
+          "chunk_rank": 5
+        },
+        {
+          "query": "name an impl block after its trait and its type",
+          "file_rank": 5,
+          "chunk_rank": 5
+        },
+        {
+          "query": "dispatch a file to the chunker registered for its extension",
+          "file_rank": 1,
+          "chunk_rank": 1
+        }
+      ]
+    }
+  ]
+}

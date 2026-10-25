@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LICENSE` (MIT) and license, author and project URLs in the package metadata; the wheel used to ship without a license
 - CI runs every pre-commit gate, the tests and a build on each push to `master` and each pull request
 - `CONTRIBUTING.md`, `SECURITY.md` and a pull request template
+- `python -m evals quality` and `python -m evals speed` measure search quality and speed on three pinned corpora through the server's tools, against a saved baseline
+- End-to-end tests drive the three MCP tools through a client
 
 ### Changed
 - A release runs the whole CI suite on the tagged commit before publishing to PyPI

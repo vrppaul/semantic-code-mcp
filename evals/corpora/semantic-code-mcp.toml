@@ -1,0 +1,70 @@
+# This project at v0.4.0: a small Python codebase with as much prose as code,
+# the case issue #3 reports (docs and docstrings outranking the code they describe)
+[corpus]
+name = "semantic-code-mcp"
+repository = "https://github.com/vrppaul/semantic-code-mcp.git"
+commit = "46e1562fcd1ea823620b92ee2fbab2c298b4fa73"
+
+[[queries]]
+text = "dependency injection container that shares the embedding model across requests"
+answers = [{ path = "src/semantic_code_mcp/container.py", symbol = "Container" }]
+
+[[queries]]
+text = "detect which files changed since the last index using modification times"
+answers = [{ path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_changes" }]
+
+[[queries]]
+text = "create the full text search index on the content column"
+answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "_ensure_fts_index" }]
+
+[[queries]]
+text = "merge vector and keyword search results with weighted scores"
+answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "_merge_results" }]
+
+[[queries]]
+text = "split a markdown document into sections by heading"
+answers = [{ path = "src/semantic_code_mcp/chunkers/markdown.py", symbol = "_extract_section" }]
+
+[[queries]]
+text = "list source files using git"
+answers = [{ path = "src/semantic_code_mcp/services/index_service.py", symbol = "_scan_with_git" }]
+
+[[queries]]
+text = "boost recently modified files in the ranking"
+answers = [{ path = "src/semantic_code_mcp/services/search_service.py", symbol = "_apply_recency_boost" }]
+
+[[queries]]
+text = "MCP tool that searches code semantically"
+answers = [{ path = "src/semantic_code_mcp/server.py", symbol = "search_code" }]
+
+[[queries]]
+text = "detect the module docstring as the first statement of a file"
+answers = [{ path = "src/semantic_code_mcp/chunkers/python.py", symbol = "_extract_module_docstring" }]
+
+[[queries]]
+text = "application settings loaded from environment variables"
+answers = [{ path = "src/semantic_code_mcp/config.py", symbol = "Settings" }]
+
+[[queries]]
+text = "profile an async function with pyinstrument"
+answers = [{ path = "src/semantic_code_mcp/profiling.py", symbol = "profile_async" }]
+
+[[queries]]
+text = "truncate long search results to a maximum number of lines"
+answers = [{ path = "src/semantic_code_mcp/models/responses.py", symbol = "from_domain" }]
+
+[[queries]]
+text = "escape single quotes in a SQL filter when deleting rows"
+answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "delete_by_file" }]
+
+[[queries]]
+text = "how to add support for a new programming language"
+answers = [{ path = "README.md", symbol = "Adding a New Language" }]
+
+[[queries]]
+text = "name an impl block after its trait and its type"
+answers = [{ path = "src/semantic_code_mcp/chunkers/rust.py", symbol = "_get_impl_name" }]
+
+[[queries]]
+text = "dispatch a file to the chunker registered for its extension"
+answers = [{ path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "chunk_file" }]
