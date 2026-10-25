@@ -1,5 +1,6 @@
 """End-to-end tests: the MCP tools driven through a client, as an agent calls them."""
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -170,7 +171,11 @@ async def test_two_spellings_of_one_project_share_its_local_index(
     roundabout = project / ".." / project.name
 
     async with client:
-        await client.call_tool("index_codebase", {"project_path": str(roundabout)})
+        await asyncio.gather(
+            client.call_tool("index_codebase", {"project_path": str(roundabout)}),
+            client.call_tool("index_codebase", {"project_path": str(project)}),
+        )
         result = await client.call_tool("index_status", {"project_path": str(project)})
 
-    assert IndexStatusResponse.model_validate(structured(result)).stale_files_count == 0
+    # One lock for both spellings: the two runs do not store the chunks twice
+    assert IndexStatusResponse.model_validate(structured(result)).chunks_count == 2

@@ -20,7 +20,7 @@ a mapping's key, and Python's `__dict__` and `vars` are not used. A model leaves
 JSON (`model_dump_json`), never as a mapping. The check knows these by name alone.
 
 Run on files or directories, in the project's own environment; the pre-commit hook
-hands it every Python file outside `tests/`:
+hands it every Python file, the tests included:
 
     uv run python scripts/check_code_rules.py src evals scripts
 

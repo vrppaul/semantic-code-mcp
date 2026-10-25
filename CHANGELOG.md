@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Outside a git work tree, `.gitignore` is no longer parsed by hand; only `ignore_patterns` apply
 - A Python or Rust file with no definitions — nothing, or nothing but a module docstring — is indexed whole, in `module` chunks of up to 100 lines, instead of not at all or by its docstring alone
 - Files over 1 MB and binary files (a NUL among the first 8000 bytes, which includes UTF-16) are skipped with a warning
-- Rust: required trait methods (`fn save(&self);`) become method chunks, `/** */` doc comments attach to the item below, and the module doc may follow inner attributes (`#![...]`)
+- Rust: required trait methods (`fn save(&self);`) become method chunks, `/** */` doc comments attach to the item below, `/*! */` counts as a module doc, and the module doc may follow inner attributes (`#![...]`)
 - Rust: impls are named with their trait's type arguments and negation, as in `From<u8> for Level` and `!Send for Handle`
 
 ### Fixed

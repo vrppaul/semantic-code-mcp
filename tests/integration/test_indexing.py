@@ -8,11 +8,11 @@ import pytest
 
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
-from semantic_code_mcp.services.indexing import IndexingService
+from semantic_code_mcp.services.indexing import IndexingService, IndexPhase
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.projects import ProjectRegistry, build_chunker
 from tests.conftest import MODEL_NAME
-from tests.fakes import FakeEmbedder, ProgressRecorder
+from tests.fakes import FakeEmbedder, LoadWatchingRecorder, ProgressRecorder
 from tests.helpers import commit_all, make_repository
 
 NO_PROGRESS = ProgressReporter(None)
@@ -149,12 +149,17 @@ async def test_status_during_a_forced_run_never_fails(
     """A forced run empties the store while readers ask for status in parallel."""
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
+    statuses = []
     for _ in range(5):
-        await asyncio.gather(
+        _, *round_statuses = await asyncio.gather(
             indexing.index(sample_project, force=True, progress=NO_PROGRESS),
             indexing.status(sample_project),
             indexing.status(sample_project),
         )
+        statuses.extend(round_statuses)
+
+    # A reader sees the index emptied or filled, never half of it, and never an error
+    assert {status.chunks_count for status in statuses} <= {0, 6}
 
 
 async def test_a_project_without_indexable_files_indexes_nothing(
@@ -187,15 +192,16 @@ async def test_status_does_not_load_the_model(test_settings: Settings, sample_pr
 async def test_the_model_load_is_reported_before_it_happens(
     test_settings: Settings, sample_project: Path
 ):
-    recorder = ProgressRecorder()
-    registry = ProjectRegistry(
-        settings=test_settings, embedder=FakeEmbedder(loaded=False), chunker=build_chunker()
-    )
+    embedder = FakeEmbedder(loaded=False)
+    recorder = LoadWatchingRecorder(embedder)
+    registry = ProjectRegistry(settings=test_settings, embedder=embedder, chunker=build_chunker())
     services = await registry.services_for(sample_project)
 
     await services.indexing.index(sample_project, force=False, progress=ProgressReporter(recorder))
 
-    assert "Loading the embedding model..." in recorder.messages
+    loaded_at = {snapshot.progress: snapshot.model_loaded for snapshot in recorder.snapshots}
+    assert loaded_at[IndexPhase.loading_model.value] is False
+    assert loaded_at[IndexPhase.embedding.value] is True
 
 
 async def test_two_first_requests_for_one_project_share_its_services(

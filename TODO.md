@@ -23,3 +23,6 @@ A flat cosine scan answers in 23–36 ms at 11.5k chunks. IVF or PQ indexes pay 
 
 ### Debt: the chunker tests filter in comprehensions
 `tests/unit/test_python_chunker.py`, `tests/unit/test_rust_chunker.py` and `tests/unit/test_markdown_chunker.py` predate the rule that a test holds no branch; about 27 of their assertions pick chunks with `[chunk for chunk in chunks if ...]`. Rewrite them on `summarize()` from `tests/helpers.py`, as the newer tests in those files do.
+
+### Bug: deleting files is noticed only by an index run
+`get_status` counts new and modified files as stale but not deleted ones, so after files are removed a search answers from their chunks until something calls `index_codebase`. Stage 5's files table, which compares what is on disk with what is stored, removes the cause.

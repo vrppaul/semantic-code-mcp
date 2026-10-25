@@ -137,10 +137,8 @@ def failures_as_tool_errors() -> Iterator[None]:
     errors that carry their cause, which mcp would otherwise drop."""
     try:
         yield
-    except ToolError:
-        raise
     except (OSError, RuntimeError, ValueError) as error:
-        log.exception("tool_failed")
+        log.warning("tool_failed", error=str(error), exc_info=True)
         message = f"{type(error).__name__}: {error}"
         raise ToolError(message) from error
 

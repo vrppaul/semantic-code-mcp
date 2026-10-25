@@ -4,6 +4,8 @@ import hashlib
 from collections import defaultdict
 from typing import override
 
+from pydantic import BaseModel, ConfigDict
+
 from semantic_code_mcp.domain.interfaces import Embedder, VectorStore
 from semantic_code_mcp.domain.models import (
     ChunkWithEmbedding,
@@ -97,6 +99,28 @@ def vector_of(text: str) -> list[float]:
     digest = hashlib.sha256(text.encode()).digest()
     repeated = (digest * (EMBEDDING_DIMENSION // len(digest) + 1))[:EMBEDDING_DIMENSION]
     return [byte / BYTE_RANGE * VECTOR_SPAN - VECTOR_OFFSET for byte in repeated]
+
+
+class ProgressSnapshot(BaseModel):
+    """One progress report and whether the model was loaded when it came."""
+
+    model_config = ConfigDict(frozen=True)
+
+    progress: float
+    model_loaded: bool
+
+
+class LoadWatchingRecorder:
+    """A progress callback that notes, at each report, whether an embedder had loaded."""
+
+    def __init__(self, embedder: Embedder) -> None:
+        self._embedder = embedder
+        self.snapshots: list[ProgressSnapshot] = []
+
+    async def __call__(self, progress: float, _total: float, _message: str) -> None:
+        self.snapshots.append(
+            ProgressSnapshot(progress=progress, model_loaded=self._embedder.is_loaded)
+        )
 
 
 class ProgressRecorder:
