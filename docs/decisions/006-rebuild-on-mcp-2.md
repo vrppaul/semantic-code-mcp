@@ -41,7 +41,7 @@ Release 0.4.1 with `mcp>=1.26.0,<2` and nothing else. Release 0.4.2 with the cor
 ```
 semantic_code_mcp/
   domain/      models, errors, ABC interfaces — imports nothing but pydantic and the stdlib
-  discovery/   git ls-files / filesystem walk → list[SourceFile]
+  discovery.py git ls-files / filesystem walk → list[SourceFile]
   chunking/    tree-sitter chunkers, registry by Language
   embedding/   sentence-transformers adapter (model loaded in a thread)
   storage/     one LanceDB store: chunks, files, manifest
@@ -66,7 +66,7 @@ All domain models are frozen pydantic models; dataclasses are not used. Paths ar
 | Model | Fields | Replaces |
 |---|---|---|
 | `Language` (StrEnum) | `python`, `rust`, `markdown` | extension checks spread over the chunkers and the scanner |
-| `ChunkKind` (StrEnum) | `module`, `function`, `method`, `class_ = "class"`, `section` | `ChunkType.klass`. Rust `struct`/`enum`/`trait`/`impl` map to `class`, and the skill says so. |
+| `ChunkKind` (StrEnum) | `module`, `function`, `method`, `klass = "class"` (the keyword alias `.claude/rules/python.md` prescribes), `section` | `ChunkType`. Rust `struct`/`enum`/`trait`/`impl` map to `class`, and the skill says so. |
 | `SourceFile` | `path`, `language`, `mtime_ns`, `size_bytes` — taken at scan time | bare `str` paths, and the mtime read after indexing (R11) |
 | `Chunk` | `chunk_id`, `path`, `language`, `kind`, `name`, `parent`, `line_start`, `line_end`, `content`, `embedded_text` | `Chunk`. `chunk_id` hashes path, kind, qualified name and start line, and replaces the `(file_path, line_start)` merge key (A5). `parent` is the owner's qualified name (`Stack` for `Stack.push`). `embedded_text` is what the model sees (D6 skeletons, D9 identifier words); `content` is what the agent gets. |
 | `IndexManifest` | `model_name`, `dimension`, `chunker_version`, `schema_version` | nothing (R9) |

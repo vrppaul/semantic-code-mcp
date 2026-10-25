@@ -145,7 +145,7 @@ def second():
         assert chunks == []
 
     def test_file_with_only_comments(self, tmp_path: Path):
-        """File with only comments produces no chunks."""
+        """File with only comments becomes one module chunk."""
         code = """# This is a comment
 # Another comment
 """
@@ -155,7 +155,9 @@ def second():
         chunker = PythonChunker()
         chunks = chunker.chunk_file(str(file_path))
 
-        assert chunks == []
+        assert [(chunk.chunk_type, chunk.name) for chunk in chunks] == [
+            (ChunkType.module, "comments")
+        ]
 
     def test_multiple_functions(self, tmp_path: Path):
         """Extracts multiple functions from same file."""
@@ -448,3 +450,60 @@ def foo():
         # Both getter and setter are methods named "full_name"
         assert len(method_chunks) == 2
         assert all(c.name == "full_name" for c in method_chunks)
+
+
+class TestPythonChunkerSilentDrops:
+    """Code that used to vanish from the index without an error."""
+
+    def test_comment_between_decorator_and_function(self):
+        code = """import functools
+
+
+@functools.cache
+# cached for the whole session
+def compute(value):
+    return value * 2
+"""
+        chunks = PythonChunker().chunk_string(code, file_path="sample.py")
+
+        assert [(chunk.chunk_type, chunk.name) for chunk in chunks] == [
+            (ChunkType.function, "compute")
+        ]
+        assert chunks[0].line_start == 4
+        assert chunks[0].content.startswith("@functools.cache")
+
+    def test_comment_between_decorator_and_class(self):
+        code = """@dataclass
+# frozen on purpose
+class Config:
+    def load(self):
+        return {}
+"""
+        chunks = PythonChunker().chunk_string(code, file_path="sample.py")
+
+        assert [(chunk.chunk_type, chunk.name) for chunk in chunks] == [
+            (ChunkType.klass, "Config"),
+            (ChunkType.method, "load"),
+        ]
+
+    def test_file_without_definitions_becomes_one_module_chunk(self):
+        code = """import os
+
+DEBUG = os.environ.get("DEBUG") == "1"
+DATABASES = {"default": {"ENGINE": "sqlite"}}
+"""
+        chunks = PythonChunker().chunk_string(code, file_path="project/settings.py")
+
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == ChunkType.module
+        assert chunks[0].name == "settings"
+        assert (chunks[0].line_start, chunks[0].line_end) == (1, 4)
+        assert chunks[0].content == code.rstrip("\n")
+
+    def test_undecodable_bytes_do_not_stop_chunking(self, tmp_path: Path):
+        file_path = tmp_path / "latin1.py"
+        file_path.write_bytes(b"# caf\xe9 au lait\ndef order():\n    return 1\n")
+
+        chunks = PythonChunker().chunk_file(str(file_path))
+
+        assert [chunk.name for chunk in chunks] == ["order"]

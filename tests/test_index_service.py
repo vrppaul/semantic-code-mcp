@@ -12,6 +12,7 @@ from semantic_code_mcp.embedder import Embedder
 from semantic_code_mcp.indexer import Indexer
 from semantic_code_mcp.services.index_service import IndexService
 from semantic_code_mcp.storage.lancedb import LanceDBConnection, LanceDBVectorStore
+from tests.helpers import commit_all, make_repository
 
 
 class TestIndexServiceIntegration:
@@ -87,23 +88,29 @@ class TestIndexServiceIntegration:
         assert len(files) == 1
         assert "code.py" in files[0]
 
-    def test_scan_respects_gitignore(self, index_service: IndexService, tmp_path: Path):
-        """Respects .gitignore patterns."""
-        project = tmp_path / "project4"
-        project.mkdir()
+    @pytest.mark.asyncio
+    async def test_index_survives_a_file_that_is_not_utf8(
+        self, index_service: IndexService, sample_project: Path
+    ):
+        """One undecodable file must not stop the rest of the project from indexing."""
+        (sample_project / "latin1.py").write_bytes(b"# caf\xe9\ndef order():\n    return 1\n")
 
-        (project / ".gitignore").write_text("ignored/\n*.generated.py\n")
-        (project / "code.py").write_text("# Code")
-        (project / "model.generated.py").write_text("# Generated")
+        result = await index_service.index(sample_project)
 
-        ignored = project / "ignored"
-        ignored.mkdir()
-        (ignored / "secret.py").write_text("# Secret")
+        assert result.files_indexed == 3
 
-        files = index_service.scan_files(project)
+    @pytest.mark.asyncio
+    async def test_tracked_file_deleted_from_disk_is_not_reindexed(
+        self, index_service: IndexService, sample_project: Path
+    ):
+        make_repository(sample_project)
+        commit_all(sample_project)
+        (sample_project / "utils.py").unlink()
+        await index_service.index(sample_project)
 
-        assert len(files) == 1
-        assert "code.py" in files[0]
+        second_run = await index_service.index(sample_project)
+
+        assert second_run.files_indexed == 0
 
     def test_detect_changes_force(self, index_service: IndexService, sample_project: Path):
         """Force mode returns all files for indexing."""

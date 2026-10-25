@@ -124,9 +124,7 @@ class TestMarkdownChunker:
         chunker = MarkdownChunker()
         chunks = chunker.chunk_string(md, file_path="doc.md")
 
-        assert chunks[0].line_start == 1
-        # "# Title\n\nParagraph.\n" → lines 1-4 (trailing newline = empty line 4)
-        assert chunks[0].line_end == 4
+        assert (chunks[0].line_start, chunks[0].line_end) == (1, 3)
 
     def test_line_numbers_multiple_sections(self):
         """Line numbers are correct for multiple sections."""
@@ -134,10 +132,19 @@ class TestMarkdownChunker:
         chunker = MarkdownChunker()
         chunks = chunker.chunk_string(md, file_path="doc.md")
 
-        assert chunks[0].line_start == 1
-        assert chunks[1].line_start == 5
-        # "# Second\n\nContent two.\n" → lines 5-8
-        assert chunks[1].line_end == 8
+        assert (chunks[0].line_start, chunks[0].line_end) == (1, 3)
+        assert (chunks[1].line_start, chunks[1].line_end) == (5, 7)
+
+    def test_line_range_matches_content(self):
+        """Every chunk's line range selects exactly its content."""
+        md = "Intro.\n\n# First\n\nOne.\n\n## Nested\n\nTwo.\n\n\n# Last\n\nThree.\n\n"
+        lines = md.split("\n")
+        chunks = MarkdownChunker().chunk_string(md, file_path="doc.md")
+
+        assert len(chunks) == 4
+        assert [chunk.content for chunk in chunks] == [
+            "\n".join(lines[chunk.line_start - 1 : chunk.line_end]) for chunk in chunks
+        ]
 
     def test_line_numbers_with_preamble(self):
         """Preamble chunk has correct line numbers."""

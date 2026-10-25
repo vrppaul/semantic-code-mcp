@@ -1,8 +1,6 @@
 """Index service — orchestrates full indexing pipeline."""
 
 import asyncio
-import fnmatch
-import subprocess  # nosec B404
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +9,7 @@ import structlog
 
 from semantic_code_mcp.chunkers.composite import CompositeChunker
 from semantic_code_mcp.config import Settings, resolve_cache_dir
+from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.indexer import Indexer
 from semantic_code_mcp.models import (
     Chunk,
@@ -44,6 +43,11 @@ class IndexService:
         self.indexer = indexer
         self.chunker = chunker
         self._cache_dir = cache_dir
+        self.discovery = SourceDiscovery(
+            extensions=chunker.supported_extensions,
+            ignore_patterns=settings.ignore_patterns,
+            use_gitignore=settings.use_gitignore,
+        )
 
     async def index(
         self,
@@ -105,116 +109,10 @@ class IndexService:
     # --- Scanning ---
 
     def scan_files(self, project_path: Path) -> list[str]:
-        """Scan for source files with supported extensions.
-
-        Uses git ls-files if available (fast, respects .gitignore).
-        Falls back to os.walk with directory pruning.
-
-        Args:
-            project_path: Root directory to scan.
-
-        Returns:
-            List of absolute file paths.
-        """
-        project_path = project_path.resolve()
-
-        if self._is_git_repo(project_path):
-            files = self._scan_with_git(project_path)
-            if files is not None:
-                log.debug("scanned_files_git", project=str(project_path), count=len(files))
-                return files
-
-        files = self._scan_with_walk(project_path)
-        log.debug("scanned_files_walk", project=str(project_path), count=len(files))
+        """List the indexable source files of a project as absolute paths."""
+        files = [str(path) for path in self.discovery.discover(project_path)]
+        log.debug("scanned_files", project=str(project_path), count=len(files))
         return files
-
-    def _is_git_repo(self, project_path: Path) -> bool:
-        """Check if project is a git repository."""
-        return (project_path / ".git").is_dir()
-
-    def _scan_with_git(self, project_path: Path) -> list[str] | None:
-        """Scan using git ls-files. Returns None if not a git repo."""
-        glob_patterns = [f"*{ext}" for ext in self.chunker.supported_extensions]
-        result = subprocess.run(  # nosec B603, B607
-            ["git", "ls-files", *glob_patterns],
-            cwd=project_path,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            log.debug(
-                "git_ls_files_failed",
-                returncode=result.returncode,
-                stderr=result.stderr.strip(),
-            )
-            return None
-
-        return [str(project_path / line) for line in result.stdout.strip().split("\n") if line]
-
-    def _scan_with_walk(self, project_path: Path) -> list[str]:
-        """Scan using os.walk with directory pruning."""
-        skip_dirs = {".venv", ".git", "node_modules", "__pycache__", ".pytest_cache", "venv"}
-
-        gitignore_patterns: list[str] = []
-        if self.settings.use_gitignore:
-            gitignore_path = project_path / ".gitignore"
-            if gitignore_path.exists():
-                gitignore_patterns = self._parse_gitignore(gitignore_path)
-
-        all_ignore_patterns = self.settings.ignore_patterns + gitignore_patterns
-
-        files: list[str] = []
-        for root, dirs, filenames in project_path.walk():
-            dirs[:] = [d for d in dirs if d not in skip_dirs]
-
-            for filename in filenames:
-                if not any(filename.endswith(ext) for ext in self.chunker.supported_extensions):
-                    continue
-
-                file_path = root / filename
-                rel_path = file_path.relative_to(project_path)
-
-                if self._should_ignore(str(rel_path), all_ignore_patterns):
-                    continue
-
-                files.append(str(file_path))
-
-        return files
-
-    def _parse_gitignore(self, gitignore_path: Path) -> list[str]:
-        """Parse .gitignore file into patterns."""
-        patterns: list[str] = []
-        try:
-            content = gitignore_path.read_text()
-            for line in content.splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.endswith("/"):
-                    patterns.append(line + "**")
-                    patterns.append(line[:-1])
-                else:
-                    patterns.append(line)
-                    patterns.append("**/" + line)
-        except OSError as e:
-            log.debug("gitignore_parse_failed", path=str(gitignore_path), error=str(e))
-        return patterns
-
-    def _should_ignore(self, rel_path: str, patterns: list[str]) -> bool:
-        """Check if a file should be ignored."""
-        rel_path = rel_path.replace("\\", "/")
-
-        for pattern in patterns:
-            pattern = pattern.replace("\\", "/")
-            if fnmatch.fnmatch(rel_path, pattern):
-                return True
-            parts = rel_path.split("/")
-            for i in range(len(parts)):
-                partial = "/".join(parts[: i + 1])
-                if fnmatch.fnmatch(partial, pattern):
-                    return True
-        return False
 
     # --- Change detection ---
 

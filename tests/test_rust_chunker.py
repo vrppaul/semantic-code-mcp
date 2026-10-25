@@ -328,3 +328,94 @@ fn second() {
         class_chunks = [c for c in chunks if c.chunk_type == ChunkType.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "MyStruct"
+
+
+def kinds_and_names(chunks: list) -> list[tuple[ChunkType, str]]:
+    return [(chunk.chunk_type, chunk.name) for chunk in chunks]
+
+
+class TestRustChunkerSilentDrops:
+    """Code that used to vanish from the index without an error."""
+
+    def test_generic_impl_and_its_methods(self):
+        code = """struct Stack<T> {
+    items: Vec<T>,
+}
+
+impl<T> Stack<T> {
+    fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        self.items.pop()
+    }
+}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="stack.rs")
+
+        assert kinds_and_names(chunks) == [
+            (ChunkType.klass, "Stack"),
+            (ChunkType.klass, "Stack"),
+            (ChunkType.method, "push"),
+            (ChunkType.method, "pop"),
+        ]
+
+    def test_impl_of_a_path_qualified_trait_for_a_generic_type(self):
+        code = """impl fmt::Display for Stack<i32> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        Ok(())
+    }
+}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="stack.rs")
+
+        assert kinds_and_names(chunks) == [
+            (ChunkType.klass, "Display for Stack"),
+            (ChunkType.method, "fmt"),
+        ]
+
+    def test_impl_for_a_reference_type(self):
+        code = """impl PartialEq for &Stack {
+    fn eq(&self, other: &Self) -> bool {
+        true
+    }
+}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="stack.rs")
+
+        assert kinds_and_names(chunks)[0] == (ChunkType.klass, "PartialEq for Stack")
+
+    def test_items_inside_an_inline_module(self):
+        code = """#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn helper() -> u32 {
+        1
+    }
+
+    #[test]
+    fn it_works() {
+        assert_eq!(helper(), 1);
+    }
+}
+"""
+        chunks = RustChunker().chunk_string(code, file_path="lib.rs")
+
+        assert kinds_and_names(chunks) == [
+            (ChunkType.function, "helper"),
+            (ChunkType.function, "it_works"),
+        ]
+        assert chunks[1].line_start == 9
+        assert chunks[1].content.startswith("    #[test]")
+
+    def test_file_without_items_becomes_one_module_chunk(self):
+        code = """use std::fmt;
+
+const LIMIT: u32 = 10;
+"""
+        chunks = RustChunker().chunk_string(code, file_path="src/limits.rs")
+
+        assert kinds_and_names(chunks) == [(ChunkType.module, "limits")]
+        assert (chunks[0].line_start, chunks[0].line_end) == (1, 3)

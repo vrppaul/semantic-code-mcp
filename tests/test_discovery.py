@@ -1,0 +1,221 @@
+"""Tests for source file discovery."""
+
+from pathlib import Path
+
+import pytest
+
+from semantic_code_mcp.discovery import SourceDiscovery
+from tests.helpers import commit_all, make_repository, run_git
+
+PYTHON_EXTENSIONS = (".py",)
+NO_IGNORE_PATTERNS: tuple[str, ...] = ()
+SHORT_GIT_TIMEOUT_SECONDS = 0.2
+
+
+def make_discovery(
+    ignore_patterns: tuple[str, ...] = NO_IGNORE_PATTERNS,
+    use_gitignore: bool = True,
+) -> SourceDiscovery:
+    return SourceDiscovery(
+        extensions=PYTHON_EXTENSIONS,
+        ignore_patterns=ignore_patterns,
+        use_gitignore=use_gitignore,
+    )
+
+
+def relative_names(files: list[Path], root: Path) -> set[str]:
+    return {file.relative_to(root).as_posix() for file in files}
+
+
+class TestGitDiscovery:
+    """A project inside a git work tree."""
+
+    def test_finds_tracked_and_untracked_files(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "tracked.py").write_text("x = 1\n")
+        commit_all(repository)
+        (repository / "untracked.py").write_text("y = 2\n")
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"tracked.py", "untracked.py"}
+
+    def test_skips_gitignored_files(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / ".gitignore").write_text("generated/\n*_pb2.py\n")
+        (repository / "code.py").write_text("x = 1\n")
+        (repository / "message_pb2.py").write_text("x = 1\n")
+        (repository / "generated").mkdir()
+        (repository / "generated" / "model.py").write_text("x = 1\n")
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"code.py"}
+
+    def test_skips_tracked_file_deleted_from_disk(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "kept.py").write_text("x = 1\n")
+        (repository / "removed.py").write_text("x = 1\n")
+        commit_all(repository)
+        (repository / "removed.py").unlink()
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"kept.py"}
+
+    def test_returns_non_ascii_file_names_as_existing_paths(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "тест.py").write_text("x = 1\n")
+        commit_all(repository)
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"тест.py"}
+        assert all(file.is_file() for file in files)
+
+    def test_subdirectory_of_a_repository_honours_gitignore(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / ".gitignore").write_text("scratch.py\n")
+        package = repository / "package"
+        package.mkdir()
+        (package / "module.py").write_text("x = 1\n")
+        (package / "scratch.py").write_text("x = 1\n")
+        (repository / "outside.py").write_text("x = 1\n")
+
+        files = make_discovery().discover(package)
+
+        assert relative_names(files, package) == {"module.py"}
+
+    def test_linked_worktree_honours_gitignore(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / ".gitignore").write_text("scratch.py\n")
+        (repository / "module.py").write_text("x = 1\n")
+        commit_all(repository)
+        worktree = tmp_path / "worktree"
+        run_git(repository, "worktree", "add", "--quiet", str(worktree))
+        (worktree / "scratch.py").write_text("x = 1\n")
+
+        files = make_discovery().discover(worktree)
+
+        assert relative_names(files, worktree) == {"module.py"}
+
+    def test_ignore_patterns_apply_to_git_results(self, tmp_path: Path):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "code.py").write_text("x = 1\n")
+        (repository / "docs").mkdir()
+        (repository / "docs" / "conf.py").write_text("x = 1\n")
+        commit_all(repository)
+
+        files = make_discovery(ignore_patterns=("docs",)).discover(repository)
+
+        assert relative_names(files, repository) == {"code.py"}
+
+    def test_without_gitignore_finds_ignored_files(self, tmp_path: Path):
+        """An allowlist .gitignore (`/*` plus exceptions) must not hide source files."""
+        repository = make_repository(tmp_path / "repo")
+        (repository / ".gitignore").write_text("/*\n!/.gitignore\n!/listed.py\n")
+        (repository / "listed.py").write_text("x = 1\n")
+        (repository / "unlisted.py").write_text("x = 1\n")
+
+        files = make_discovery(use_gitignore=False).discover(repository)
+
+        assert relative_names(files, repository) == {"listed.py", "unlisted.py"}
+
+    def test_tracked_symlink_to_a_file_outside_the_project_is_skipped(self, tmp_path: Path):
+        outside = tmp_path / "outside.py"
+        outside.write_text("secret = 1\n")
+        repository = make_repository(tmp_path / "repo")
+        (repository / "code.py").write_text("x = 1\n")
+        (repository / "link.py").symlink_to(outside)
+        commit_all(repository)
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"code.py"}
+
+
+class TestGitUnavailable:
+    """Discovery falls back to walking the file system when git cannot answer."""
+
+    def test_missing_git_binary_falls_back_to_walk(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "code.py").write_text("x = 1\n")
+        empty_bin = tmp_path / "empty-bin"
+        empty_bin.mkdir()
+        monkeypatch.setenv("PATH", str(empty_bin))
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files, repository) == {"code.py"}
+
+    def test_hanging_git_falls_back_to_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        repository = make_repository(tmp_path / "repo")
+        (repository / "code.py").write_text("x = 1\n")
+        fake_bin = tmp_path / "fake-bin"
+        fake_bin.mkdir()
+        fake_git = fake_bin / "git"
+        fake_git.write_text("#!/bin/sh\nexec sleep 5\n")
+        fake_git.chmod(0o755)
+        monkeypatch.setenv("PATH", str(fake_bin))
+        discovery = SourceDiscovery(
+            extensions=PYTHON_EXTENSIONS,
+            ignore_patterns=NO_IGNORE_PATTERNS,
+            use_gitignore=True,
+            git_timeout_seconds=SHORT_GIT_TIMEOUT_SECONDS,
+        )
+
+        files = discovery.discover(repository)
+
+        assert relative_names(files, repository) == {"code.py"}
+
+
+class TestWalkDiscovery:
+    """A project outside any git work tree."""
+
+    def test_finds_files_with_supported_extensions(self, tmp_path: Path):
+        project = tmp_path / "project"
+        (project / "package").mkdir(parents=True)
+        (project / "main.py").write_text("x = 1\n")
+        (project / "package" / "module.py").write_text("x = 1\n")
+        (project / "notes.txt").write_text("text\n")
+
+        files = make_discovery().discover(project)
+
+        assert relative_names(files, project) == {"main.py", "package/module.py"}
+
+    def test_name_pattern_matches_directories_at_any_depth(self, tmp_path: Path):
+        project = tmp_path / "project"
+        nested = project / "frontend" / "node_modules" / "lib"
+        nested.mkdir(parents=True)
+        (nested / "vendored.py").write_text("x = 1\n")
+        (project / "code.py").write_text("x = 1\n")
+
+        files = make_discovery(ignore_patterns=("node_modules",)).discover(project)
+
+        assert relative_names(files, project) == {"code.py"}
+
+    def test_path_pattern_is_anchored_at_the_project_root(self, tmp_path: Path):
+        project = tmp_path / "project"
+        (project / "build").mkdir(parents=True)
+        (project / "tools" / "build").mkdir(parents=True)
+        (project / "build" / "artifact.py").write_text("x = 1\n")
+        (project / "tools" / "build" / "script.py").write_text("x = 1\n")
+
+        files = make_discovery(ignore_patterns=("build/**",)).discover(project)
+
+        assert relative_names(files, project) == {"tools/build/script.py"}
+
+    def test_does_not_follow_symlinked_directories(self, tmp_path: Path):
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "foreign.py").write_text("x = 1\n")
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "code.py").write_text("x = 1\n")
+        (project / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+        files = make_discovery().discover(project)
+
+        assert relative_names(files, project) == {"code.py"}

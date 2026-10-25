@@ -37,6 +37,8 @@ class MarkdownChunker(BaseTreeSitterChunker):
 
     language = Language(tsmarkdown.language())
     extensions = (".md",)
+    # Sections already cover every line; a file of front matter alone stays out.
+    whole_file_fallback = False
 
     def _extract_chunks(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
         chunks: list[Chunk] = []
@@ -52,55 +54,29 @@ class MarkdownChunker(BaseTreeSitterChunker):
         lines: list[str],
         chunks: list[Chunk],
     ) -> None:
-        """Extract a chunk from a section node, then recurse into sub-sections."""
-        heading = self._find_heading(section)
-        child_sections = [c for c in section.children if c.type == NodeType.section]
+        """Extract a chunk from a section's own content, then recurse into sub-sections.
 
-        # Determine content range (0-indexed rows).
-        # For parent sections: from section start to just before first child section.
-        # For leaf sections: from section start to section end.
-        start_row = section.start_point[0]
-        if child_sections:
-            end_row = child_sections[0].start_point[0] - 1
-        else:
-            end_row = section.end_point[0]
+        A section's own content is everything before its first sub-section: the
+        heading and the blocks under it.
+        """
+        own_content = [child for child in section.children if child.type != NodeType.section]
+        if own_content:
+            heading = self._find_heading(section)
+            if heading is not None:
+                name = self._heading_text(heading)
+                chunk_type = ChunkType.section
+            else:
+                name = Path(file_path).stem
+                chunk_type = ChunkType.module
+            chunk = self._make_chunk(
+                own_content[0], own_content[-1], file_path, lines, chunk_type, name
+            )
+            if chunk.content.strip():
+                chunks.append(chunk)
 
-        # Skip sections that would produce empty content
-        # (end_row can be < start_row when a heading is immediately followed
-        # by a sub-section with no content in between)
-        if end_row >= start_row:
-            # Convert to 1-indexed lines, consistent with base chunker convention.
-            # Slice with [start-1 : end] to include the end line.
-            start_line = start_row + 1
-            end_line = end_row + 1
-            content = "\n".join(lines[start_line - 1 : end_line])
-
-            # Strip trailing empty lines from content
-            content = content.rstrip("\n")
-
-            # Only emit if there's actual content (not just whitespace)
-            if content.strip():
-                if heading:
-                    name = self._heading_text(heading)
-                    chunk_type = ChunkType.section
-                else:
-                    name = Path(file_path).stem
-                    chunk_type = ChunkType.module
-
-                chunks.append(
-                    Chunk(
-                        file_path=file_path,
-                        line_start=start_line,
-                        line_end=end_line,
-                        content=content,
-                        chunk_type=chunk_type,
-                        name=name,
-                    )
-                )
-
-        # Recurse into child sections
-        for child in child_sections:
-            self._extract_section(child, file_path, lines, chunks)
+        for child in section.children:
+            if child.type == NodeType.section:
+                self._extract_section(child, file_path, lines, chunks)
 
     def _find_heading(self, section: Node) -> Node | None:
         """Find an atx_heading or setext_heading child of a section node."""

@@ -6,6 +6,26 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Never source. Names match a directory at any depth; `name/**` only at the project
+# root, so a source package called `build` or `dist` deeper down is still indexed.
+DEFAULT_IGNORE_PATTERNS = (
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".cache",
+    "site-packages",
+    ".semantic-code",
+    "target/**",
+    "dist/**",
+    "build/**",
+)
+
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
@@ -34,17 +54,10 @@ class Settings(BaseSettings):
     # Profiling (dev only)
     profile: bool = False  # Enable profiling (SEMANTIC_CODE_MCP_PROFILE=1)
 
-    # Ignore patterns
-    ignore_patterns: list[str] = Field(
-        default_factory=lambda: [
-            "node_modules/**",
-            ".venv/**",
-            "__pycache__/**",
-            ".git/**",
-            "*.pyc",
-            ".pytest_cache/**",
-        ]
-    )
+    # File discovery (see SourceDiscovery for the pattern rules)
+    ignore_patterns: list[str] = Field(default_factory=lambda: list(DEFAULT_IGNORE_PATTERNS))
+    # Ask git which files .gitignore excludes. False walks the file system and applies
+    # ignore_patterns only — for repos whose .gitignore hides source on purpose.
     use_gitignore: bool = True
 
 

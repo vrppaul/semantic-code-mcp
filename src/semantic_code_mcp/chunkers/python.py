@@ -6,7 +6,7 @@ from pathlib import Path
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node
 
-from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, field_text
 from semantic_code_mcp.models import Chunk, ChunkType
 
 
@@ -23,7 +23,11 @@ class NodeType(StrEnum):
 
 
 class PythonChunker(BaseTreeSitterChunker):
-    """Extracts semantic chunks from Python code using tree-sitter AST."""
+    """Extracts semantic chunks from Python code using tree-sitter AST.
+
+    Module docstrings, functions, classes and methods become chunks. A decorated
+    definition's chunk starts at its first decorator.
+    """
 
     language = Language(tspython.language())
     extensions = (".py",)
@@ -37,12 +41,10 @@ class PythonChunker(BaseTreeSitterChunker):
         if module_chunk:
             chunks.append(module_chunk)
 
-        # Walk the tree and extract functions and classes at module level
-        self._extract_from_node(root, file_path, lines, chunks, in_class=False)
-
+        self._extract_definitions(root, file_path, lines, chunks, in_class=False)
         return chunks
 
-    def _extract_from_node(
+    def _extract_definitions(
         self,
         node: Node,
         file_path: str,
@@ -50,130 +52,53 @@ class PythonChunker(BaseTreeSitterChunker):
         chunks: list[Chunk],
         in_class: bool,
     ) -> None:
-        """Recursively extract chunks from AST nodes."""
+        """Extract the function and class definitions directly inside a node."""
         for child in node.children:
-            if child.type == NodeType.function_definition:
-                chunk = self._extract_function(child, file_path, lines, in_class)
-                if chunk:
-                    chunks.append(chunk)
+            match child.type:
+                case NodeType.function_definition | NodeType.class_definition:
+                    self._extract_definition(child, child, file_path, lines, chunks, in_class)
+                case NodeType.decorated_definition:
+                    # The `definition` field skips decorators and any comments between them.
+                    definition = child.child_by_field_name("definition")
+                    if definition is not None:
+                        self._extract_definition(
+                            child, definition, file_path, lines, chunks, in_class
+                        )
 
-            elif child.type == NodeType.decorated_definition:
-                self._extract_decorated(child, file_path, lines, chunks, in_class)
-
-            elif child.type == NodeType.class_definition:
-                self._extract_class_with_methods(
-                    child,
-                    child,
-                    file_path,
-                    lines,
-                    chunks,
-                    decorated=False,
-                )
-
-    def _extract_decorated(
+    def _extract_definition(
         self,
-        node: Node,
+        span_node: Node,
+        definition: Node,
         file_path: str,
         lines: list[str],
         chunks: list[Chunk],
         in_class: bool,
     ) -> None:
-        """Handle a decorated_definition node."""
-        decorated_child = self._get_decorated_definition(node)
-        if not decorated_child:
+        """Extract one definition; a class also yields chunks for its methods.
+
+        Args:
+            span_node: Node whose lines the chunk covers (the decorated wrapper, if any).
+            definition: The function_definition or class_definition itself.
+            file_path: Source file path.
+            lines: Source code lines.
+            chunks: Chunks collected so far.
+            in_class: Whether the definition sits in a class body.
+        """
+        name = field_text(definition, "name")
+        if name is None:
             return
 
-        if decorated_child.type == NodeType.function_definition:
-            chunk = self._extract_function(node, file_path, lines, in_class, decorated=True)
-            if chunk:
-                chunks.append(chunk)
-        elif decorated_child.type == NodeType.class_definition:
-            self._extract_class_with_methods(
-                node,
-                decorated_child,
-                file_path,
-                lines,
-                chunks,
-                decorated=True,
+        if definition.type == NodeType.class_definition:
+            chunks.append(
+                self._make_chunk(span_node, span_node, file_path, lines, ChunkType.klass, name)
             )
-
-    def _extract_class_with_methods(
-        self,
-        node: Node,
-        class_node: Node,
-        file_path: str,
-        lines: list[str],
-        chunks: list[Chunk],
-        decorated: bool,
-    ) -> None:
-        """Extract a class chunk and recurse into its body for methods."""
-        chunk = self._extract_class(node, file_path, lines, decorated=decorated)
-        if chunk:
-            chunks.append(chunk)
-        body = class_node.child_by_field_name("body")
-        if body:
-            self._extract_from_node(body, file_path, lines, chunks, in_class=True)
-
-    def _get_decorated_definition(self, node: Node) -> Node | None:
-        """Get the actual definition from a decorated_definition node."""
-        for child in node.children:
-            if child.type in NodeType:
-                if child.type == NodeType.decorated_definition:
-                    return self._get_decorated_definition(child)
-                return child
-        return None
-
-    def _extract_function(
-        self,
-        node: Node,
-        file_path: str,
-        lines: list[str],
-        in_class: bool,
-        decorated: bool = False,
-    ) -> Chunk | None:
-        """Extract a function/method chunk."""
-        if decorated:
-            func_node = self._get_decorated_definition(node)
-        else:
-            func_node = node
-
-        if not func_node:
-            return None
-
-        name_node = func_node.child_by_field_name("name")
-        if not name_node:
-            return None
-        if name_node.text is None:
-            return None
-        name = name_node.text.decode()
+            body = definition.child_by_field_name("body")
+            if body is not None:
+                self._extract_definitions(body, file_path, lines, chunks, in_class=True)
+            return
 
         chunk_type = ChunkType.method if in_class else ChunkType.function
-        return self._make_chunk(node, file_path, lines, chunk_type, name)
-
-    def _extract_class(
-        self,
-        node: Node,
-        file_path: str,
-        lines: list[str],
-        decorated: bool = False,
-    ) -> Chunk | None:
-        """Extract a class chunk."""
-        if decorated:
-            class_node = self._get_decorated_definition(node)
-        else:
-            class_node = node
-
-        if not class_node:
-            return None
-
-        name_node = class_node.child_by_field_name("name")
-        if not name_node:
-            return None
-        if name_node.text is None:
-            return None
-        name = name_node.text.decode()
-
-        return self._make_chunk(node, file_path, lines, ChunkType.klass, name)
+        chunks.append(self._make_chunk(span_node, span_node, file_path, lines, chunk_type, name))
 
     def _extract_module_docstring(
         self,
@@ -192,11 +117,11 @@ class PythonChunker(BaseTreeSitterChunker):
                 continue
 
             # First real statement must be an expression_statement with a string
-            if child.type == NodeType.expression_statement:
-                for sub in child.children:
-                    if sub.type == NodeType.string:
-                        name = Path(file_path).stem
-                        return self._make_chunk(child, file_path, lines, ChunkType.module, name)
+            if child.type == NodeType.expression_statement and any(
+                part.type == NodeType.string for part in child.children
+            ):
+                name = Path(file_path).stem
+                return self._make_chunk(child, child, file_path, lines, ChunkType.module, name)
 
             # Any other node type means no module docstring
             return None

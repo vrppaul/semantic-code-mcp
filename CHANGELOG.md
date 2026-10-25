@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- File discovery asks git for tracked files and for untracked files that `.gitignore` does not exclude; `use_gitignore=false` walks the file system instead, for repos whose `.gitignore` hides source on purpose (#2, #3)
+- `ignore_patterns` apply in git mode too. A pattern without a slash matches a directory or file name at any depth (`node_modules`); a pattern with a slash matches from the project root (`build/**`). The defaults now also skip `.mypy_cache`, `.ruff_cache`, `.tox`, `.cache`, `site-packages`, `.semantic-code` and top-level `target/`, `dist/`, `build/`
+- Outside a git work tree, `.gitignore` is no longer parsed by hand; only `ignore_patterns` apply
+- A Python or Rust file with no definitions (a script, a settings module, a file of comments) becomes one `module` chunk instead of nothing
+- Chunk line ranges no longer include trailing blank lines
+
 ### Fixed
 - Server failed to start on a fresh install: mcp 2.x renamed `FastMCP` to `MCPServer`, so `mcp` is now pinned below 2 until the migration (#3)
+- Untracked files were never indexed (#2, #3)
+- A tracked file deleted from disk was re-indexed on every search
+- Files with non-ASCII names were listed in git's quoted form and never found
+- Linked worktrees, submodules and subdirectories of a repo were walked without `.gitignore`
+- A missing `git` binary or a git timeout raised instead of falling back to the walk
+- One file that is not valid UTF-8 aborted indexing of the whole project, on every search; such bytes are now replaced
+- A tracked symlink could pull a file from outside the project into the index
+- Python: a comment between a decorator and `def`/`class` dropped the definition
+- Rust: generic and path-qualified `impl` blocks (`impl<T> Stack<T>`, `impl fmt::Display for Stack<i32>`) produced no chunks, and trait impls were named after the trait alone
+- Rust: items inside inline `mod` blocks, including `#[cfg(test)] mod tests`, were never indexed
+- Markdown: the last section's `line_end` ran one line past the end of the file
 
 ## [0.4.0] - 2026-02-01
 
