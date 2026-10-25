@@ -1,6 +1,6 @@
 ---
 paths:
-  - "src/semantic_code_mcp/server.py"
+  - "src/semantic_code_mcp/server/*.py"
 ---
 
 # MCP Server Rules

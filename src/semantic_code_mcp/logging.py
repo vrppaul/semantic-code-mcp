@@ -1,24 +1,17 @@
-"""Logging configuration for semantic-code-mcp."""
+"""Logging configuration: structlog to stderr, as JSON unless debugging."""
 
 import logging
 import sys
 
 import structlog
 
-_configured = False
 
-
-def configure_logging(debug: bool = False) -> None:
-    """Configure structlog for the application.
+def configure_logging(*, debug: bool) -> None:
+    """Configure structlog once, at start-up.
 
     Args:
-        debug: If True, enable debug level and console output.
-               If False, use info level and JSON output.
+        debug: Debug level and readable console output; otherwise info level and JSON.
     """
-    global _configured
-    if _configured:
-        return
-
     structlog.configure(
         processors=[
             structlog.stdlib.add_log_level,
@@ -32,5 +25,3 @@ def configure_logging(debug: bool = False) -> None:
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         cache_logger_on_first_use=True,
     )
-
-    _configured = True

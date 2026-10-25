@@ -81,6 +81,7 @@ class SourceDiscovery:
 
     def __init__(
         self,
+        *,
         extensions: Sequence[str],
         ignore_patterns: Sequence[str],
         use_gitignore: bool,

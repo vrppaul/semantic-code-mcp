@@ -19,8 +19,6 @@ from pydantic import BaseModel, ConfigDict
 SETTINGS_PREFIX = "SEMANTIC_CODE_MCP_"
 CACHE_DIR_VARIABLE = f"{SETTINGS_PREFIX}CACHE_DIR"
 SERVER_MODULE = "semantic_code_mcp"
-# FastMCP wraps a tool's structured answer under this key when its return type is a union
-WRAPPED_RESULT_KEY = "result"
 
 
 class SearchHit(BaseModel):
@@ -95,10 +93,10 @@ async def connect(index_directory: Path, server_log: TextIO) -> AsyncGenerator[S
 
 def tool_payload(result: CallToolResult) -> object:
     """The structured answer of a tool call, or an error naming what the tool said."""
-    if result.isError or result.structuredContent is None:
+    if result.is_error or result.structured_content is None:
         message = f"tool call failed: {result.content}"
         raise ToolCallFailedError(message)
-    return result.structuredContent[WRAPPED_RESULT_KEY]
+    return result.structured_content
 
 
 class ToolCallFailedError(RuntimeError):

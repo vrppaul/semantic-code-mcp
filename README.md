@@ -208,12 +208,13 @@ Create `src/semantic_code_mcp/chunkers/mylang.py`:
 
 ```python
 from enum import StrEnum, auto
+from typing import override
 
 import tree_sitter_mylang as tsmylang
 from tree_sitter import Language, Node
 
-from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, field_text
-from semantic_code_mcp.models import Chunk, ChunkType
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, ChunkCollector, field_text
+from semantic_code_mcp.domain.models import ChunkType
 
 
 class NodeType(StrEnum):
@@ -221,41 +222,43 @@ class NodeType(StrEnum):
     # ... other node types
 
 
+class FieldName(StrEnum):
+    name = auto()
+
+
 class MyLangChunker(BaseTreeSitterChunker):
     language = Language(tsmylang.language())
     extensions = (".ml",)
 
-    def _extract_chunks(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
-        chunks = []
+    @override
+    def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:
         for node in root.children:
             match node.type:
                 case NodeType.function_definition:
-                    name = field_text(node, "name")
+                    name = field_text(node, FieldName.name)
                     if name is not None:
-                        chunks.append(
-                            self._make_chunk(node, node, file_path, lines, ChunkType.function, name)
-                        )
+                        collector.add(node, node, ChunkType.function, name)
                 # ... other node types
-        return chunks
 ```
 
-Register it in `src/semantic_code_mcp/container.py`:
+Register it in `src/semantic_code_mcp/services/projects.py`:
 
 ```python
 from semantic_code_mcp.chunkers.mylang import MyLangChunker
 
-def get_chunkers(self) -> list[BaseTreeSitterChunker]:
-    return [PythonChunker(), RustChunker(), MarkdownChunker(), MyLangChunker()]
+def build_chunker() -> CompositeChunker:
+    return CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker(), MyLangChunker()])
 ```
-
-The `CompositeChunker` handles dispatch by file extension automatically. `BaseTreeSitterChunker._make_chunk(first_node, last_node, ...)` builds a chunk spanning two nodes (a doc comment and the item under it, say) and trims trailing blank lines; a file in which your chunker finds nothing becomes one `module` chunk unless you set `whole_file_fallback = False`. See `chunkers/python.py` and `chunkers/rust.py` for complete examples.
 
 ### Project Structure
 
-- `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
-- `src/semantic_code_mcp/services/` — IndexService (scan/chunk/index), SearchService (search + auto-index)
+- `src/semantic_code_mcp/server/` — the MCP tools, their answers and presenters
+- `src/semantic_code_mcp/services/` — indexing, search, the registry of projects
 - `src/semantic_code_mcp/discovery.py` — which files get indexed (git or a file-system walk, ignore patterns)
-- `src/semantic_code_mcp/indexer.py` — embed + store pipeline
+- `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
+- `src/semantic_code_mcp/embedding.py`, `src/semantic_code_mcp/storage/` — embeddings and the LanceDB store
+- `src/semantic_code_mcp/domain/` — models and interfaces
+- `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`)
 - `docs/decisions/` — architecture decision records
 - `TODO.md` — epics and planning
 - `CHANGELOG.md` — completed work (Keep a Changelog format)

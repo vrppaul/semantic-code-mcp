@@ -72,6 +72,30 @@ repos:
         files: ^(src/|pyproject\.toml$)
         pass_filenames: false
 
+      - id: import-layers
+        name: import-linter (the package's layers)
+        entry: uv run lint-imports
+        language: system
+        files: ^(src/|pyproject\.toml$)
+        pass_filenames: false
+
+      - id: vulture
+        name: vulture (code nothing calls)
+        entry: uv run vulture
+        language: system
+        files: ^(src/|evals/|tests/|scripts/|pyproject\.toml$)
+        pass_filenames: false
+
+      # The code rules no linter here can be told to keep: no function inside
+      # another, no name too short to say what it holds, no model taken apart by
+      # the names of its fields
+      - id: code-rules
+        name: code rules (nested functions, short names, models by field names)
+        entry: uv run python scripts/check_code_rules.py
+        language: system
+        types: [python]
+        exclude: ^(tests/|scripts/check_instruction_files\.py$)
+
   # Bandit — security linting. 1.8 fails on every file of Python 3.14's ast
   # that holds a call with a keyword, skips the file and passes: 1.9 reads them
   - repo: https://github.com/PyCQA/bandit

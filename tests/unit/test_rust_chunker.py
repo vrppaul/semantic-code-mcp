@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from semantic_code_mcp.chunkers.rust import RustChunker
-from semantic_code_mcp.models import ChunkType
+from semantic_code_mcp.domain.models import ChunkType
 from tests.helpers import ChunkSummary, LineRange, line_ranges, summarize
 
 

@@ -9,8 +9,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Pavel Paranin" }]
 dependencies = [
     "lancedb>=0.27.0",
-    "mcp>=1.26.0,<2",
-    "pandas>=3.0.0",
+    "mcp>=2.3.0",
     "pyarrow>=23.0.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
@@ -53,6 +52,7 @@ packages = ["src/semantic_code_mcp"]
 [dependency-groups]
 dev = [
     "deptry>=0.25.1",
+    "import-linter>=2.15",
     "pre-commit>=4.5.1",
     "pyinstrument>=5.1.2",
     "pytest>=9.0.2",
@@ -60,6 +60,7 @@ dev = [
     "ruff>=0.14.14",
     "ty>=0.0.13",
     "typos>=1.51.1",
+    "vulture>=2.16",
 ]
 
 [tool.pytest.ini_options]
@@ -92,36 +93,60 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = [
-    "E",      # pycodestyle errors
-    "F",      # pyflakes
-    "I",      # isort
-    "UP",     # pyupgrade
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "C901",   # mccabe complexity
-    "N",      # pep8-naming
-    "SIM",    # flake8-simplify
-    "TID",    # tidy imports (banned relative imports, etc.)
-    "W",      # pycodestyle warnings
-    "RUF",    # Ruff-specific rules
-    "DTZ",    # datetime timezone safety
-    "ASYNC",  # async anti-patterns (blocking calls in async)
-    "SLF",    # private member access from outside class
-    "PIE",    # misc. lints (unnecessary pass, dict merge, etc.)
-    "T20",    # no print() in source (use structlog)
-    "RSE",    # unnecessary parens on raise
-    # "TCH" omitted — too aggressive, flags Path and other runtime imports
-    "PERF",   # performance anti-patterns
-    "FURB",   # refurb modernizations
-    "PLC0415",  # import-outside-toplevel
+    "E",        # pycodestyle errors
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "C4",       # flake8-comprehensions
+    "C90",      # no function too tangled to follow
+    "N",        # pep8-naming
+    "SIM",      # flake8-simplify
+    "TID",      # tidy imports, banned APIs among them
+    "W",        # pycodestyle warnings
+    "RUF",      # Ruff-specific rules
+    "DTZ",      # no naive datetimes
+    "ASYNC",    # async anti-patterns
+    "SLF",      # nothing reaches into another object's private members
+    "PIE",      # unnecessary pass, spreads and the like
+    "T20",      # no print() in source (use structlog)
+    "RSE",      # unnecessary parens on raise
+    "PERF",     # performance anti-patterns
+    "FURB",     # refurb modernizations
+    "PLC",      # pylint conventions (import-outside-toplevel among them)
+    "PLE",      # pylint errors
+    "PLW",      # pylint warnings
+    "A",        # nothing shadows a builtin
+    "ANN",      # every function says what it takes and gives
+    "BLE",      # no blind `except Exception`
+    "EM",       # an exception's message is named before it is raised
+    "ERA",      # no commented-out code
+    "G",        # logging calls take fields, not formatted strings
+    "INP",      # no implicit namespace packages
+    "ISC",      # no implicit string concatenation
+    "LOG",      # logging used as meant
+    "PGH",      # no blanket noqa or type: ignore
+    "PT",       # pytest used as meant
+    "PTH",      # pathlib over os.path
+    "RET",      # returns that say what they return
+    "TRY",      # exceptions raised and caught as meant
+    "FBT",      # no bare True or False whose meaning only the signature knows
+    "ARG",      # every parameter used
+    "PLR0913",  # no function asking for more than five things
+    "PLR2004",  # no number or string in a comparison without a name
 ]
 ignore = [
-    "E712",    # == True comparisons (sometimes needed for SQL expressions)
     "SIM108",  # ternary operator — if/else often more readable
-    "SIM103",  # return condition directly — explicit if/return often more readable
-    "PERF203", # try/except in loop — often necessary, not always avoidable
-    "FURB140", # Use itertools.starmap — less readable than comprehensions
 ]
+
+[tool.ruff.lint.pylint]
+# A string compared outright is as unnamed as a number
+allow-magic-value-types = []
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Any".msg = "Name the shape: a model, an interface or a type of its own."
+"typing.Protocol".msg = "An interface its implementations inherit is an abstract class: abc.ABC, every member @abstractmethod."
+"typing.cast".msg = "Prove the type instead: narrow it, or validate it with a model."
 
 [tool.ruff.lint.mccabe]
 max-complexity = 12
@@ -131,10 +156,14 @@ combine-as-imports = true
 known-first-party = ["semantic_code_mcp"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"tests/**/*.py" = ["SLF001", "T20", "DTZ", "PLC0415"]
+# The tests are held to formatting and to what keeps them readable; the rules for
+# shipped code (annotations, named values, booleans, argument counts) are not theirs
+"tests/**/*.py" = ["ANN", "PLR2004", "FBT", "PLR0913", "ARG", "S", "SLF001", "T20", "DTZ", "PLC0415", "INP001"]
 # A command-line report: printing the report is its job
 "evals/__main__.py" = ["T20"]
+# Scripts are run by path, not imported from a package, and what they find is their
+# output, printed as a linter prints its findings
+"scripts/**" = ["T20", "INP001"]
 
 [tool.ty.environment]
 python-version = "3.14"
@@ -151,8 +180,6 @@ error-on-warning = true
 DEP002 = [
     # sentence-transformers imports it; declared to pin it to the CPU-only index
     "torch",
-    # LanceDB's to_pandas() needs it; it leaves with to_pandas() (ADR 006, D4)
-    "pandas",
 ]
 # Dev-only profiling, imported only when SEMANTIC_CODE_MCP_PROFILE is set
 DEP004 = ["pyinstrument"]
@@ -166,3 +193,74 @@ extend-exclude = ["tests/"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
+
+[tool.importlinter]
+root_package = "semantic_code_mcp"
+# The packages it imports are part of the graph, so a contract can forbid one
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Each layer builds only on the layers after it"
+type = "layers"
+# The entry points start the server; the server's tools hand work to the services;
+# the services use the parts; the parts share the domain and the settings
+layers = [
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage",
+    "semantic_code_mcp.config | semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "MCP stays at the edge"
+type = "forbidden"
+# A service or a part that imported mcp would tie the core to one SDK's version,
+# as mcp 2.x's renames showed
+source_modules = [
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.embedding",
+    "semantic_code_mcp.storage",
+    "semantic_code_mcp.domain",
+    "semantic_code_mcp.config",
+]
+forbidden_modules = ["mcp"]
+
+[[tool.importlinter.contracts]]
+name = "Each library stays in the part that wraps it"
+type = "forbidden"
+# LanceDB in the store, sentence-transformers in the embedder, tree-sitter in the
+# chunkers: replacing one touches one part
+source_modules = [
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.domain",
+    "semantic_code_mcp.config",
+]
+forbidden_modules = ["lancedb", "pyarrow", "sentence_transformers", "torch", "tree_sitter"]
+# Through the part that wraps it, a library is meant to be reached
+allow_indirect_imports = true
+
+[tool.vulture]
+paths = ["src", "evals", "tests", "scripts"]
+# The tools' answers: every field is read by the client from the JSON, never by name here
+exclude = ["src/semantic_code_mcp/server/responses.py"]
+min_confidence = 60
+# Called through what they are decorated as, never by name in this code
+ignore_decorators = ["@override", "@model_validator", "@field_validator", "@pytest.fixture", "@property"]
+ignore_names = [
+    # Pydantic's own setting, and the class a validator classmethod is handed
+    "model_config",
+    "cls",
+    # Compared as part of a whole model, never read by name: an answer, a machine
+    "symbol",
+    "logical_cores",
+    "python",
+]

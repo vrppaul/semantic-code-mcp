@@ -7,7 +7,7 @@ from typing import ClassVar
 import structlog
 from tree_sitter import Language, Node, Parser
 
-from semantic_code_mcp.models import Chunk, ChunkType
+from semantic_code_mcp.domain.models import Chunk, ChunkType
 
 log = structlog.get_logger()
 
@@ -41,6 +41,61 @@ def field_text(node: Node, field_name: str) -> str | None:
     if field is None or field.text is None:
         return None
     return field.text.decode()
+
+
+class ChunkCollector:
+    """The chunks of one file, built from tree-sitter nodes as a chunker finds them.
+
+    A chunk spans whole lines, from the first line of its first node to the last line
+    of its last node; trailing blank lines are left out, so the line range selects
+    exactly the content, and a chunk of blank lines alone is not kept.
+    """
+
+    def __init__(self, file_path: str, lines: list[str]) -> None:
+        self.file_path = file_path
+        self._lines = lines
+        self._chunks: list[Chunk] = []
+
+    @property
+    def chunks(self) -> list[Chunk]:
+        return list(self._chunks)
+
+    @property
+    def has_definitions(self) -> bool:
+        """Whether any chunk is more than module-level text."""
+        return any(chunk.chunk_type != ChunkType.module for chunk in self._chunks)
+
+    def add(self, first_node: Node, last_node: Node, chunk_type: ChunkType, name: str) -> None:
+        """Add a chunk spanning from the first node's row to the last node's row."""
+        self.add_rows(first_node.start_point[0], node_last_row(last_node), chunk_type, name)
+
+    def add_rows(self, first_row: int, last_row: int, chunk_type: ChunkType, name: str) -> None:
+        """Add a chunk of the rows from first_row to last_row (0-indexed, inclusive)."""
+        while last_row > first_row and not self._lines[last_row].strip():
+            last_row -= 1
+        content = "\n".join(self._lines[first_row : last_row + 1])
+        if not content.strip():
+            return
+        self._chunks.append(
+            Chunk(
+                file_path=self.file_path,
+                line_start=first_row + 1,
+                line_end=last_row + 1,
+                content=content,
+                chunk_type=chunk_type,
+                name=name,
+            )
+        )
+
+    def replace_with_windows(self, root: Node) -> None:
+        """Drop what was found and cover the whole file with `module` chunks instead,
+        each at most FALLBACK_WINDOW_LINES lines."""
+        self._chunks = []
+        name = Path(self.file_path).stem
+        last_row = node_last_row(root)
+        for first_row in range(root.start_point[0], last_row + 1, FALLBACK_WINDOW_LINES):
+            window_last_row = min(first_row + FALLBACK_WINDOW_LINES, last_row + 1) - 1
+            self.add_rows(first_row, window_last_row, ChunkType.module, name)
 
 
 class BaseTreeSitterChunker(ABC):
@@ -114,93 +169,14 @@ class BaseTreeSitterChunker(ABC):
             log.warning("parse_failed", file_path=file_path, error=str(error))
             return []
 
-        lines = code.split("\n")
-        chunks = self._extract_chunks(tree.root_node, file_path, lines)
-        has_definitions = any(chunk.chunk_type != ChunkType.module for chunk in chunks)
-        if self.whole_file_fallback and not has_definitions:
-            chunks = self._whole_file_windows(tree.root_node, file_path, lines)
+        collector = ChunkCollector(file_path, code.split("\n"))
+        self._extract_chunks(tree.root_node, collector)
+        if self.whole_file_fallback and not collector.has_definitions:
+            collector.replace_with_windows(tree.root_node)
 
-        log.debug("chunked_file", file_path=file_path, chunks_count=len(chunks))
-        return chunks
+        log.debug("chunked_file", file_path=file_path, chunks_count=len(collector.chunks))
+        return collector.chunks
 
     @abstractmethod
-    def _extract_chunks(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
-        """Extract language-specific chunks from the AST root.
-
-        Args:
-            root: Tree-sitter root node.
-            file_path: Source file path.
-            lines: Source code split into lines.
-
-        Returns:
-            List of Chunk objects.
-        """
-        ...
-
-    def _whole_file_windows(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
-        """The whole file as `module` chunks of at most FALLBACK_WINDOW_LINES lines each."""
-        name = Path(file_path).stem
-        last_row = node_last_row(root)
-        windows = [
-            self._make_row_chunk(
-                first_row,
-                min(first_row + FALLBACK_WINDOW_LINES, last_row + 1) - 1,
-                file_path,
-                lines,
-                ChunkType.module,
-                name,
-            )
-            for first_row in range(root.start_point[0], last_row + 1, FALLBACK_WINDOW_LINES)
-        ]
-        return [window for window in windows if window.content.strip()]
-
-    def _make_chunk(
-        self,
-        first_node: Node,
-        last_node: Node,
-        file_path: str,
-        lines: list[str],
-        chunk_type: ChunkType,
-        name: str,
-    ) -> Chunk:
-        """Create a Chunk spanning from the first node's row to the last node's row.
-
-        Args:
-            first_node: Node whose start row opens the chunk (a decorator, a doc comment).
-            last_node: Node whose last row closes the chunk.
-            file_path: Source file path.
-            lines: Source code lines.
-            chunk_type: Type of chunk.
-            name: Name of the chunk (function/class name).
-
-        Returns:
-            Chunk object.
-        """
-        return self._make_row_chunk(
-            first_node.start_point[0], node_last_row(last_node), file_path, lines, chunk_type, name
-        )
-
-    def _make_row_chunk(
-        self,
-        first_row: int,
-        last_row: int,
-        file_path: str,
-        lines: list[str],
-        chunk_type: ChunkType,
-        name: str,
-    ) -> Chunk:
-        """Create a Chunk of the rows from first_row to last_row (0-indexed, inclusive).
-
-        Trailing blank lines are left out, so the line range selects exactly the content.
-        """
-        while last_row > first_row and not lines[last_row].strip():
-            last_row -= 1
-
-        return Chunk(
-            file_path=file_path,
-            line_start=first_row + 1,
-            line_end=last_row + 1,
-            content="\n".join(lines[first_row : last_row + 1]),
-            chunk_type=chunk_type,
-            name=name,
-        )
+    def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:
+        """Find the language's chunks under the AST root and add them to the collector."""

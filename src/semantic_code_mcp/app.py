@@ -1,24 +1,49 @@
-"""Application factory — the composition root.
+"""The composition root: builds the server and everything its tools share."""
 
-Creates and wires settings, logging, container, and the MCP server.
-"""
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from functools import partial
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
-from semantic_code_mcp.config import get_settings
-from semantic_code_mcp.container import configure as configure_container
-from semantic_code_mcp.logging import configure_logging
-from semantic_code_mcp.profiling import configure_profiling
+from semantic_code_mcp.config import Settings
+from semantic_code_mcp.domain.interfaces import Embedder
+from semantic_code_mcp.embedding import SentenceTransformerEmbedder
+from semantic_code_mcp.server.profiling import ProfilingMiddleware
+from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
+from semantic_code_mcp.services.projects import ProjectRegistry, build_chunker
+
+SERVER_NAME = "semantic-code-mcp"
 
 
-def create_app() -> FastMCP:
-    """Create the fully-configured MCP application."""
-    settings = get_settings()
-    configure_logging(debug=settings.debug)
-    configure_profiling(enabled=settings.profile)
-    configure_container(settings)
+def create_app(settings: Settings, embedder: Embedder | None = None) -> MCPServer[ProjectRegistry]:
+    """The MCP server with its tools, sharing one registry of projects.
 
-    # Import tools after bootstrap so they can use get_container()
-    from semantic_code_mcp.server import mcp  # noqa: PLC0415
+    Args:
+        settings: Application settings.
+        embedder: The embedder to share; by default one over `settings.embedding_model`,
+            loaded on first use. Tests hand in one already loaded.
+    """
+    shared_embedder = (
+        embedder if embedder is not None else SentenceTransformerEmbedder(settings.embedding_model)
+    )
+    middleware = [ProfilingMiddleware(settings.profiles_dir)] if settings.profile else []
+    server = MCPServer(
+        SERVER_NAME,
+        lifespan=partial(project_registry_lifespan, settings=settings, embedder=shared_embedder),
+        middleware=middleware,
+    )
+    for tool in (search_code, index_codebase, index_status):
+        server.add_tool(tool)
+    return server
 
-    return mcp
+
+@asynccontextmanager
+async def project_registry_lifespan(
+    _server: MCPServer[ProjectRegistry], *, settings: Settings, embedder: Embedder
+) -> AsyncGenerator[ProjectRegistry]:
+    """The state every request of a session shares: the projects and their services.
+
+    The lifespan protocol hands in the server; the registry does not need it.
+    """
+    yield ProjectRegistry(settings=settings, embedder=embedder, chunker=build_chunker())

@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- Settings that nothing read: `SEMANTIC_CODE_MCP_EMBEDDING_DEVICE`, `SEMANTIC_CODE_MCP_CHUNKING_TARGET_TOKENS`, `SEMANTIC_CODE_MCP_CHUNKING_MAX_TOKENS`
+- The `pandas` dependency
+
 ### Added
+- `search_code` takes `include_debug`; the `debug` block (timings, counts, what was indexed first) comes back only when asked for
+- `index_status` reports `stale_files_count`
+- `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
 - `LICENSE` (MIT) and license, author and project URLs in the package metadata; the wheel used to ship without a license
 - CI runs every pre-commit gate, the tests and a build on each push to `master` and each pull request
 - `CONTRIBUTING.md`, `SECURITY.md` and a pull request template
@@ -15,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end tests drive the three MCP tools through a client
 
 ### Changed
+- Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
+- A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
+- Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
+- `search_code` refuses a `limit` above 50
+- No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
+- Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project
 - A release runs the whole CI suite on the tagged commit before publishing to PyPI
 - `ty` fails on any warning; the hook used to end in `|| true`
 - bandit 1.9.4 replaces 1.8.6, which crashed on every Python 3.14 file and passed
@@ -32,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust: impls are named with their trait's type arguments and negation, as in `From<u8> for Level` and `!Send for Handle`
 
 ### Fixed
+- `index_status` loaded the embedding model it never uses, blocking for seconds
+- Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
+- Index status and change detection ran on the event loop
 - Server failed to start on a fresh install: mcp 2.x renamed `FastMCP` to `MCPServer`, so `mcp` is now pinned below 2 until the migration (#3)
 - Untracked files were never indexed (#2, #3)
 - A tracked file deleted from disk was re-indexed on every search

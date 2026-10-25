@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.models import Chunk, ChunkType
+from semantic_code_mcp.domain.models import Chunk, ChunkType
 
 
 def run_git(repository: Path, *arguments: str) -> None:

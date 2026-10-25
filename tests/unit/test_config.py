@@ -1,0 +1,50 @@
+"""Tests for settings and where a project's index lives."""
+
+from pathlib import Path
+
+import pytest
+
+from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
+
+CACHE = Path("/cache")
+
+
+def test_settings_are_read_from_prefixed_environment_variables(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SEMANTIC_CODE_MCP_EMBEDDING_MODEL", "custom-model")
+    monkeypatch.setenv("SEMANTIC_CODE_MCP_LOCAL_INDEX", "true")
+
+    settings = Settings()
+
+    assert (settings.embedding_model, settings.local_index) == ("custom-model", True)
+
+
+def test_a_project_env_file_is_not_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    (tmp_path / ".env").write_text("SEMANTIC_CODE_MCP_EMBEDDING_MODEL=from-dotenv\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert Settings().embedding_model != "from-dotenv"
+
+
+def test_the_global_index_of_a_project_lives_under_the_cache():
+    index_path = get_index_path(Settings(cache_dir=CACHE), Path("/home/user/project"))
+
+    assert index_path.parent == CACHE
+
+
+def test_the_local_index_lives_in_the_project():
+    project = Path("/home/user/project")
+
+    assert get_index_path(Settings(local_index=True), project) == project / LOCAL_INDEX_DIRECTORY
+
+
+def test_one_project_always_has_the_same_index():
+    settings = Settings(cache_dir=CACHE)
+    project = Path("/home/user/project")
+
+    assert get_index_path(settings, project) == get_index_path(settings, project)
+
+
+def test_two_projects_have_different_indexes():
+    settings = Settings(cache_dir=CACHE)
+
+    assert get_index_path(settings, Path("/one")) != get_index_path(settings, Path("/two"))

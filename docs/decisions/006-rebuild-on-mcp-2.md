@@ -40,17 +40,20 @@ Release 0.4.1 with `mcp>=1.26.0,<2` and the correctness fixes from D5 and D6 on 
 
 ```
 semantic_code_mcp/
-  domain/      models, errors, ABC interfaces — imports nothing but pydantic and the stdlib
-  discovery.py git ls-files / filesystem walk → list[SourceFile]
-  chunking/    tree-sitter chunkers, registry by Language
-  embedding/   sentence-transformers adapter (model loaded in a thread)
-  storage/     one LanceDB store: chunks, files, manifest
-  services/    indexing.py — plan → chunk → embed → write, under a per-project lock
-               search.py   — retrieve → fuse → filter → shape
-  server/      MCP tools, lifespan, presenters (domain → response), error mapping, middleware
-  app.py       composition root
-  cli.py       entry point
+  domain/       models, ABC interfaces — imports nothing but pydantic and the stdlib
+  discovery.py  git ls-files / filesystem walk → list[SourceFile]
+  chunkers/     tree-sitter chunkers on a shared ChunkCollector
+  embedding.py  sentence-transformers adapter (model loaded in a thread on first use)
+  storage/      one LanceDB store: chunks, files, manifest
+  services/     indexing.py — plan → chunk → embed → write, under a per-project lock
+                search.py   — retrieve → fuse → filter → shape
+                projects.py — the registry of each project's services
+  server/       MCP tools, responses, presenters (domain → response), profiling middleware
+  app.py        composition root and lifespan
+  cli.py        entry point
 ```
+
+(As built in stage 4: `chunkers/` keeps its name, discovery and embedding are one module each. A domain error hierarchy waits for its second kind — today the one failure the agent hears about, a missing project path, raises `ToolError` at the edge.)
 
 - Layer order: `cli | app → server → services → discovery | chunking | embedding | storage → domain`. Import-linter contracts in `pyproject.toml` enforce it, each with its reason as a comment (shape: `../claude-review/pyproject.toml`).
 - Forbidden-import contracts: `mcp` only in `server/`, `app.py`, `cli.py`; `lancedb`/`pyarrow` only in `storage/`; `sentence_transformers`/`torch` only in `embedding/`; `tree_sitter*` only in `chunking/`.
@@ -317,6 +320,9 @@ The project rules say to ask before changing the storage schema, the tool signat
 4. **Hotfix 0.4.1 before the rebuild.** The tag push itself waits for the owner's word, like every release.
 
 ### Stages and releases
+
+Progress: stages 0–4 are done on branch `rebuild-on-mcp-2` (2026-10-25); the 0.4.1 release is commit `84d678b`. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
+
 
 | Stage | Content | Release |
 |---|---|---|

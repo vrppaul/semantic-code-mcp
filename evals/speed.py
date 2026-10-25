@@ -77,7 +77,6 @@ async def measure_speed(
 ) -> CorpusSpeed:
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
-    edited_file = working_tree / corpus.queries[0].answers[0].path
 
     async with connect(index_directory, server_log) as connection:
         report = await connection.index(working_tree)
@@ -85,7 +84,7 @@ async def measure_speed(
             await timed_search_seconds(connection, working_tree, query) for query in queries
         ]
         growth_bytes = await index_growth_bytes(
-            connection, working_tree, edited_file, queries[0], index_directory, edits
+            connection, corpus, working_tree, index_directory, edits
         )
         peak_memory = server_peak_memory_megabytes()
 
@@ -120,17 +119,19 @@ async def timed_search_seconds(
 
 async def index_growth_bytes(
     connection: ServerConnection,
+    corpus: Corpus,
     working_tree: Path,
-    edited_file: Path,
-    query: str,
     index_directory: Path,
     edits: int,
 ) -> int:
     """How many bytes the index grows over a number of single-file edits.
 
-    Each edit appends to one file and searches, which re-indexes that file. The
-    checkout is restored afterwards, whatever happens.
+    Each edit appends to the file that answers the corpus's first question, then asks
+    that question, which re-indexes the file. The checkout is restored afterwards,
+    whatever happens.
     """
+    edited_file = working_tree / corpus.queries[0].answers[0].path
+    query = corpus.queries[0].text
     size_before = directory_bytes(index_directory)
     try:
         for _ in range(edits):

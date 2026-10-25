@@ -2,12 +2,13 @@
 
 from enum import StrEnum, auto
 from pathlib import Path
+from typing import override
 
 import tree_sitter_markdown as tsmarkdown
 from tree_sitter import Language, Node
 
-from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
-from semantic_code_mcp.models import Chunk, ChunkType
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, ChunkCollector
+from semantic_code_mcp.domain.models import ChunkType
 
 
 class NodeType(StrEnum):
@@ -36,20 +37,13 @@ class MarkdownChunker(BaseTreeSitterChunker):
     # Sections already cover every line; a file of front matter alone stays out.
     whole_file_fallback = False
 
-    def _extract_chunks(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
-        chunks: list[Chunk] = []
+    @override
+    def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:
         for child in root.children:
             if child.type == NodeType.section:
-                self._extract_section(child, file_path, lines, chunks)
-        return chunks
+                self._extract_section(child, collector)
 
-    def _extract_section(
-        self,
-        section: Node,
-        file_path: str,
-        lines: list[str],
-        chunks: list[Chunk],
-    ) -> None:
+    def _extract_section(self, section: Node, collector: ChunkCollector) -> None:
         """Extract a chunk from a section's own content, then recurse into sub-sections.
 
         A section's own content is everything before its first sub-section: the
@@ -59,20 +53,16 @@ class MarkdownChunker(BaseTreeSitterChunker):
         if own_content:
             heading = self._find_heading(section)
             if heading is not None:
-                name = self._heading_text(heading)
-                chunk_type = ChunkType.section
+                collector.add(
+                    own_content[0], own_content[-1], ChunkType.section, self._heading_text(heading)
+                )
             else:
-                name = Path(file_path).stem
-                chunk_type = ChunkType.module
-            chunk = self._make_chunk(
-                own_content[0], own_content[-1], file_path, lines, chunk_type, name
-            )
-            if chunk.content.strip():
-                chunks.append(chunk)
+                name = Path(collector.file_path).stem
+                collector.add(own_content[0], own_content[-1], ChunkType.module, name)
 
         for child in section.children:
             if child.type == NodeType.section:
-                self._extract_section(child, file_path, lines, chunks)
+                self._extract_section(child, collector)
 
     def _find_heading(self, section: Node) -> Node | None:
         """Find an atx_heading or setext_heading child of a section node."""

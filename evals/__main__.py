@@ -85,7 +85,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def run_quality(corpora: list[Corpus], save_baseline: bool) -> None:
+def run_quality(corpora: list[Corpus], *, save_baseline: bool) -> None:
     report = QualityReport(corpora=tuple(asyncio.run(collect_quality(corpora))))
     baseline = read_report(BASELINE_DIRECTORY / QUALITY_FILE, QualityReport)
     baseline_by_corpus: dict[str, CorpusQuality] = {}
@@ -93,10 +93,10 @@ def run_quality(corpora: list[Corpus], save_baseline: bool) -> None:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
     for entry in report.corpora:
         print(describe_quality(entry, baseline_by_corpus.get(entry.corpus)))
-    write_report(report, QUALITY_FILE, save_baseline)
+    write_report(report, QUALITY_FILE, save_baseline=save_baseline)
 
 
-def run_speed(corpora: list[Corpus], edits: int, save_baseline: bool) -> None:
+def run_speed(corpora: list[Corpus], *, edits: int, save_baseline: bool) -> None:
     report = SpeedReport(
         machine=current_machine(), corpora=tuple(asyncio.run(collect_speed(corpora, edits)))
     )
@@ -107,7 +107,7 @@ def run_speed(corpora: list[Corpus], edits: int, save_baseline: bool) -> None:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
     for entry in report.corpora:
         print(describe_speed(entry, baseline_by_corpus.get(entry.corpus)))
-    write_report(report, SPEED_FILE, save_baseline)
+    write_report(report, SPEED_FILE, save_baseline=save_baseline)
 
 
 async def collect_quality(corpora: list[Corpus]) -> list[CorpusQuality]:
@@ -184,7 +184,7 @@ def read_report[Report: BaseModel](path: Path, report_type: type[Report]) -> Rep
     return report_type.model_validate_json(path.read_text())
 
 
-def write_report(report: BaseModel, file_name: str, save_baseline: bool) -> None:
+def write_report(report: BaseModel, file_name: str, *, save_baseline: bool) -> None:
     serialized = report.model_dump_json(indent=JSON_INDENT) + "\n"
     (RESULTS_DIRECTORY / file_name).write_text(serialized)
     if save_baseline:

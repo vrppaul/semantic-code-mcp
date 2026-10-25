@@ -31,14 +31,15 @@ The rules every change is held to are in `AGENTS.md`, and those of each area und
 
 ## Architecture
 
-- `src/semantic_code_mcp/server.py` — the three MCP tools.
-- `src/semantic_code_mcp/container.py` — builds and shares the model, the stores and the services.
-- `src/semantic_code_mcp/services/` — indexing (scan, detect changes, chunk, embed) and search (re-index stale files, embed the query, rank).
-- `src/semantic_code_mcp/discovery.py` — which files get indexed.
-- `src/semantic_code_mcp/chunkers/` — a tree-sitter chunker per language behind one dispatcher.
-- `src/semantic_code_mcp/storage/` — LanceDB and the mtime cache.
+`src/semantic_code_mcp/` is layered, each part building only on those after it, which import-linter holds (`pyproject.toml`):
 
-ADR 006 (D2–D4) describes the structure this is moving to.
+- `cli.py`, `app.py` — the entry point and the composition root: settings, logging, the server, its lifespan.
+- `server/` — the three MCP tools, their answers and presenters, the profiling middleware.
+- `services/` — indexing (scan, detect changes, chunk, embed, store under a per-project lock), search (re-index stale files, embed the query, rank) and the registry of projects.
+- `discovery.py`, `chunkers/`, `embedding.py`, `storage/` — the parts: which files, how they split, their vectors, where they are kept.
+- `domain/` — the models and the interfaces the parts implement.
+
+ADR 006 (D2–D4) describes where this is still moving.
 
 ## Releasing
 

@@ -17,7 +17,7 @@ uv run python -m evals quality        # search quality on the pinned corpora; `s
 
 ## Stack
 
-Python 3.14 · uv · mcp (FastMCP, pinned below 2 until the migration) · sentence-transformers (all-MiniLM-L6-v2, 384 dimensions) · LanceDB · tree-sitter (Python, Rust, Markdown) · structlog · pydantic and pydantic-settings.
+Python 3.14 · uv · mcp 2.x (MCPServer) · sentence-transformers (all-MiniLM-L6-v2, 384 dimensions) · LanceDB · tree-sitter (Python, Rust, Markdown) · structlog · pydantic and pydantic-settings.
 
 ## How we work
 
@@ -33,10 +33,13 @@ Python 3.14 · uv · mcp (FastMCP, pinned below 2 until the migration) · senten
 
 ## Architecture
 
-- `src/semantic_code_mcp/server.py` holds the MCP tools; `src/semantic_code_mcp/container.py` wires them to `src/semantic_code_mcp/services/`.
-- Indexing: `src/semantic_code_mcp/discovery.py` lists the files, `src/semantic_code_mcp/chunkers/` split them, `src/semantic_code_mcp/embedder.py` embeds the chunks, `src/semantic_code_mcp/storage/` keeps vectors and the mtime cache.
-- Search re-indexes stale files, embeds the query, merges vector and full-text hits, filters and ranks them.
-- The target layering, models and storage are ADR 006, D2–D4.
+All under `src/semantic_code_mcp/`, each layer building only on those after it:
+
+- cli → app → server → services → the parts → domain. `uv run lint-imports` refuses an import against them; `pyproject.toml` holds the contracts and their reasons.
+- The parts: discovery lists the files, the chunkers split them, embedding makes the vectors, storage keeps them and the mtime cache.
+- `mcp` stays in the server layer, the app and the cli; each library stays in the part that wraps it.
+- The app builds the server; its lifespan holds the one `ProjectRegistry` every request shares. Nothing is module-level state.
+- Interfaces are abstract classes in `src/semantic_code_mcp/domain/interfaces.py`; tests use the fakes in `tests/fakes.py`.
 
 ## Rules for all code
 
@@ -66,7 +69,7 @@ Every change leaves the repository better than it found it, in every part it tou
 Before you change or review code in an area, read its file whole; a brief to another agent names the files.
 
 - `.claude/rules/python.md` — any Python file: types, enums, logging, errors, modules.
-- `.claude/rules/mcp-server.md` — the MCP tools in `src/semantic_code_mcp/server.py`.
+- `.claude/rules/mcp-server.md` — the MCP tools and their answers under `src/semantic_code_mcp/server/`.
 - `.claude/rules/testing.md` — any test under `tests/`.
 - `.claude/rules/scripts.md` — the gates of our own under `scripts/`.
 - `.claude/rules/documentation.md` — `TODO.md`, `CHANGELOG.md` and the decisions under `docs/decisions/`.

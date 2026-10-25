@@ -1,4 +1,4 @@
-"""Configuration and settings."""
+"""Settings, read once from `SEMANTIC_CODE_MCP_*` environment variables at start-up."""
 
 import hashlib
 from pathlib import Path
@@ -25,91 +25,58 @@ DEFAULT_IGNORE_PATTERNS = (
     "dist/**",
     "build/**",
 )
+DEFAULT_CACHE_DIR = Path.home() / ".cache" / "semantic-code-mcp"
+# A project-local index lives in this directory of the project itself
+LOCAL_INDEX_DIRECTORY = ".semantic-code"
+# A global index directory is named by this many hex digits of a hash of the project path
+INDEX_HASH_LENGTH = 16
 
 
 class Settings(BaseSettings):
-    """Application settings with environment variable support."""
+    """Application settings, from environment variables with the SEMANTIC_CODE_MCP_ prefix.
 
-    model_config = SettingsConfigDict(
-        env_prefix="SEMANTIC_CODE_MCP_",
-        env_file=".env",
-        extra="ignore",
-    )
+    No `.env` file is read: the server runs in the user's project, and its `.env` is
+    not ours to read.
+    """
 
-    # Embedding settings
+    model_config = SettingsConfigDict(env_prefix="SEMANTIC_CODE_MCP_", extra="ignore")
+
     embedding_model: str = "all-MiniLM-L6-v2"
-    embedding_device: str = "auto"
 
-    # Storage settings
-    cache_dir: Path = Field(default_factory=lambda: Path.home() / ".cache" / "semantic-code-mcp")
+    cache_dir: Path = DEFAULT_CACHE_DIR
     local_index: bool = False
 
-    # Chunking settings
-    chunking_target_tokens: int = 800
-    chunking_max_tokens: int = 1500
-
-    # Logging
-    debug: bool = False  # Enable debug logging (SEMANTIC_CODE_MCP_DEBUG=1)
-
-    # Profiling (dev only)
-    profile: bool = False  # Enable profiling (SEMANTIC_CODE_MCP_PROFILE=1)
+    debug: bool = False
+    # Profile every request with pyinstrument, a dev dependency
+    profile: bool = False
 
     # File discovery (see SourceDiscovery for the pattern rules)
     ignore_patterns: list[str] = Field(default_factory=lambda: list(DEFAULT_IGNORE_PATTERNS))
     # Ask git which files .gitignore excludes. False walks the file system and applies
     # ignore_patterns only — for repos whose .gitignore hides source on purpose.
     use_gitignore: bool = True
+    # Git normally answers in milliseconds; past this, discovery walks the file system
+    git_timeout_seconds: float = 10.0
 
-
-_settings: Settings | None = None
-
-
-def configure_settings(settings: Settings) -> None:
-    """Set the global settings instance (call once at startup or in tests)."""
-    global _settings
-    _settings = settings
-
-
-def get_settings() -> Settings:
-    """Get the global settings, auto-creating from env if not configured."""
-    global _settings
-    if _settings is None:
-        _settings = Settings()
-    return _settings
+    @property
+    def profiles_dir(self) -> Path:
+        """Where profiles of requests are written, outside any user's project."""
+        return self.cache_dir / "profiles"
 
 
 def get_index_path(settings: Settings, project_path: Path) -> Path:
-    """Get the index storage path for a project.
+    """The directory a project's index lives in.
 
     Args:
         settings: Application settings.
         project_path: Path to the project root.
 
     Returns:
-        Path where the index should be stored.
+        `.semantic-code/` in the project with `local_index`, else a directory of the
+        cache named by a hash of the project's resolved path.
     """
     if settings.local_index:
-        return project_path / ".semantic-code"
+        return project_path / LOCAL_INDEX_DIRECTORY
 
-    # Hash the absolute path for global cache
-    path_hash = hashlib.sha256(str(project_path.resolve()).encode()).hexdigest()[:16]
-    return settings.cache_dir / path_hash
-
-
-def resolve_cache_dir(settings: Settings, project_path: Path, override: Path | None = None) -> Path:
-    """Get cache directory, with optional override (e.g. for tests).
-
-    Args:
-        settings: Application settings.
-        project_path: Path to the project root.
-        override: Explicit cache directory (bypasses settings).
-
-    Returns:
-        Resolved cache directory, created if it doesn't exist.
-    """
-    if override is not None:
-        override.mkdir(parents=True, exist_ok=True)
-        return override
-    path = get_index_path(settings, project_path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    path_hash = hashlib.sha256(str(project_path.resolve()).encode()).hexdigest()
+    return settings.cache_dir / path_hash[:INDEX_HASH_LENGTH]

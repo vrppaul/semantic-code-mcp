@@ -4,7 +4,7 @@ from pathlib import Path
 
 from semantic_code_mcp.chunkers.base import FALLBACK_WINDOW_LINES, MAX_SOURCE_BYTES
 from semantic_code_mcp.chunkers.python import PythonChunker
-from semantic_code_mcp.models import ChunkType
+from semantic_code_mcp.domain.models import ChunkType
 from tests.helpers import ChunkSummary, LineRange, line_ranges, summarize
 
 

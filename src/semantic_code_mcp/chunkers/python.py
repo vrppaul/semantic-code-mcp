@@ -2,12 +2,13 @@
 
 from enum import StrEnum, auto
 from pathlib import Path
+from typing import override
 
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node
 
-from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, field_text
-from semantic_code_mcp.models import Chunk, ChunkType
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, ChunkCollector, field_text
+from semantic_code_mcp.domain.models import ChunkType
 
 
 class NodeType(StrEnum):
@@ -40,56 +41,35 @@ class PythonChunker(BaseTreeSitterChunker):
     language = Language(tspython.language())
     extensions = (".py",)
 
-    def _extract_chunks(self, root: Node, file_path: str, lines: list[str]) -> list[Chunk]:
-        """Extract Python-specific chunks from the AST."""
-        chunks: list[Chunk] = []
-
-        # Extract module docstring if present (PEP 257: first statement)
-        module_chunk = self._extract_module_docstring(root, file_path, lines)
-        if module_chunk:
-            chunks.append(module_chunk)
-
-        self._extract_definitions(root, file_path, lines, chunks, in_class=False)
-        return chunks
+    @override
+    def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:
+        """Extract the module docstring, then the definitions under the root."""
+        self._extract_module_docstring(root, collector)
+        self._extract_definitions(root, collector, in_class=False)
 
     def _extract_definitions(
-        self,
-        node: Node,
-        file_path: str,
-        lines: list[str],
-        chunks: list[Chunk],
-        in_class: bool,
+        self, node: Node, collector: ChunkCollector, *, in_class: bool
     ) -> None:
         """Extract the function and class definitions directly inside a node."""
         for child in node.children:
             match child.type:
                 case NodeType.function_definition | NodeType.class_definition:
-                    self._extract_definition(child, child, file_path, lines, chunks, in_class)
+                    self._extract_definition(child, child, collector, in_class=in_class)
                 case NodeType.decorated_definition:
                     # The `definition` field skips decorators and any comments between them.
                     definition = child.child_by_field_name(FieldName.definition)
                     if definition is not None:
-                        self._extract_definition(
-                            child, definition, file_path, lines, chunks, in_class
-                        )
+                        self._extract_definition(child, definition, collector, in_class=in_class)
 
     def _extract_definition(
-        self,
-        span_node: Node,
-        definition: Node,
-        file_path: str,
-        lines: list[str],
-        chunks: list[Chunk],
-        in_class: bool,
+        self, span_node: Node, definition: Node, collector: ChunkCollector, *, in_class: bool
     ) -> None:
         """Extract one definition; a class also yields chunks for its methods.
 
         Args:
             span_node: Node whose lines the chunk covers (the decorated wrapper, if any).
             definition: The function_definition or class_definition itself.
-            file_path: Source file path.
-            lines: Source code lines.
-            chunks: Chunks collected so far.
+            collector: The chunks of the file so far.
             in_class: Whether the definition sits in a class body.
         """
         name = field_text(definition, FieldName.name)
@@ -97,23 +77,16 @@ class PythonChunker(BaseTreeSitterChunker):
             return
 
         if definition.type == NodeType.class_definition:
-            chunks.append(
-                self._make_chunk(span_node, span_node, file_path, lines, ChunkType.klass, name)
-            )
+            collector.add(span_node, span_node, ChunkType.klass, name)
             body = definition.child_by_field_name(FieldName.body)
             if body is not None:
-                self._extract_definitions(body, file_path, lines, chunks, in_class=True)
+                self._extract_definitions(body, collector, in_class=True)
             return
 
         chunk_type = ChunkType.method if in_class else ChunkType.function
-        chunks.append(self._make_chunk(span_node, span_node, file_path, lines, chunk_type, name))
+        collector.add(span_node, span_node, chunk_type, name)
 
-    def _extract_module_docstring(
-        self,
-        root: Node,
-        file_path: str,
-        lines: list[str],
-    ) -> Chunk | None:
+    def _extract_module_docstring(self, root: Node, collector: ChunkCollector) -> None:
         """Extract module-level docstring per PEP 257.
 
         The module docstring must be the first statement in the file.
@@ -128,10 +101,7 @@ class PythonChunker(BaseTreeSitterChunker):
             if child.type == NodeType.expression_statement and any(
                 part.type == NodeType.string for part in child.children
             ):
-                name = Path(file_path).stem
-                return self._make_chunk(child, child, file_path, lines, ChunkType.module, name)
+                collector.add(child, child, ChunkType.module, Path(collector.file_path).stem)
 
-            # Any other node type means no module docstring
-            return None
-
-        return None
+            # Only the first real statement can be the module docstring
+            return

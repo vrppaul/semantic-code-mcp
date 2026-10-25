@@ -1,325 +1,222 @@
-"""LanceDB vector storage operations."""
+"""LanceDB vector storage: one table of chunks with their vectors and a full-text index."""
 
 from pathlib import Path
+from typing import override
 
 import lancedb
-import pyarrow as pa
+import pyarrow
 import structlog
+from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.models import ChunkType, ChunkWithEmbedding, SearchResult
+from semantic_code_mcp.domain.interfaces import VectorStore
+from semantic_code_mcp.domain.models import (
+    ChunkLocation,
+    ChunkType,
+    ChunkWithEmbedding,
+    SearchResult,
+    StoreStatistics,
+)
 
 log = structlog.get_logger()
 
 EMBEDDING_DIMENSION = 384  # all-MiniLM-L6-v2
 TABLE_NAME = "chunks"
+CONTENT_COLUMN = "content"
+FILE_PATH_COLUMN = "file_path"
+FULL_TEXT_QUERY_TYPE = "fts"
+COSINE_METRIC = "cosine"
+# Columns LanceDB adds to a hit: the cosine distance of a vector hit, the score of a text hit
+DISTANCE_COLUMN = "_distance"
+FULL_TEXT_SCORE_COLUMN = "_score"
 
 # Score normalization constants
 COSINE_DISTANCE_MAX = 2.0  # cosine distance range is [0, 2] by definition
-FTS_SCORE_DIVISOR = 10.0  # empirical: LanceDB tantivy FTS scores typically peak ~5-15
-FTS_DEFAULT_SCORE = 0.5  # fallback when FTS returns no _score field
+FULL_TEXT_SCORE_DIVISOR = 10.0  # empirical: the full-text scores seen peak around 5-15
+FULL_TEXT_DEFAULT_SCORE = 0.5  # fallback when a text hit carries no score
+LOWEST_SCORE = 0.0
+HIGHEST_SCORE = 1.0
+# How a single quote is written inside a quoted SQL string
+SQL_QUOTE = "'"
+SQL_ESCAPED_QUOTE = "''"
 
-# Schema for the chunks table
-CHUNKS_SCHEMA = pa.schema(
+CHUNKS_SCHEMA = pyarrow.schema(
     [
-        pa.field("vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)),
-        pa.field("file_path", pa.utf8()),
-        pa.field("line_start", pa.int32()),
-        pa.field("line_end", pa.int32()),
-        pa.field("content", pa.utf8()),
-        pa.field("chunk_type", pa.utf8()),
-        pa.field("name", pa.utf8()),
+        pyarrow.field("vector", pyarrow.list_(pyarrow.float32(), EMBEDDING_DIMENSION)),
+        pyarrow.field(FILE_PATH_COLUMN, pyarrow.utf8()),
+        pyarrow.field("line_start", pyarrow.int32()),
+        pyarrow.field("line_end", pyarrow.int32()),
+        pyarrow.field(CONTENT_COLUMN, pyarrow.utf8()),
+        pyarrow.field("chunk_type", pyarrow.utf8()),
+        pyarrow.field("name", pyarrow.utf8()),
     ]
 )
 
 
-class LanceDBConnection:
-    """Manages LanceDB connection (expensive, created once)."""
+class StoredChunk(BaseModel):
+    """A row of the chunks table as a search returns it."""
 
-    def __init__(self, db_path: Path) -> None:
-        """Initialize the LanceDB connection.
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
-        Args:
-            db_path: Path to the LanceDB database directory.
-        """
-        self.db_path = db_path
-        self.db = lancedb.connect(str(db_path))
-        self.ensure_table()
+    file_path: str
+    line_start: int
+    line_end: int
+    content: str
+    chunk_type: ChunkType
+    name: str
 
-    def ensure_table(self) -> None:
-        """Ensure the chunks table exists with FTS index."""
-        try:
-            self.db.create_table(TABLE_NAME, schema=CHUNKS_SCHEMA, exist_ok=True)
-            log.debug("ensured_table", table=TABLE_NAME)
-        except ValueError:
-            # Table already exists (race condition or stale cache)
-            pass
+    def scored(self, score: float) -> SearchResult:
+        """This row as a search hit with a score."""
+        return SearchResult(
+            file_path=self.file_path,
+            line_start=self.line_start,
+            line_end=self.line_end,
+            content=self.content,
+            chunk_type=self.chunk_type,
+            name=self.name,
+            score=score,
+        )
 
-        # Ensure FTS index exists on content column
-        self._ensure_fts_index()
 
-    def _ensure_fts_index(self, *, force: bool = False) -> None:
-        """Ensure full-text search index exists on content column.
+class LanceDBVectorStore(VectorStore):
+    """The chunks of one project in a LanceDB database directory."""
 
-        Args:
-            force: If True, always rebuild the index. If False, skip if index exists.
-        """
-        try:
-            table = self.table
-            if table.count_rows() == 0:
-                return  # Can't create index on empty table
-
-            # Check if FTS index already exists (skip expensive rebuild)
-            if not force:
-                existing_indices = table.list_indices()
-                fts_exists = any(
-                    idx.index_type == "FTS" and "content" in idx.columns for idx in existing_indices
-                )
-                if fts_exists:
-                    log.debug("fts_index_exists", column="content")
-                    return
-
-            # Create/rebuild FTS index on content column
-            table.create_fts_index("content", replace=True)
-            log.debug("created_fts_index", column="content")
-        except (OSError, ValueError, RuntimeError) as e:
-            # Index creation may fail: IO errors, empty table, or LanceDB internal errors
-            log.warning("fts_index_creation_skipped", error=str(e))
+    def __init__(self, database_path: Path) -> None:
+        self._database = lancedb.connect(str(database_path))
+        self._database.create_table(TABLE_NAME, schema=CHUNKS_SCHEMA, exist_ok=True)
 
     @property
-    def table(self) -> lancedb.table.Table:
-        """Get the chunks table."""
-        return self.db.open_table(TABLE_NAME)
+    def _table(self) -> lancedb.table.Table:
+        return self._database.open_table(TABLE_NAME)
 
-    def rebuild_fts_index(self) -> None:
-        """Force rebuild of FTS index. Called after adding chunks."""
-        self._ensure_fts_index(force=True)
-
-    def drop_table(self) -> None:
-        """Drop the chunks table."""
-        try:
-            self.db.drop_table(TABLE_NAME)
-            log.debug("dropped_table", table=TABLE_NAME)
-        except ValueError:
-            # Table doesn't exist
-            pass
-
-
-class LanceDBVectorStore:
-    """Per-request session wrapping the connection.
-
-    Lightweight wrapper around LanceDBConnection that provides
-    the VectorStoreProtocol interface for indexing and search operations.
-    """
-
-    def __init__(self, connection: LanceDBConnection) -> None:
-        """Initialize the vector store session.
-
-        Args:
-            connection: Shared LanceDB connection.
-        """
-        self.connection = connection
-
+    @override
     def add_chunks(self, items: list[ChunkWithEmbedding]) -> None:
-        """Add chunks with their embeddings to the store.
-
-        Args:
-            items: List of ChunkWithEmbedding objects.
-        """
         if not items:
             return
-
-        data = [
+        rows = [
             {
                 "vector": item.embedding,
-                "file_path": item.chunk.file_path,
+                FILE_PATH_COLUMN: item.chunk.file_path,
                 "line_start": item.chunk.line_start,
                 "line_end": item.chunk.line_end,
-                "content": item.chunk.content,
+                CONTENT_COLUMN: item.chunk.content,
                 "chunk_type": item.chunk.chunk_type,
                 "name": item.chunk.name,
             }
             for item in items
         ]
+        self._table.add(rows)
+        log.debug("added_chunks", count=len(rows))
+        self._rebuild_full_text_index()
 
-        table = self.connection.table
-        table.add(data)
-        log.debug("added_chunks", count=len(data))
-
-        # Rebuild FTS index after adding data
-        self.connection.rebuild_fts_index()
-
-    def search(self, query_embedding: list[float], limit: int = 10) -> list[SearchResult]:
-        """Search for similar chunks.
-
-        Args:
-            query_embedding: The query vector.
-            limit: Maximum number of results.
-
-        Returns:
-            List of SearchResult objects sorted by similarity.
-        """
-        table = self.connection.table
-
+    def search_vector(self, query_embedding: list[float], limit: int) -> list[SearchResult]:
+        """The chunks nearest to a vector, scored by cosine similarity mapped to [0, 1]."""
+        table = self._table
         if table.count_rows() == 0:
             return []
-
-        results = table.search(query_embedding).metric("cosine").limit(limit).to_pandas()  # type: ignore[possibly-missing-attribute]  # lancedb stubs incomplete
-
-        search_results = []
-        for _, row in results.iterrows():
-            # LanceDB returns _distance (cosine distance in [0, 2], lower is better)
-            # Convert to score where higher is better: score = 1 - (distance / 2)
-            distance = row["_distance"]
-            score = max(0.0, min(1.0, 1.0 - distance / COSINE_DISTANCE_MAX))
-
-            search_results.append(
-                SearchResult(
-                    file_path=row["file_path"],
-                    line_start=int(row["line_start"]),
-                    line_end=int(row["line_end"]),
-                    content=row["content"],
-                    chunk_type=ChunkType(row["chunk_type"]),
-                    name=row["name"],
-                    score=score,
-                )
+        query = table.search(query_embedding)
+        # lancedb's stubs type search() as the base builder, which lacks metric()
+        rows = query.metric(COSINE_METRIC).limit(limit).to_list()  # ty: ignore[unresolved-attribute]
+        return [
+            StoredChunk.model_validate(row).scored(
+                clamp_score(HIGHEST_SCORE - row[DISTANCE_COLUMN] / COSINE_DISTANCE_MAX)
             )
+            for row in rows
+        ]
 
-        return search_results
-
-    def search_fts(self, query_text: str, limit: int = 10) -> list[SearchResult]:
-        """Search using full-text search only.
-
-        Args:
-            query_text: The text query to search for.
-            limit: Maximum number of results.
-
-        Returns:
-            List of SearchResult objects.
-        """
-        table = self.connection.table
-
+    def search_full_text(self, query_text: str, limit: int) -> list[SearchResult]:
+        """The chunks whose text best matches the words of a query."""
+        table = self._table
         if table.count_rows() == 0:
             return []
-
         try:
-            results = table.search(query_text, query_type="fts").limit(limit).to_pandas()
-        except (OSError, ValueError, RuntimeError) as e:
-            # FTS may fail if index doesn't exist or query is invalid
-            log.warning("fts_search_failed", error=str(e))
+            rows = table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE).limit(limit).to_list()
+        except (OSError, ValueError, RuntimeError) as error:
+            # No full-text index yet, or a query the index cannot parse
+            log.warning("full_text_search_failed", error=str(error))
             return []
-
-        search_results = []
-        for _, row in results.iterrows():
-            # FTS returns _score (higher is better, but scale varies)
-            # Normalize to 0-1 range (approximate)
-            score = min(1.0, row.get("_score", FTS_DEFAULT_SCORE) / FTS_SCORE_DIVISOR)
-
-            search_results.append(
-                SearchResult(
-                    file_path=row["file_path"],
-                    line_start=int(row["line_start"]),
-                    line_end=int(row["line_end"]),
-                    content=row["content"],
-                    chunk_type=ChunkType(row["chunk_type"]),
-                    name=row["name"],
-                    score=score,
+        return [
+            StoredChunk.model_validate(row).scored(
+                clamp_score(
+                    row.get(FULL_TEXT_SCORE_COLUMN, FULL_TEXT_DEFAULT_SCORE)
+                    / FULL_TEXT_SCORE_DIVISOR
                 )
             )
+            for row in rows
+        ]
 
-        return search_results
-
+    @override
     def search_hybrid(
         self,
         query_embedding: list[float],
         query_text: str,
-        limit: int = 10,
-        vector_weight: float = 0.5,
+        limit: int,
+        vector_weight: float,
     ) -> list[SearchResult]:
-        """Search using both vector similarity and full-text search.
+        """Vector and full-text hits, weighted and summed per chunk, best first."""
+        merged = merge_weighted(
+            self.search_vector(query_embedding, limit),
+            vector_weight,
+            self.search_full_text(query_text, limit),
+            HIGHEST_SCORE - vector_weight,
+        )
+        return sorted(merged, key=lambda result: result.score, reverse=True)[:limit]
 
-        Runs both searches in parallel and merges results, ensuring both
-        semantically similar AND keyword-matching results are included.
+    @override
+    def delete_by_files(self, file_paths: list[str]) -> None:
+        if not file_paths:
+            return
+        quoted = ", ".join(quote_sql(file_path) for file_path in file_paths)
+        self._table.delete(f"{FILE_PATH_COLUMN} IN ({quoted})")
+        log.debug("deleted_chunks_for_files", count=len(file_paths))
 
-        Args:
-            query_embedding: The query vector.
-            query_text: The text query for FTS.
-            limit: Maximum number of results.
-            vector_weight: Weight for vector search (0.0 to 1.0).
-                          FTS weight is (1 - vector_weight).
+    @override
+    def statistics(self) -> StoreStatistics:
+        table = self._table
+        file_paths = table.to_arrow().column(FILE_PATH_COLUMN)
+        return StoreStatistics(
+            indexed_files=file_paths.unique().to_pylist(),
+            chunks_count=table.count_rows(),
+        )
 
-        Returns:
-            List of SearchResult objects combining both search methods.
-        """
-        vector_results = self.search(query_embedding, limit)
-        fts_results = self.search_fts(query_text, limit)
-
-        fts_weight = 1.0 - vector_weight
-        merged = self._merge_results(vector_results, vector_weight, fts_results, fts_weight)
-
-        merged.sort(key=lambda r: r.score, reverse=True)
-        return merged[:limit]
-
-    @staticmethod
-    def _merge_results(
-        primary: list[SearchResult],
-        primary_weight: float,
-        secondary: list[SearchResult],
-        secondary_weight: float,
-    ) -> list[SearchResult]:
-        """Merge two ranked result lists with weighted scores."""
-        seen: dict[tuple[str, int], SearchResult] = {}
-
-        for r in primary:
-            key = (r.file_path, r.line_start)
-            seen[key] = r.model_copy(update={"score": r.score * primary_weight})
-
-        for r in secondary:
-            key = (r.file_path, r.line_start)
-            weighted = r.score * secondary_weight
-            if key in seen:
-                combined = min(1.0, seen[key].score + weighted)
-                seen[key] = seen[key].model_copy(update={"score": combined})
-            else:
-                seen[key] = r.model_copy(update={"score": weighted})
-
-        return list(seen.values())
-
-    def delete_by_file(self, file_path: str) -> None:
-        """Delete all chunks for a specific file.
-
-        Args:
-            file_path: The file path to delete chunks for.
-        """
-        table = self.connection.table
-        escaped = file_path.replace("'", "''")
-        table.delete(f"file_path = '{escaped}'")
-        log.debug("deleted_chunks_for_file", file_path=file_path)
-
-    def get_indexed_files(self) -> list[str]:
-        """Get list of all indexed file paths.
-
-        Returns:
-            List of unique file paths in the store.
-        """
-        table = self.connection.table
-
-        if table.count_rows() == 0:
-            return []
-
-        df = table.to_pandas()
-        return df["file_path"].unique().tolist()
-
-    def count(self) -> int:
-        """Count total chunks in the store.
-
-        Returns:
-            Number of chunks.
-        """
-        table = self.connection.table
-        return table.count_rows()
-
+    @override
     def clear(self) -> None:
-        """Delete all chunks from the store."""
-        self.connection.drop_table()
-        # Recreate empty table
-        self.connection.ensure_table()
+        self._database.drop_table(TABLE_NAME)
+        self._database.create_table(TABLE_NAME, schema=CHUNKS_SCHEMA)
+
+    def _rebuild_full_text_index(self) -> None:
+        """Rebuild the full-text index over the chunk contents after a write."""
+        try:
+            self._table.create_fts_index(CONTENT_COLUMN, replace=True)
+            log.debug("rebuilt_full_text_index", column=CONTENT_COLUMN)
+        except (OSError, ValueError, RuntimeError) as error:
+            log.warning("full_text_index_not_built", error=str(error))
+
+
+def merge_weighted(
+    primary: list[SearchResult],
+    primary_weight: float,
+    secondary: list[SearchResult],
+    secondary_weight: float,
+) -> list[SearchResult]:
+    """Merge two ranked lists: each hit's score times its list's weight, summed per chunk."""
+    merged: dict[ChunkLocation, SearchResult] = {
+        result.location: result.with_score(result.score * primary_weight) for result in primary
+    }
+    for result in secondary:
+        weighted = result.score * secondary_weight
+        earlier = merged.get(result.location)
+        if earlier is None:
+            merged[result.location] = result.with_score(weighted)
+        else:
+            merged[result.location] = earlier.with_score(clamp_score(earlier.score + weighted))
+    return list(merged.values())
+
+
+def clamp_score(score: float) -> float:
+    """A score held to [0, 1]."""
+    return max(LOWEST_SCORE, min(HIGHEST_SCORE, score))
+
+
+def quote_sql(value: str) -> str:
+    """A string as a quoted SQL literal."""
+    return SQL_QUOTE + value.replace(SQL_QUOTE, SQL_ESCAPED_QUOTE) + SQL_QUOTE

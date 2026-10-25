@@ -39,5 +39,5 @@ paths:
 - Tree-sitter node types must be `NodeType(StrEnum)` enums per chunker — no raw string comparisons
 
 ## Module Structure
-- Every `src/semantic_code_mcp/**/__init__.py` holds a docstring only; code lives in named modules and imports name the module (`semantic_code_mcp.models.domain`).
-- `src/semantic_code_mcp/models/__init__.py` still re-exports; that goes in ADR 006, stage 4.
+- Every `src/semantic_code_mcp/**/__init__.py` holds a docstring only; code lives in named modules and imports name the module (`semantic_code_mcp.domain.models`).
+- An interface is an abstract class in `src/semantic_code_mcp/domain/interfaces.py`, its implementations mark each member `@override`; `typing.Protocol`, `Any` and `cast` are banned.

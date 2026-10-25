@@ -8,7 +8,7 @@ from semantic_code_mcp.chunkers.composite import CompositeChunker
 from semantic_code_mcp.chunkers.markdown import MarkdownChunker
 from semantic_code_mcp.chunkers.python import PythonChunker
 from semantic_code_mcp.chunkers.rust import RustChunker
-from semantic_code_mcp.models import ChunkType
+from semantic_code_mcp.domain.models import ChunkType
 
 
 class TestCompositeChunker:
