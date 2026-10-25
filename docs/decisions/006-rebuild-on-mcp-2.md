@@ -456,7 +456,7 @@ IDs: **G** = GitHub, **R/A/S/Q/C/T/P** = code review (reliability, architecture,
 
 ## Appendix B. Baseline measurements (v0.4.0)
 
-Taken by the review with scripts of its own. From stage 3 on, the reference numbers are `evals/baseline/`, recorded by `python -m evals` on the 0.4.1 code: file MRR 0.698 / 0.430 / 0.523 and chunk MRR 0.531 / 0.303 / 0.300 on this repo / click / fd; 3.2 / 1.9 / 1.4 files/s; warm search p50 87 / 101 / 87 ms; first search 6.4–7.5 s; peak memory 1.0–1.35 GB.
+Taken by the review with scripts of its own. From stage 3 on, the reference numbers are `evals/baseline/`, recorded by `python -m evals`. On the 0.4.1 code: file MRR 0.698 / 0.430 / 0.523 and chunk MRR 0.531 / 0.303 / 0.300 on this repo / click / fd; 3.2 / 1.9 / 1.4 files/s; warm search p50 87 / 101 / 87 ms; first search 6.4–7.5 s; peak memory 1.0–1.35 GB. After stage 4 and with more equally right answers in the corpora: file MRR 0.698 / 0.455 / 0.549, chunk MRR 0.544 / 0.328 / 0.318; read `evals/baseline/` for the current figures.
 
 | Metric | This repo (61 files) | pydantic (105) | numpy (407) | Target (rules) |
 |---|---|---|---|---|
