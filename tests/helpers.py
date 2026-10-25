@@ -5,12 +5,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.config import Settings, get_index_path
+from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
-from semantic_code_mcp.domain.interfaces import Embedder, VectorStore
+from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkType
 from semantic_code_mcp.services.indexing import IndexingService
-from semantic_code_mcp.services.projects import build_chunker
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -21,6 +20,13 @@ def run_git(repository: Path, *arguments: str) -> None:
         check=True,
         capture_output=True,
     )
+
+
+def git_output(repository: Path, *arguments: str) -> str:
+    """What a git command prints in a repository."""
+    return subprocess.run(  # nosec B603, B607
+        ["git", *arguments], cwd=repository, check=True, capture_output=True, text=True
+    ).stdout
 
 
 def make_repository(root: Path) -> Path:
@@ -37,13 +43,9 @@ def commit_all(repository: Path) -> None:
 
 
 def indexing_service(
-    store: VectorStore, embedder: Embedder, settings: Settings, project: Path
+    store: IndexStore, embedder: Embedder, settings: Settings, chunker: Chunker
 ) -> IndexingService:
-    """The indexing of one project over the given store and embedder, with the real
-    discovery and chunkers, its index directory made under the settings' cache."""
-    chunker = build_chunker()
-    index_path = get_index_path(settings, project)
-    index_path.mkdir(parents=True, exist_ok=True)
+    """The indexing of a project over the given parts, with the real discovery."""
     return IndexingService(
         discovery=SourceDiscovery(
             extensions=chunker.supported_extensions,
@@ -54,7 +56,6 @@ def indexing_service(
         chunker=chunker,
         embedder=embedder,
         store=store,
-        cache_directory=index_path,
     )
 
 

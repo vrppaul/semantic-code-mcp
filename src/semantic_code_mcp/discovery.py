@@ -1,6 +1,7 @@
 """Source file discovery — which files of a project get indexed."""
 
 import os
+import stat
 import subprocess  # nosec B404
 from collections.abc import Sequence
 from fnmatch import fnmatchcase
@@ -8,6 +9,8 @@ from pathlib import Path
 
 import structlog
 from pydantic import BaseModel, ConfigDict
+
+from semantic_code_mcp.domain.models import SourceFile
 
 log = structlog.get_logger()
 
@@ -36,6 +39,15 @@ class IgnorePatterns(BaseModel):
     component: tuple[str, ...]
     # Matched against the path from the project root and each of its leading directories
     path: tuple[str, ...]
+
+
+class FoundFile(BaseModel):
+    """A candidate that is a file inside the project: the file it leads to, and its record."""
+
+    model_config = ConfigDict(frozen=True)
+
+    target: Path
+    source: SourceFile
 
 
 def parse_ignore_patterns(raw_patterns: Sequence[str]) -> IgnorePatterns:
@@ -90,8 +102,9 @@ class SourceDiscovery:
         self._use_gitignore = use_gitignore
         self._git_timeout_seconds = git_timeout_seconds
 
-    def discover(self, project_root: Path) -> list[Path]:
-        """List the indexable files under a project root, as sorted absolute paths."""
+    def discover(self, project_root: Path) -> list[SourceFile]:
+        """The indexable files under a project root, sorted by their absolute paths, each
+        with its modification time and size as found now."""
         root = project_root.resolve()
         candidates = self._list_with_git(root) if self._use_gitignore else None
         if candidates is None:
@@ -174,8 +187,8 @@ class SourceDiscovery:
             found.extend(directory / name for name in file_names)
         return found
 
-    def _indexable(self, candidates: list[Path], root: Path) -> list[Path]:
-        """The candidates worth indexing, each file once, sorted.
+    def _indexable(self, candidates: list[Path], root: Path) -> list[SourceFile]:
+        """The candidates worth indexing, each file once, sorted by path.
 
         The checks that need no file system run first, over every candidate; only what
         passes them is stat'ed. A file reached both directly and through a symlink keeps
@@ -183,12 +196,12 @@ class SourceDiscovery:
         """
         wanted = sorted(path for path in set(candidates) if self._is_wanted(path, root))
         # A stable sort by "is a symlink" keeps the path order among direct paths and links
-        kept_by_target: dict[Path, Path] = {}
+        kept_by_target: dict[Path, SourceFile] = {}
         for path in sorted(wanted, key=Path.is_symlink):
-            target = self._target_inside(path, root)
-            if target is not None:
-                kept_by_target.setdefault(target, path)
-        return sorted(kept_by_target.values())
+            found = self._found_inside(path, root)
+            if found is not None:
+                kept_by_target.setdefault(found.target, found.source)
+        return sorted(kept_by_target.values(), key=lambda source: source.path)
 
     def _is_wanted(self, path: Path, root: Path) -> bool:
         """Whether a candidate has a supported extension and no pattern ignores it."""
@@ -196,15 +209,22 @@ class SourceDiscovery:
             path.relative_to(root).as_posix()
         )
 
-    def _target_inside(self, path: Path, root: Path) -> Path | None:
-        """The file a candidate resolves to when it exists and stays inside root."""
-        if not path.is_file():
+    def _found_inside(self, path: Path, root: Path) -> FoundFile | None:
+        """A candidate that is a file and resolves inside root, with its record as of now."""
+        try:
+            status = path.stat()
+        except OSError:
+            return None
+        if not stat.S_ISREG(status.st_mode):
             return None
         target = path.resolve()
         if not target.is_relative_to(root):
             log.debug("skipped_file_outside_project", file_path=str(path), project=str(root))
             return None
-        return target
+        return FoundFile(
+            target=target,
+            source=SourceFile(path=path, mtime_ns=status.st_mtime_ns, size_bytes=status.st_size),
+        )
 
     def _is_ignored(self, relative_path: str) -> bool:
         """Whether an ignore pattern covers a file's path relative to the project root."""

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from semantic_code_mcp.discovery import SourceDiscovery
+from semantic_code_mcp.domain.models import SourceFile
 from tests.helpers import commit_all, make_repository, run_git
 
 PYTHON_EXTENSIONS = (".py",)
@@ -25,8 +26,8 @@ def make_discovery(
     )
 
 
-def relative_names(files: list[Path], root: Path) -> set[str]:
-    return {file.relative_to(root).as_posix() for file in files}
+def relative_names(files: list[SourceFile], root: Path) -> set[str]:
+    return {file.path.relative_to(root).as_posix() for file in files}
 
 
 class TestGitDiscovery:
@@ -73,7 +74,7 @@ class TestGitDiscovery:
         files = make_discovery().discover(repository)
 
         assert relative_names(files, repository) == {"тест.py"}
-        assert all(file.is_file() for file in files)
+        assert all(file.path.is_file() for file in files)
 
     def test_subdirectory_of_a_repository_honours_gitignore(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")

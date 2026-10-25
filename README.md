@@ -20,7 +20,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — hybrid semantic + keyword search with recency boosting
 
-Indexing is incremental (mtime-based). In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
+Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. An index built by another model, chunker version or storage layout is rebuilt once, automatically, and the tool's answer says why. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
 
 ## Installation
 
@@ -127,7 +127,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEMANTIC_CODE_MCP_CACHE_DIR` | `~/.cache/semantic-code-mcp` | Where indexes are stored |
-| `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` within each project |
+| `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` within each project; it holds a `.gitignore`, so git never shows it |
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |

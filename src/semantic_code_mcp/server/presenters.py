@@ -1,9 +1,16 @@
 """From what the services report to what the tools answer."""
 
-from semantic_code_mcp.domain.models import IndexResult, IndexStatus, SearchReport, SearchResult
+from semantic_code_mcp.domain.models import (
+    IndexManifest,
+    IndexReport,
+    IndexStatus,
+    SearchReport,
+    SearchResult,
+)
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
     IndexingSummaryView,
+    IndexManifestView,
     IndexStatusResponse,
     SearchCodeResponse,
     SearchDebugView,
@@ -49,7 +56,7 @@ def present_hit(result: SearchResult) -> SearchResultView:
 
 def present_search_debug(report: SearchReport, results: list[SearchResultView]) -> SearchDebugView:
     """The timings and counts behind one search."""
-    indexing = report.index_result
+    indexing = report.index_report
     return SearchDebugView(
         timings=SearchTimingsView(
             embedding_ms=report.timings.embedding_ms,
@@ -68,18 +75,21 @@ def present_search_debug(report: SearchReport, results: list[SearchResultView]) 
         indexing=None
         if indexing is None
         else IndexingSummaryView(
-            files_indexed=indexing.files_indexed, chunks_indexed=indexing.chunks_indexed
+            files_indexed=indexing.files_indexed,
+            chunks_indexed=indexing.chunks_indexed,
+            rebuild_reason=indexing.rebuild_reason,
         ),
     )
 
 
-def present_index(result: IndexResult) -> IndexCodebaseResponse:
+def present_index(report: IndexReport) -> IndexCodebaseResponse:
     """The answer of `index_codebase`."""
     return IndexCodebaseResponse(
-        files_indexed=result.files_indexed,
-        chunks_indexed=result.chunks_indexed,
-        files_deleted=result.files_deleted,
-        duration_seconds=result.duration_seconds,
+        files_indexed=report.files_indexed,
+        chunks_indexed=report.chunks_indexed,
+        files_deleted=report.files_deleted,
+        duration_seconds=report.duration_seconds,
+        rebuild_reason=report.rebuild_reason,
     )
 
 
@@ -87,8 +97,19 @@ def present_status(status: IndexStatus) -> IndexStatusResponse:
     """The answer of `index_status`."""
     return IndexStatusResponse(
         is_indexed=status.is_indexed,
-        last_updated=None if status.last_updated is None else status.last_updated.isoformat(),
+        last_updated=None if status.manifest is None else status.manifest.indexed_at.isoformat(),
         files_count=status.files_count,
         chunks_count=status.chunks_count,
-        stale_files_count=len(status.stale_files),
+        stale_files_count=status.stale_files_count,
+        manifest=None if status.manifest is None else present_manifest(status.manifest),
+        rebuild_reason=status.rebuild_reason,
+    )
+
+
+def present_manifest(manifest: IndexManifest) -> IndexManifestView:
+    """What built an index, as `index_status` tells it."""
+    return IndexManifestView(
+        model_name=manifest.identity.model_name,
+        chunker_version=manifest.identity.chunker_version,
+        schema_version=manifest.identity.schema_version,
     )

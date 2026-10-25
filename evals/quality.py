@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from evals.corpus import Answer, Corpus, Query, missing_answer_paths
 from evals.server import SearchHit, ServerConnection
-from semantic_code_mcp.services.projects import build_chunker
+from semantic_code_mcp.app import build_chunker
 
 # How many results each question asks for, as an agent's default call does
 RESULTS_PER_QUERY = 10

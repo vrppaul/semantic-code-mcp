@@ -11,6 +11,10 @@ from semantic_code_mcp.domain.models import Chunk
 
 log = structlog.get_logger()
 
+# The version of the chunks the chunkers make: bumped by any change to what a file
+# gives, so an index built by an older version is built again
+CHUNKER_VERSION = 1
+
 
 class CompositeChunker(Chunker):
     """Chunker composed of language-specific chunkers, dispatching by file extension."""
@@ -53,6 +57,11 @@ class CompositeChunker(Chunker):
             return []
 
         return chunker.chunk_file(file_path)
+
+    @property
+    @override
+    def version(self) -> int:
+        return CHUNKER_VERSION
 
     @property
     @override

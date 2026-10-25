@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum, auto
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -95,58 +96,120 @@ class SearchResult(BaseModel):
         )
 
 
-class IndexStatus(BaseModel):
-    """Status of the index for a codebase."""
+class SourceFile(BaseModel):
+    """A file discovery found, with what it was when it was found.
+
+    The index records each file it indexed as the scan found it, never stat'ed again
+    later: an edit or a deletion made while the file is chunked and embedded leaves
+    the record behind, so the next run sees the file as changed or gone. A file that
+    gave no chunk is recorded too, so it is not indexed again on every run.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    is_indexed: bool
-    last_updated: datetime | None
-    files_count: int
-    chunks_count: int
-    # Files the index no longer matches: new, modified or deleted since it was written
-    stale_files: list[str]
+    path: Path
+    mtime_ns: int
+    size_bytes: int
 
 
-class StoreStatistics(BaseModel):
-    """What a vector store holds: the files it has chunks of, and how many chunks."""
+class IndexDelta(BaseModel):
+    """What an index run has to do: the files to index, and the paths gone from disk."""
 
     model_config = ConfigDict(frozen=True)
 
-    indexed_files: list[str]
-    chunks_count: int
-
-
-class FileChanges(BaseModel):
-    """Result of comparing current files with cached mtimes."""
-
-    model_config = ConfigDict(frozen=True)
-
-    new: list[str]
-    modified: list[str]
-    deleted: list[str]
-
-    @property
-    def stale_files(self) -> list[str]:
-        """Files that need re-indexing (new + modified)."""
-        return self.new + self.modified
-
-
-class ScanPlan(BaseModel):
-    """What an index run has to do: files to (re)index and files to drop."""
-
-    model_config = ConfigDict(frozen=True)
-
-    files_to_index: list[str]
-    files_to_delete: list[str]
+    to_index: list[SourceFile]
+    to_delete: list[Path]
 
     @property
     def has_work(self) -> bool:
-        return bool(self.files_to_index or self.files_to_delete)
+        return bool(self.to_index or self.to_delete)
 
 
-class IndexResult(BaseModel):
-    """Result of an indexing operation."""
+class IndexIdentity(BaseModel):
+    """What an index is built from; an index built from anything else is built again.
+
+    The vectors' dimension is not part of it: the model's name fixes it, and the stored
+    vector column records it, so nothing needs the model loaded to compare identities.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model_name: str
+    chunker_version: int
+    schema_version: int
+
+
+class IndexManifest(BaseModel):
+    """What built an index, and when it was last written."""
+
+    model_config = ConfigDict(frozen=True)
+
+    identity: IndexIdentity
+    indexed_at: datetime
+
+
+class RebuildReason(StrEnum):
+    """Why an index cannot be brought up to date file by file and is built again whole."""
+
+    # Data without a manifest: an index of 0.4 or earlier
+    unversioned = auto()
+    schema_changed = auto()
+    model_changed = auto()
+    chunker_changed = auto()
+
+
+class WriteScope(StrEnum):
+    """How much of the index one write replaces."""
+
+    # The chunks and records of the files written and of the files removed
+    changed_files = auto()
+    # Every chunk and record: a forced run, or a rebuild
+    everything = auto()
+
+
+class IndexUpdate(BaseModel):
+    """One write of an index run: the files indexed with their chunks, the paths removed,
+    and the manifest the index holds after it. The chunks' vectors travel beside it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope: WriteScope
+    # The files indexed, as the scan found them
+    files: list[SourceFile]
+    chunks: list[Chunk]
+    removed_paths: list[Path]
+    manifest: IndexManifest
+
+
+class IndexCounts(BaseModel):
+    """How much an index holds."""
+
+    model_config = ConfigDict(frozen=True)
+
+    files: int
+    chunks: int
+
+
+class IndexStatus(BaseModel):
+    """How far a project's index is from its files."""
+
+    model_config = ConfigDict(frozen=True)
+
+    files_count: int
+    chunks_count: int
+    # Files the index no longer matches: new, modified or deleted since it was written
+    stale_files_count: int
+    manifest: IndexManifest | None
+    # Set when the next run has to build the index again whole
+    rebuild_reason: RebuildReason | None
+
+    @property
+    def is_indexed(self) -> bool:
+        return self.files_count > 0
+
+
+class IndexReport(BaseModel):
+    """What one index run did."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -154,6 +217,8 @@ class IndexResult(BaseModel):
     chunks_indexed: int
     files_deleted: int
     duration_seconds: float
+    # Set when the run built the index again whole, saying why
+    rebuild_reason: RebuildReason | None
 
 
 class SearchTimings(BaseModel):
@@ -175,4 +240,4 @@ class SearchReport(BaseModel):
     filtered_count: int
     timings: SearchTimings
     # Set when the search had to index stale files first
-    index_result: IndexResult | None
+    index_report: IndexReport | None

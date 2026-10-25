@@ -9,7 +9,14 @@ from abc import ABC, abstractmethod
 import numpy
 from numpy.typing import NDArray
 
-from semantic_code_mcp.domain.models import Chunk, SearchResult, StoreStatistics
+from semantic_code_mcp.domain.models import (
+    Chunk,
+    IndexCounts,
+    IndexManifest,
+    IndexUpdate,
+    SearchResult,
+    SourceFile,
+)
 
 # The vector of one text
 type Vector = NDArray[numpy.float32]
@@ -19,6 +26,11 @@ type VectorMatrix = NDArray[numpy.float32]
 
 class Embedder(ABC):
     """Turns text into vectors."""
+
+    @property
+    @abstractmethod
+    def model_name(self) -> str:
+        """The model's name, which fixes what the vectors mean and how wide they are."""
 
     @property
     @abstractmethod
@@ -39,12 +51,34 @@ class Embedder(ABC):
         on first use."""
 
 
-class VectorStore(ABC):
-    """Keeps chunks with their vectors and finds them again."""
+class IndexStore(ABC):
+    """Keeps one project's index: the chunks with their vectors, the record of each file
+    they came from, and the manifest of what built them; finds chunks again."""
+
+    @property
+    @abstractmethod
+    def schema_version(self) -> int:
+        """The version of the layout this store writes; an index of another is rebuilt."""
 
     @abstractmethod
-    def add_chunks(self, chunks: list[Chunk], vectors: VectorMatrix) -> None:
-        """Store chunks with their vectors, the vector of each chunk in its row."""
+    def manifest(self) -> IndexManifest | None:
+        """What built the index and when it was last written; None before the first write."""
+
+    @abstractmethod
+    def indexed_files(self) -> list[SourceFile]:
+        """The record of every file the index holds, as the scan that indexed it found it."""
+
+    @abstractmethod
+    def counts(self) -> IndexCounts:
+        """How many files and chunks the index holds."""
+
+    @abstractmethod
+    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+        """Apply one index run's write as a unit no other writer interleaves with, in this
+        process or another, a cancelled request's thread included: the chunks of every file
+        written or removed are replaced, then their records, then the manifest. The vector
+        of each chunk is in its row of `vectors`. Fails with `IndexWriteError` when the
+        index cannot take what is written."""
 
     @abstractmethod
     def search_hybrid(
@@ -56,18 +90,6 @@ class VectorStore(ABC):
     ) -> list[SearchResult]:
         """The best chunks by vector similarity and full-text match combined."""
 
-    @abstractmethod
-    def delete_by_files(self, file_paths: list[str]) -> None:
-        """Remove every chunk of the given files."""
-
-    @abstractmethod
-    def statistics(self) -> StoreStatistics:
-        """The files the store has chunks of, and how many chunks."""
-
-    @abstractmethod
-    def clear(self) -> None:
-        """Remove every chunk."""
-
 
 class Chunker(ABC):
     """Splits source files into chunks."""
@@ -76,6 +98,11 @@ class Chunker(ABC):
     @abstractmethod
     def supported_extensions(self) -> list[str]:
         """The file extensions this chunker reads, such as `.py`."""
+
+    @property
+    @abstractmethod
+    def version(self) -> int:
+        """The version of the chunks it makes; an index of another version is rebuilt."""
 
     @abstractmethod
     def chunk_file(self, file_path: str) -> list[Chunk]:

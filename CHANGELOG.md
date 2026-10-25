@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `pandas` dependency
 
 ### Added
+- `index_status` reports the index's `manifest` (model, chunker version, storage schema version) and a `rebuild_reason` when the next search will build it again; `index_codebase` and the search's debug block report the `rebuild_reason` of a run that did
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
@@ -28,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
 - Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done
+- The index keeps a record of each file and a manifest of what built it, in place of `file_mtimes.json`. An index built by another model, chunker version or storage layout is rebuilt once, automatically; so is every index of 0.4, on the first search after the upgrade
+- A run writes once, after embedding: a forced re-index or a rebuild keeps the old index searchable until the new one is ready, instead of emptying it first
+- A write no longer rebuilds the full-text index; the index is compacted, its new rows indexed and old versions pruned once twenty versions have gathered, and at once after a whole index is written
+- `index_status` of a project never indexed no longer creates its index directory
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project
 - A release runs the whole CI suite on the tagged commit before publishing to PyPI
@@ -49,8 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `index_status` loaded the embedding model it never uses, blocking for seconds
 - Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
-- An index call cancelled while it wrote, and called again at once, stored the changed files' chunks twice: the cancelled call's thread kept writing beside the new one
-- A status or search during a forced re-index could fail on a dropped table; a forced run now empties the table instead
+- A status or search during a forced re-index could fail on a dropped table
 - A failure inside a tool reached the agent as `Error executing tool ...` without its cause
 - With `local_index`, two spellings of one project path got separate locks and stores
 - A search of a project with nothing indexed loaded the model to embed its query
@@ -59,7 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Untracked files were never indexed (#2, #3)
 - A tracked file deleted from disk was re-indexed on every search
 - A file deleted from disk kept answering searches until an index run: the status that a search checks first did not count it as stale
-- JSON logs held `exc_info: true` instead of the failure: the traceback of a failed tool call is now in the line, logged as an error
+- An edit made while its file was being indexed was lost: the file's modification time was read after indexing, not when it was scanned
+- Two server processes indexing one project at once (two Claude Code sessions) could store its chunks twice: a write now holds a lock file in the index directory
+- The index grew with every edit: old versions were never pruned
+- A project-local index (`.semantic-code/`) showed as untracked in the project's `git status`
 - Files with non-ASCII names were listed in git's quoted form and never found
 - Linked worktrees, submodules and subdirectories of a repo were walked without `.gitignore`
 - A conflicted file was listed once per conflict stage; a file reached through a symlink inside the project was indexed twice

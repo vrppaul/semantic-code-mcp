@@ -4,17 +4,27 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from functools import partial
 from importlib.metadata import version
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
+from semantic_code_mcp.chunkers.composite import CompositeChunker
+from semantic_code_mcp.chunkers.markdown import MarkdownChunker
+from semantic_code_mcp.chunkers.python import PythonChunker
+from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings
+from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Embedder
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
-from semantic_code_mcp.services.projects import ProjectRegistry, build_chunker
+from semantic_code_mcp.services.projects import ProjectRegistry
+from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 
 SERVER_NAME = "semantic-code-mcp"
 PACKAGE_NAME = "semantic-code-mcp"
+# How long a write waits while another server process writes the same index; a write
+# takes seconds at most, embedding having happened before it
+WRITE_LOCK_TIMEOUT_SECONDS = 60.0
 
 
 def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegistry]:
@@ -44,4 +54,31 @@ async def project_registry_lifespan(
 
     The lifespan protocol hands in the server; the registry does not need it.
     """
-    yield ProjectRegistry(settings=settings, embedder=embedder, chunker=build_chunker())
+    yield build_registry(settings, embedder)
+
+
+def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
+    """The registry of projects, over the parts the server is built from."""
+    chunker = build_chunker()
+    return ProjectRegistry(
+        settings=settings,
+        embedder=embedder,
+        chunker=chunker,
+        discovery=SourceDiscovery(
+            extensions=chunker.supported_extensions,
+            ignore_patterns=settings.ignore_patterns,
+            use_gitignore=settings.use_gitignore,
+            git_timeout_seconds=settings.git_timeout_seconds,
+        ),
+        open_store=open_index_store,
+    )
+
+
+def build_chunker() -> CompositeChunker:
+    """Every language the server indexes. Add a language here."""
+    return CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
+
+
+def open_index_store(directory: Path) -> LanceDBIndexStore:
+    """The store of the index kept in a directory."""
+    return LanceDBIndexStore(directory, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS)

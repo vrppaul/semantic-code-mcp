@@ -15,6 +15,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
+from semantic_code_mcp.domain.errors import SemanticCodeError
 from semantic_code_mcp.server.presenters import present_index, present_search, present_status
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
@@ -63,7 +64,7 @@ async def search_code(
     """
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)
-        services = await project_services(ctx, project_root)
+        services = project_services(ctx, project_root)
         report = await services.search.search(
             query, project_root, limit=limit, progress=ProgressReporter(ctx.report_progress)
         )
@@ -94,11 +95,11 @@ async def index_codebase(
     """
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)
-        services = await project_services(ctx, project_root)
-        result = await services.indexing.index(
+        services = project_services(ctx, project_root)
+        report = await services.indexing.index(
             project_root, force=force, progress=ProgressReporter(ctx.report_progress)
         )
-        return present_index(result)
+        return present_index(report)
 
 
 async def index_status(
@@ -109,7 +110,8 @@ async def index_status(
     """Get the index status for a project.
 
     Returns whether the project is indexed, when it was last updated, how many files
-    and chunks are indexed, and how many files changed since.
+    and chunks are indexed, how many files changed since, what built the index, and why
+    the next search will build it again, if it will (another model, chunker or layout).
 
     Note: search_code automatically re-indexes stale files before searching,
     so there is no need to check or act on staleness manually.
@@ -122,22 +124,23 @@ async def index_status(
     """
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)
-        services = await project_services(ctx, project_root)
+        services = project_services(ctx, project_root)
         return present_status(await services.indexing.status(project_root))
 
 
-async def project_services(ctx: Context[ProjectRegistry], project_root: Path) -> ProjectServices:
+def project_services(ctx: Context[ProjectRegistry], project_root: Path) -> ProjectServices:
     """The services of a project, from the registry the session shares."""
-    return await ctx.request_context.lifespan_context.services_for(project_root)
+    return ctx.request_context.lifespan_context.services_for(project_root)
 
 
 @contextmanager
 def failures_as_tool_errors() -> Generator[None]:
-    """Turn what the parts raise when the disk, git, LanceDB or the model fail into tool
-    errors that carry their cause, which mcp would otherwise drop."""
+    """Turn what the parts raise when the disk, git, LanceDB or the model fail, and the
+    core's own failures, into tool errors that carry their cause, which mcp would
+    otherwise drop."""
     try:
         yield
-    except (OSError, RuntimeError, ValueError) as error:
+    except (OSError, RuntimeError, ValueError, SemanticCodeError) as error:
         log.exception("tool_failed")
         message = f"{type(error).__name__}: {error}"
         raise ToolError(message) from error

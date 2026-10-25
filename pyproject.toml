@@ -8,6 +8,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Pavel Paranin" }]
 dependencies = [
+    "filelock>=3.20.3",
     "lancedb>=0.27.0",
     "mcp>=2.3.0",
     "numpy>=2.4.1",
@@ -233,9 +234,10 @@ source_modules = [
 forbidden_modules = ["mcp"]
 
 [[tool.importlinter.contracts]]
-name = "LanceDB stays in the store"
+name = "LanceDB and its write lock stay in the store"
 type = "forbidden"
-# Replacing the vector database touches one part
+# Replacing the vector database, or how its writers keep out of each other's way,
+# touches one part
 source_modules = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.cli",
@@ -249,7 +251,7 @@ source_modules = [
     "semantic_code_mcp.logging",
     "semantic_code_mcp.domain",
 ]
-forbidden_modules = ["lancedb", "pyarrow"]
+forbidden_modules = ["lancedb", "pyarrow", "filelock"]
 # Through the part that wraps it, a library is meant to be reached
 allow_indirect_imports = true
 

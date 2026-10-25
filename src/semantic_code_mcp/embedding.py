@@ -32,6 +32,11 @@ class SentenceTransformerEmbedder(Embedder):
 
     @property
     @override
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    @override
     def is_loaded(self) -> bool:
         return self._model is not None
 

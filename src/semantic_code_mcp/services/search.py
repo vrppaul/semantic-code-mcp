@@ -6,10 +6,11 @@ from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 
-from semantic_code_mcp.domain.interfaces import Embedder, VectorStore
+from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
 from semantic_code_mcp.domain.models import (
     HIGHEST_SCORE,
-    IndexResult,
+    IndexReport,
+    IndexStatus,
     SearchReport,
     SearchResult,
     SearchTimings,
@@ -53,7 +54,7 @@ INDEXING_BAND_END = SearchPhase.loading_model.value
 class SearchService:
     """Answers searches over one project, indexing what changed first."""
 
-    def __init__(self, store: VectorStore, embedder: Embedder, indexing: IndexingService) -> None:
+    def __init__(self, store: IndexStore, embedder: Embedder, indexing: IndexingService) -> None:
         self._store = store
         self._embedder = embedder
         self._indexing = indexing
@@ -65,39 +66,34 @@ class SearchService:
         await progress.report(SearchPhase.checking_index.value, "Checking index...")
         status = await self._indexing.status(project_root)
 
-        index_result: IndexResult | None = None
-        if not status.is_indexed or status.stale_files:
-            reason = (
-                f"Re-indexing {len(status.stale_files)} stale files..."
-                if status.is_indexed
-                else "Index not found, indexing..."
-            )
-            await progress.report(SearchPhase.indexing.value, reason)
-            index_result = await self._indexing.index(
+        index_report: IndexReport | None = None
+        if status.rebuild_reason is not None or status.stale_files_count:
+            await progress.report(SearchPhase.indexing.value, indexing_message(status))
+            index_report = await self._indexing.index(
                 project_root,
                 force=False,
                 progress=progress.within(SearchPhase.indexing.value, INDEXING_BAND_END),
             )
 
-        nothing_indexed = status.chunks_count == 0 and (
-            index_result is None or index_result.chunks_indexed == 0
-        )
-        if nothing_indexed:
+        # Counted after any index run: one that found its work done by another run indexed
+        # nothing, though the index holds chunks
+        counts = await asyncio.to_thread(self._store.counts)
+        if counts.chunks == 0:
             # No chunk to find: answer at once, without loading the model for the query
             await progress.report(SearchPhase.done.value, "Nothing indexed")
             return SearchReport(
-                results=[], filtered_count=0, timings=NO_TIMINGS, index_result=index_result
+                results=[], filtered_count=0, timings=NO_TIMINGS, index_report=index_report
             )
 
         if not self._embedder.is_loaded:
             await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
             await asyncio.to_thread(self._embedder.load)
         await progress.report(SearchPhase.searching.value, "Searching...")
-        report = await asyncio.to_thread(self._run_search, query, limit, index_result)
+        report = await asyncio.to_thread(self._run_search, query, limit, index_report)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 
-    def _run_search(self, query: str, limit: int, index_result: IndexResult | None) -> SearchReport:
+    def _run_search(self, query: str, limit: int, index_report: IndexReport | None) -> SearchReport:
         started = time.perf_counter()
 
         embedding_started = time.perf_counter()
@@ -126,8 +122,17 @@ class SearchService:
                 search_ms=search_ms,
                 total_ms=elapsed_milliseconds(started),
             ),
-            index_result=index_result,
+            index_report=index_report,
         )
+
+
+def indexing_message(status: IndexStatus) -> str:
+    """What a search tells the client it is doing before it indexes."""
+    if status.rebuild_reason is not None:
+        return f"Rebuilding the index ({status.rebuild_reason})..."
+    if not status.is_indexed:
+        return "Index not found, indexing..."
+    return f"Re-indexing {status.stale_files_count} stale files..."
 
 
 def with_recency_boost(result: SearchResult, now: float) -> SearchResult:

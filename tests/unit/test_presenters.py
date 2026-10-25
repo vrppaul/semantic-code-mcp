@@ -37,7 +37,7 @@ def test_a_short_hit_is_whole():
 
 def test_debug_details_only_when_asked():
     report = SearchReport(
-        results=[hit_of("x = 1")], filtered_count=0, timings=TIMINGS, index_result=None
+        results=[hit_of("x = 1")], filtered_count=0, timings=TIMINGS, index_report=None
     )
 
     assert present_search(report, include_debug=False).debug is None

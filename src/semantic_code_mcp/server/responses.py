@@ -47,6 +47,7 @@ class IndexingSummaryView(BaseModel):
 
     files_indexed: int
     chunks_indexed: int
+    rebuild_reason: str | None
 
 
 class SearchDebugView(BaseModel):
@@ -69,7 +70,7 @@ class SearchCodeResponse(BaseModel):
 
 
 class IndexCodebaseResponse(BaseModel):
-    """The answer of `index_codebase`."""
+    """The answer of `index_codebase`; `rebuild_reason` says why it indexed everything."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -77,6 +78,17 @@ class IndexCodebaseResponse(BaseModel):
     chunks_indexed: int
     files_deleted: int
     duration_seconds: float
+    rebuild_reason: str | None
+
+
+class IndexManifestView(BaseModel):
+    """What built an index."""
+
+    model_config = ConfigDict(frozen=True)
+
+    model_name: str
+    chunker_version: int
+    schema_version: int
 
 
 class IndexStatusResponse(BaseModel):
@@ -89,3 +101,6 @@ class IndexStatusResponse(BaseModel):
     files_count: int
     chunks_count: int
     stale_files_count: int
+    manifest: IndexManifestView | None
+    # Set when the next search or index run builds the index again whole
+    rebuild_reason: str | None

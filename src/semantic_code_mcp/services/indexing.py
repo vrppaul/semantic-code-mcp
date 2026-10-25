@@ -1,7 +1,13 @@
-"""Indexing: find a project's files, see what changed, then chunk, embed and store them."""
+"""Indexing: find a project's files, see what changed, then chunk, embed and store them.
+
+A run plans before it changes anything: the records discovery takes of the files on
+disk, compared with the records the index keeps, give the files to index and the paths
+gone; the manifest of what built the index says whether it must be built again whole.
+Nothing is removed until the new chunks are embedded, and the store then replaces what
+changed in one write, so a reader finds the old index or the new one.
+"""
 
 import asyncio
-import threading
 import time
 from datetime import UTC, datetime
 from enum import Enum
@@ -9,13 +15,25 @@ from pathlib import Path
 
 import numpy
 import structlog
+from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.discovery import SourceDiscovery
-from semantic_code_mcp.domain.interfaces import Chunker, Embedder, VectorMatrix, VectorStore
-from semantic_code_mcp.domain.models import Chunk, IndexResult, IndexStatus, ScanPlan
+from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, VectorMatrix
+from semantic_code_mcp.domain.models import (
+    Chunk,
+    IndexCounts,
+    IndexDelta,
+    IndexIdentity,
+    IndexManifest,
+    IndexReport,
+    IndexStatus,
+    IndexUpdate,
+    RebuildReason,
+    SourceFile,
+    WriteScope,
+)
 from semantic_code_mcp.services.progress import PROGRESS_TOTAL, ProgressReporter
 from semantic_code_mcp.services.timing import elapsed_milliseconds
-from semantic_code_mcp.storage.cache import CACHE_FILENAME, FileChangeCache
 
 log = structlog.get_logger()
 
@@ -30,21 +48,57 @@ class IndexPhase(Enum):
     """The steps of an index run, each worth how far along the run is when it starts."""
 
     scanning = 5.0
-    detecting_changes = 10.0
+    planning = 10.0
     chunking = 20.0
     loading_model = 60.0
     embedding = 70.0
     writing = 95.0
 
 
+class IndexPlan(BaseModel):
+    """What one index run is to do, worked out before it changes anything."""
+
+    model_config = ConfigDict(frozen=True)
+
+    delta: IndexDelta
+    scope: WriteScope
+    # Set when the index is built again whole because something it was built from changed
+    rebuild_reason: RebuildReason | None
+
+    @property
+    def needs_write(self) -> bool:
+        return self.delta.has_work or self.rebuild_reason is not None
+
+
+class StoredState(BaseModel):
+    """What the store holds before a run, as far as planning needs it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    manifest: IndexManifest | None
+    counts: IndexCounts
+
+    @property
+    def holds_data(self) -> bool:
+        return self.counts.files > 0 or self.counts.chunks > 0
+
+
+class ChunkedFile(BaseModel):
+    """A file indexed in this run, and the chunks it gave."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file: SourceFile
+    chunks: list[Chunk]
+
+
 class IndexingService:
     """Keeps one project's index in step with its files.
 
     One instance serves one project. Its asyncio lock keeps two index runs of that
-    project from planning and embedding at once. A cancelled request releases that
-    lock while its worker thread may still be writing, so the write itself is one call
-    in one thread, under a thread lock: the next run writes only once it has landed.
-    Two writes side by side would store every changed file's chunks twice.
+    project from planning and embedding at once. A cancelled request releases that lock
+    while its worker thread may still be writing; the store's write is a unit no other
+    writer interleaves with, so the next run's write waits until that one has landed.
     """
 
     def __init__(
@@ -52,107 +106,130 @@ class IndexingService:
         discovery: SourceDiscovery,
         chunker: Chunker,
         embedder: Embedder,
-        store: VectorStore,
-        cache_directory: Path,
+        store: IndexStore,
     ) -> None:
         self._discovery = discovery
         self._chunker = chunker
         self._embedder = embedder
         self._store = store
-        self._cache_directory = cache_directory
         self._lock = asyncio.Lock()
-        self._writing = threading.Lock()
 
     async def index(
         self, project_root: Path, *, force: bool, progress: ProgressReporter
-    ) -> IndexResult:
-        """Bring the index up to date with the files: all of them when forced, else what changed."""
+    ) -> IndexReport:
+        """Bring the index up to date with the files: all of them when forced or when the
+        index must be built again, else what changed."""
         async with self._lock:
             return await self._index(project_root, force=force, progress=progress)
 
+    async def status(self, project_root: Path) -> IndexStatus:
+        """How far the project's index is from its files, worked out off the event loop."""
+        return await asyncio.to_thread(self.get_status, project_root)
+
+    def get_status(self, project_root: Path) -> IndexStatus:
+        """How far the project's index is from its files: how much it holds, how many files
+        changed since (new, modified or deleted), and whether it must be built again."""
+        files = self._discovery.discover(project_root)
+        state = self._stored_state()
+        plan = self._plan(files, state, force=False)
+        return IndexStatus(
+            files_count=state.counts.files,
+            chunks_count=state.counts.chunks,
+            stale_files_count=len(plan.delta.to_index) + len(plan.delta.to_delete),
+            manifest=state.manifest,
+            rebuild_reason=plan.rebuild_reason,
+        )
+
     async def _index(
         self, project_root: Path, *, force: bool, progress: ProgressReporter
-    ) -> IndexResult:
+    ) -> IndexReport:
         started = time.perf_counter()
 
         await progress.report(IndexPhase.scanning.value, "Scanning files...")
-        files = await asyncio.to_thread(self.scan_files, project_root)
+        files = await asyncio.to_thread(self._discovery.discover, project_root)
+        log.debug("scanned_files", project=str(project_root), count=len(files))
 
-        await progress.report(
-            IndexPhase.detecting_changes.value,
-            f"Found {len(files)} files, detecting changes...",
+        await progress.report(IndexPhase.planning.value, f"Found {len(files)} files, planning...")
+        state = await asyncio.to_thread(self._stored_state)
+        plan = await asyncio.to_thread(self._plan, files, state, force=force)
+        log.debug(
+            "index_planned",
+            to_index=len(plan.delta.to_index),
+            to_delete=len(plan.delta.to_delete),
+            scope=plan.scope,
+            rebuild_reason=plan.rebuild_reason,
         )
-        plan = await asyncio.to_thread(self.detect_changes, files, force=force)
 
         chunks: list[Chunk] = []
-        if plan.has_work:
+        if plan.needs_write:
             await progress.report(
-                IndexPhase.chunking.value, f"Chunking {len(plan.files_to_index)} files..."
+                IndexPhase.chunking.value, f"Chunking {len(plan.delta.to_index)} files..."
             )
-            chunks = await asyncio.to_thread(self.chunk_files, plan.files_to_index)
-            await self._embed_and_store(plan, chunks, progress)
+            chunked = await asyncio.to_thread(self._chunk, plan.delta.to_index)
+            chunks = [chunk for chunked_file in chunked for chunk in chunked_file.chunks]
+            vectors = await self._embed(chunks, progress)
+            await progress.report(IndexPhase.writing.value, "Writing the index...")
+            update = IndexUpdate(
+                scope=plan.scope,
+                files=[chunked_file.file for chunked_file in chunked],
+                chunks=chunks,
+                removed_paths=plan.delta.to_delete,
+                manifest=IndexManifest(identity=self._identity(), indexed_at=datetime.now(UTC)),
+            )
+            await asyncio.to_thread(self._store.write, update, vectors)
 
-        return IndexResult(
-            files_indexed=len(plan.files_to_index),
+        return IndexReport(
+            files_indexed=len(plan.delta.to_index),
             chunks_indexed=len(chunks),
-            files_deleted=len(plan.files_to_delete),
+            files_deleted=len(plan.delta.to_delete),
             duration_seconds=round(time.perf_counter() - started, DURATION_DECIMALS),
+            rebuild_reason=plan.rebuild_reason,
         )
 
-    def scan_files(self, project_root: Path) -> list[str]:
-        """List the indexable source files of a project as absolute paths."""
-        files = [str(path) for path in self._discovery.discover(project_root)]
-        log.debug("scanned_files", project=str(project_root), count=len(files))
-        return files
+    def _stored_state(self) -> StoredState:
+        return StoredState(manifest=self._store.manifest(), counts=self._store.counts())
 
-    def detect_changes(self, current_files: list[str], *, force: bool) -> ScanPlan:
-        """What an index run has to do: every file when forced, else the changed ones.
+    def _plan(self, files: list[SourceFile], state: StoredState, *, force: bool) -> IndexPlan:
+        """What a run over these files is to do, from what the store holds.
 
-        Forcing also empties the store and the cache, so nothing of the old index stays.
+        An index that must be built again is not read further: its records may be of
+        another layout, and every file is indexed anyway.
         """
-        cache = FileChangeCache(self._cache_directory)
-        if force:
-            cache.clear()
-            self._store.clear()
-            return ScanPlan(files_to_index=current_files, files_to_delete=[])
-
-        changes = cache.get_changes(current_files)
-        log.debug(
-            "incremental_index",
-            new=len(changes.new),
-            modified=len(changes.modified),
-            deleted=len(changes.deleted),
+        reason = rebuild_reason(
+            state.manifest, holds_data=state.holds_data, expected=self._identity()
         )
-        return ScanPlan(files_to_index=changes.stale_files, files_to_delete=changes.deleted)
+        if reason is not None:
+            return IndexPlan(
+                delta=IndexDelta(to_index=files, to_delete=[]),
+                scope=WriteScope.everything,
+                rebuild_reason=reason,
+            )
+        delta = plan_delta(files, self._store.indexed_files(), every_file=force)
+        scope = WriteScope.everything if force else WriteScope.changed_files
+        return IndexPlan(delta=delta, scope=scope, rebuild_reason=None)
 
-    def chunk_files(self, files: list[str]) -> list[Chunk]:
+    def _identity(self) -> IndexIdentity:
+        """What an index built now is built from."""
+        return IndexIdentity(
+            model_name=self._embedder.model_name,
+            chunker_version=self._chunker.version,
+            schema_version=self._store.schema_version,
+        )
+
+    def _chunk(self, files: list[SourceFile]) -> list[ChunkedFile]:
         """Chunk files one after another; tree-sitter holds the GIL, so threads gain nothing."""
         started = time.perf_counter()
-        chunks = [chunk for file_path in files for chunk in self._chunker.chunk_file(file_path)]
+        chunked = [
+            ChunkedFile(file=file, chunks=self._chunker.chunk_file(str(file.path)))
+            for file in files
+        ]
         log.debug(
             "chunking_completed",
             files=len(files),
-            chunks=len(chunks),
+            chunks=sum(len(chunked_file.chunks) for chunked_file in chunked),
             duration_ms=elapsed_milliseconds(started),
         )
-        return chunks
-
-    async def _embed_and_store(
-        self, plan: ScanPlan, chunks: list[Chunk], progress: ProgressReporter
-    ) -> None:
-        """Embed the new chunks, then replace the chunks of every changed or deleted file
-        and record the files; the old chunks stay searchable while the new ones embed."""
-        vectors = await self._embed(chunks, progress)
-        await progress.report(IndexPhase.writing.value, "Writing the index...")
-        await asyncio.to_thread(self._write, plan, chunks, vectors)
-
-    def _write(self, plan: ScanPlan, chunks: list[Chunk], vectors: VectorMatrix) -> None:
-        """Replace the chunks of every changed or deleted file and record the files, as one
-        unit that a cancelled request's thread finishes before another run's begins."""
-        with self._writing:
-            self._store.delete_by_files([*plan.files_to_delete, *plan.files_to_index])
-            self._store.add_chunks(chunks, vectors)
-            self._record_files(plan)
+        return chunked
 
     async def _embed(self, chunks: list[Chunk], progress: ProgressReporter) -> VectorMatrix:
         """The vectors of the chunks, embedded a slice at a time with a report before each,
@@ -180,32 +257,35 @@ class IndexingService:
         )
         return numpy.concatenate(slices)
 
-    def _record_files(self, plan: ScanPlan) -> None:
-        """Record in the cache which files the index now holds, and drop the deleted."""
-        cache = FileChangeCache(self._cache_directory)
-        cache.remove_files(plan.files_to_delete)
-        cache.update_files(plan.files_to_index)
 
-    async def status(self, project_root: Path) -> IndexStatus:
-        """The project's index status, worked out off the event loop."""
-        return await asyncio.to_thread(self.get_status, project_root)
+def plan_delta(
+    on_disk: list[SourceFile], indexed: list[SourceFile], *, every_file: bool
+) -> IndexDelta:
+    """The files to index — every file, or those new or changed since their record — and
+    the recorded paths no longer on disk."""
+    recorded = {file.path: file for file in indexed}
+    paths_on_disk = {source.path for source in on_disk}
+    to_index = (
+        on_disk
+        if every_file
+        else [source for source in on_disk if recorded.get(source.path) != source]
+    )
+    to_delete = sorted(path for path in recorded if path not in paths_on_disk)
+    return IndexDelta(to_index=to_index, to_delete=to_delete)
 
-    def get_status(self, project_root: Path) -> IndexStatus:
-        """Whether the project is indexed, how much, and which files changed since: new,
-        modified or deleted, for a deleted file's chunks still answer searches."""
-        cache = FileChangeCache(self._cache_directory)
-        changes = cache.get_changes(self.scan_files(project_root))
-        statistics = self._store.statistics()
 
-        cache_file = self._cache_directory / CACHE_FILENAME
-        last_updated = None
-        if cache_file.exists():
-            last_updated = datetime.fromtimestamp(cache_file.stat().st_mtime, tz=UTC)
-
-        return IndexStatus(
-            is_indexed=bool(statistics.indexed_files),
-            last_updated=last_updated,
-            files_count=len(statistics.indexed_files),
-            chunks_count=statistics.chunks_count,
-            stale_files=[*changes.stale_files, *changes.deleted],
-        )
+def rebuild_reason(
+    manifest: IndexManifest | None, *, holds_data: bool, expected: IndexIdentity
+) -> RebuildReason | None:
+    """Why the index must be built again whole, or None when it can be brought up to date
+    file by file. A store with nothing in it and no manifest is new, not out of date."""
+    if manifest is None:
+        return RebuildReason.unversioned if holds_data else None
+    built = manifest.identity
+    if built.schema_version != expected.schema_version:
+        return RebuildReason.schema_changed
+    if built.model_name != expected.model_name:
+        return RebuildReason.model_changed
+    if built.chunker_version != expected.chunker_version:
+        return RebuildReason.chunker_changed
+    return None
