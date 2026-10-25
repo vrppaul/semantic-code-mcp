@@ -126,38 +126,35 @@ class IndexDelta(BaseModel):
 
 
 class IndexIdentity(BaseModel):
-    """What an index is built from; an index built from anything else is built again.
+    """What an index is built from: the model that embeds and the version of the chunker
+    that splits. A project keeps an index for each, so a session of another model or
+    version never builds the index of this one again.
 
     The vectors' dimension is not part of it: the model's name fixes it, and the stored
-    vector column records it, so nothing needs the model loaded to compare identities.
+    vector column records it, so nothing needs the model loaded to pick an index.
     """
 
     model_config = ConfigDict(frozen=True)
 
     model_name: str
     chunker_version: int
-    schema_version: int
 
 
 class IndexManifest(BaseModel):
-    """What built an index, and when it was last written."""
+    """What built an index, in which layout of the store, and when it was last written."""
 
     model_config = ConfigDict(frozen=True)
 
     identity: IndexIdentity
+    schema_version: int
     indexed_at: datetime
 
 
 class RebuildReason(StrEnum):
     """Why an index cannot be brought up to date file by file and is built again whole."""
 
-    # Data without a manifest: an index of 0.4 or earlier
-    unversioned = auto()
     # Chunks without file records: a whole-index write that stopped midway
     incomplete = auto()
-    schema_changed = auto()
-    model_changed = auto()
-    chunker_changed = auto()
 
 
 class WriteScope(StrEnum):
@@ -170,8 +167,8 @@ class WriteScope(StrEnum):
 
 
 class IndexUpdate(BaseModel):
-    """One write of an index run: the files indexed with their chunks, the paths removed,
-    and the manifest the index holds after it. The chunks' vectors travel beside it."""
+    """One write of an index run: the files indexed with their chunks, and the paths
+    removed. The chunks' vectors travel beside it."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -180,7 +177,6 @@ class IndexUpdate(BaseModel):
     files: list[SourceFile]
     chunks: list[Chunk]
     removed_paths: list[Path]
-    manifest: IndexManifest
 
 
 class IndexCounts(BaseModel):

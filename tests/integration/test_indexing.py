@@ -1,39 +1,25 @@
 """Tests for indexing a project into a real LanceDB store."""
 
 import asyncio
-import json
 import os
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
 import lancedb
 import numpy
-import pyarrow
 import pytest
 
 from semantic_code_mcp.app import build_chunker, build_registry, open_index_store
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
-from semantic_code_mcp.domain.models import (
-    IndexIdentity,
-    IndexManifest,
-    IndexUpdate,
-    RebuildReason,
-    WriteScope,
-)
+from semantic_code_mcp.domain.models import IndexIdentity, RebuildReason
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
-from semantic_code_mcp.services.indexing import (
-    EMBEDDING_SLICE_SIZE,
-    NO_VECTORS_SHAPE,
-    IndexingService,
-    IndexPhase,
-)
+from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService, IndexPhase
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.storage.lancedb import FILES_TABLE, MATCH_EVERY_ROW, SCHEMA_VERSION
+from semantic_code_mcp.storage.lancedb import FILES_TABLE, MATCH_EVERY_ROW
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
@@ -47,27 +33,23 @@ from tests.fakes import (
     VersionedChunker,
     vector_of,
 )
-from tests.helpers import commit_all, git_output, indexing_service, make_repository
+from tests.helpers import (
+    commit_all,
+    git_output,
+    indexing_service,
+    make_repository,
+    registry_of,
+)
 
 NO_PROGRESS = ProgressReporter(None)
 # An mtime well after any file the test just wrote
 LATER_MTIME_SECONDS = 4_000_000_000
 # Functions in one file that fill two slices of chunks to embed, and a part of a third
 TWO_AND_A_PART_SLICES = 2 * EMBEDDING_SLICE_SIZE + 10
-# Vector widths of two models, so a change of model changes the vectors' width too
-NARROW = 8
+# A vector width other than the fake model's, so a change of model changes the width too
 WIDE = 16
-# What 0.4 kept in an index directory: its chunks table, and its record of file mtimes
-LEGACY_RECORDS = "file_mtimes.json"
-LEGACY_ROW = {
-    "vector": [0.5] * EMBEDDING_DIMENSION,
-    "file_path": "/elsewhere/old.py",
-    "line_start": 1,
-    "line_end": 2,
-    "content": "def old(): pass",
-    "chunk_type": "function",
-    "name": "old",
-}
+# What the fakes and the chunkers in these tests build an index from
+IDENTITY = IndexIdentity(model_name=FAKE_MODEL_NAME, chunker_version=CHUNKER_VERSION)
 
 
 def touch_later(path: Path) -> None:
@@ -131,7 +113,7 @@ async def test_a_file_changed_while_it_is_indexed_stays_stale(
 ):
     """The change lands after the scan took the files' records, so the next run sees it."""
     indexing = indexing_service(
-        open_index_store(tmp_path / "index"),
+        open_index_store(tmp_path / "index", IDENTITY),
         FakeEmbedder(),
         test_settings,
         ChangingChunker(build_chunker(), partial(change, sample_project / "utils.py")),
@@ -156,7 +138,7 @@ async def test_force_indexes_every_file_again(indexing: IndexingService, sample_
 async def test_a_forced_run_keeps_the_old_index_until_its_new_chunks_are_written(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
-    store = open_index_store(tmp_path / "index")
+    store = open_index_store(tmp_path / "index", IDENTITY)
     indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
     recorder = ChunkCountRecorder(store)
@@ -189,67 +171,38 @@ async def test_a_deleted_file_leaves_the_index(indexing: IndexingService, sample
 
 
 @pytest.mark.parametrize(
-    ("first_embedder", "second_embedder", "second_chunker", "reason"),
+    ("second_embedder", "second_chunker"),
     [
         pytest.param(
-            FakeEmbedder(model_name="first-model", dimension=NARROW),
             FakeEmbedder(model_name="second-model", dimension=WIDE),
             build_chunker(),
-            RebuildReason.model_changed,
             id="another model, of another width",
         ),
         pytest.param(
             FakeEmbedder(),
-            FakeEmbedder(),
             VersionedChunker(build_chunker(), CHUNKER_VERSION + 1),
-            RebuildReason.chunker_changed,
             id="another chunker version",
         ),
     ],
 )
-async def test_an_index_built_from_something_else_is_rebuilt_saying_why(
+async def test_sessions_of_two_models_or_chunker_versions_keep_an_index_each(
     test_settings: Settings,
     sample_project: Path,
-    tmp_path: Path,
-    first_embedder: FakeEmbedder,
     second_embedder: FakeEmbedder,
     second_chunker: Chunker,
-    reason: RebuildReason,
 ):
-    store_directory = tmp_path / "index"
-    first = indexing_service(
-        open_index_store(store_directory), first_embedder, test_settings, build_chunker()
+    """Neither builds the other's index again: the first, run again, finds nothing to do."""
+    first = registry_of(test_settings, FakeEmbedder(), build_chunker())
+    second = registry_of(test_settings, second_embedder, second_chunker)
+    first_indexing = first.services_for(sample_project).indexing
+    await first_indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+    second_run = await second.services_for(sample_project).indexing.index(
+        sample_project, force=False, progress=NO_PROGRESS
     )
-    await first.index(sample_project, force=False, progress=NO_PROGRESS)
-    second = indexing_service(
-        open_index_store(store_directory), second_embedder, test_settings, second_chunker
-    )
+    first_again = await first_indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
-    report = await second.index(sample_project, force=False, progress=NO_PROGRESS)
-    status = await second.status(sample_project)
-
-    assert (report.rebuild_reason, report.files_indexed) == (reason, 2)
-    assert (status.chunks_count, status.stale_files_count, status.rebuild_reason) == (6, 0, None)
-
-
-async def test_an_index_of_version_0_4_is_rebuilt_as_unversioned(
-    test_settings: Settings, sample_project: Path, tmp_path: Path
-):
-    store_directory = tmp_path / "index"
-    lancedb.connect(str(store_directory)).create_table(
-        "chunks", data=pyarrow.Table.from_pylist([LEGACY_ROW])
-    )
-    (store_directory / LEGACY_RECORDS).write_text(json.dumps({"/elsewhere/old.py": 1.0}))
-    indexing = indexing_service(
-        open_index_store(store_directory), FakeEmbedder(), test_settings, build_chunker()
-    )
-
-    report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
-    status = await indexing.status(sample_project)
-
-    assert report.rebuild_reason == RebuildReason.unversioned
-    assert (status.files_count, status.chunks_count) == (2, 6)
-    assert not (store_directory / LEGACY_RECORDS).exists()
+    assert (second_run.files_indexed, first_again.files_indexed) == (2, 0)
 
 
 async def test_two_runs_at_once_store_each_chunk_once(
@@ -460,52 +413,12 @@ async def test_an_index_whose_file_records_were_lost_is_rebuilt(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
     """A whole-index write that stopped after removing the records leaves chunks alone."""
-    store_directory = tmp_path / "index"
-    indexing = indexing_service(
-        open_index_store(store_directory), FakeEmbedder(), test_settings, build_chunker()
-    )
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
-    lancedb.connect(str(store_directory)).open_table(FILES_TABLE).delete(MATCH_EVERY_ROW)
+    lancedb.connect(str(store.directory)).open_table(FILES_TABLE).delete(MATCH_EVERY_ROW)
 
     status = await indexing.status(sample_project)
     report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
     assert (status.rebuild_reason, report.files_indexed) == (RebuildReason.incomplete, 2)
-
-
-async def test_a_run_planned_before_another_process_rebuilt_the_index_plans_again(
-    test_settings: Settings, sample_project: Path, tmp_path: Path
-):
-    """And its progress still only moves forward, through both attempts."""
-    recorder = ProgressRecorder()
-    store_directory = tmp_path / "index"
-    indexing = indexing_service(
-        open_index_store(store_directory),
-        FakeEmbedder(),
-        test_settings,
-        ChangingChunker(build_chunker(), partial(rebuild_as_another_model, store_directory)),
-    )
-
-    report = await indexing.index(sample_project, force=False, progress=ProgressReporter(recorder))
-    status = await indexing.status(sample_project)
-
-    assert report.rebuild_reason == RebuildReason.model_changed
-    assert (status.manifest.identity.model_name, status.chunks_count) == (FAKE_MODEL_NAME, 6)
-    assert recorder.progress_values == sorted(recorder.progress_values)
-
-
-def rebuild_as_another_model(store_directory: Path) -> None:
-    """Another process builds the index again from another model, holding nothing yet."""
-    another_model = IndexIdentity(
-        model_name="another-model", chunker_version=CHUNKER_VERSION, schema_version=SCHEMA_VERSION
-    )
-    open_index_store(store_directory).write(
-        IndexUpdate(
-            scope=WriteScope.everything,
-            files=[],
-            chunks=[],
-            removed_paths=[],
-            manifest=IndexManifest(identity=another_model, indexed_at=datetime.now(UTC)),
-        ),
-        numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32),
-    )

@@ -15,6 +15,7 @@ from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Embedder
+from semantic_code_mcp.domain.models import IndexIdentity
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
 from semantic_code_mcp.services.projects import ProjectRegistry
@@ -79,6 +80,8 @@ def build_chunker() -> CompositeChunker:
     return CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
 
 
-def open_index_store(directory: Path) -> LanceDBIndexStore:
-    """The store of the index kept in a directory."""
-    return LanceDBIndexStore(directory, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS)
+def open_index_store(project_directory: Path, identity: IndexIdentity) -> LanceDBIndexStore:
+    """The store of a project's index of one identity, under the project's index directory."""
+    return LanceDBIndexStore(
+        project_directory, identity, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS
+    )

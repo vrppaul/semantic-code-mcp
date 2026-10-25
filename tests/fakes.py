@@ -4,6 +4,7 @@ import hashlib
 import threading
 from collections import defaultdict
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import override
 
@@ -14,6 +15,7 @@ from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, V
 from semantic_code_mcp.domain.models import (
     Chunk,
     IndexCounts,
+    IndexIdentity,
     IndexManifest,
     IndexUpdate,
     SearchResult,
@@ -23,6 +25,7 @@ from semantic_code_mcp.domain.models import (
 
 EMBEDDING_DIMENSION = 384
 FAKE_MODEL_NAME = "fake-model"
+FAKE_CHUNKER_VERSION = 1
 FAKE_SCHEMA_VERSION = 1
 BYTE_RANGE = 255
 # A digest byte scaled into [-1, 1]
@@ -83,7 +86,8 @@ class FakeEmbedder(Embedder):
 
 class FakeIndexStore(IndexStore):
     """A store that answers every search with the hits it was given and keeps what is
-    written: each chunk with its vector, each file's record, the manifest."""
+    written: each chunk with its vector, each file's record. Once written, its manifest
+    names the fake model."""
 
     def __init__(self, hits: list[SearchResult]) -> None:
         self.hits = hits
@@ -91,11 +95,6 @@ class FakeIndexStore(IndexStore):
         self.vectors_by_file: dict[Path, list[Vector]] = defaultdict(list)
         self.files_by_path: dict[Path, SourceFile] = {}
         self.written_manifest: IndexManifest | None = None
-
-    @property
-    @override
-    def schema_version(self) -> int:
-        return FAKE_SCHEMA_VERSION
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -129,7 +128,13 @@ class FakeIndexStore(IndexStore):
             self.chunks_by_file[Path(chunk.file_path)].append(chunk)
             self.vectors_by_file[Path(chunk.file_path)].append(vector)
         self.files_by_path.update({file.path: file for file in update.files})
-        self.written_manifest = update.manifest
+        self.written_manifest = IndexManifest(
+            identity=IndexIdentity(
+                model_name=FAKE_MODEL_NAME, chunker_version=FAKE_CHUNKER_VERSION
+            ),
+            schema_version=FAKE_SCHEMA_VERSION,
+            indexed_at=datetime.now(UTC),
+        )
 
     @override
     def search_hybrid(

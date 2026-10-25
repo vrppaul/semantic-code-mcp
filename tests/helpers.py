@@ -5,11 +5,13 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from semantic_code_mcp.app import open_index_store
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkType
 from semantic_code_mcp.services.indexing import IndexingService
+from semantic_code_mcp.services.projects import ProjectRegistry
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -42,20 +44,37 @@ def commit_all(repository: Path) -> None:
     run_git(repository, "commit", "--quiet", "--message", "snapshot")
 
 
+def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:
+    """The real discovery, finding the files a chunker reads."""
+    return SourceDiscovery(
+        extensions=chunker.supported_extensions,
+        ignore_patterns=settings.ignore_patterns,
+        use_gitignore=settings.use_gitignore,
+        git_timeout_seconds=settings.git_timeout_seconds,
+    )
+
+
 def indexing_service(
     store: IndexStore, embedder: Embedder, settings: Settings, chunker: Chunker
 ) -> IndexingService:
     """The indexing of a project over the given parts, with the real discovery."""
     return IndexingService(
-        discovery=SourceDiscovery(
-            extensions=chunker.supported_extensions,
-            ignore_patterns=settings.ignore_patterns,
-            use_gitignore=settings.use_gitignore,
-            git_timeout_seconds=settings.git_timeout_seconds,
-        ),
+        discovery=discovery_for(settings, chunker),
         chunker=chunker,
         embedder=embedder,
         store=store,
+    )
+
+
+def registry_of(settings: Settings, embedder: Embedder, chunker: Chunker) -> ProjectRegistry:
+    """The registry of a server whose model and chunker are the given ones, its indexes in
+    the real store."""
+    return ProjectRegistry(
+        settings=settings,
+        embedder=embedder,
+        chunker=chunker,
+        discovery=discovery_for(settings, chunker),
+        open_store=open_index_store,
     )
 
 

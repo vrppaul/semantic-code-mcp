@@ -1,13 +1,20 @@
 """LanceDB storage of one project's index: the chunks with their vectors, the record of
 each file they came from, and the manifest of what built them.
 
-A write is one call, under a file lock in the index directory, so two server processes
-on one project never write side by side. A write of changed files is checked first
-(the stored identity, the chunks' width and layout), then replaces those files'
-chunks, then their records; a whole-index write removes every record, then every
-chunk, then writes both again. The manifest comes last either way. The chunks table is
-made by the first write that has vectors, as wide as they are, and made again when a
-rebuild brings vectors of another width or the table predates this schema.
+A project's index directory holds an index for each identity — the model, the chunker
+version — and layout, each in a directory of its own named after them. So a session of
+another model or version, or a server upgraded or rolled back, uses an index of its own
+and never builds this one again; switching back finds the old one still there. An index
+nobody wrote for UNUSED_INDEX_RETENTION is removed by the next write of another, and so
+is what 0.4 kept directly in the project's directory.
+
+A write is one call, under a file lock in the index's directory, so two server processes
+on one index never write side by side. A write of changed files replaces those files'
+chunks, then their records; a whole-index write removes every record, then every chunk,
+then writes both again. The manifest comes last either way. The chunks table is made by
+the first write that has vectors, as wide as they are; vectors of another width (a model
+swapped under the same name) drop the records, then the table, and the index starts
+again from the write, its other files unrecorded so the next run indexes them.
 
 Reads take no lock: each opens its table again, at its latest version, so a long-lived
 connection still sees what another process wrote, and a table not yet made reads as
@@ -21,10 +28,13 @@ The index directory holds a `.gitignore` of `*`, so a project-local index never 
 in the project's own repository.
 """
 
+import hashlib
 import os
+import shutil
 import tempfile
 import threading
-from datetime import timedelta
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import override
 
@@ -34,7 +44,6 @@ import structlog
 from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from semantic_code_mcp.domain.errors import IndexRebuiltElsewhereError, IndexWriteError
 from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
     HIGHEST_SCORE,
@@ -43,6 +52,7 @@ from semantic_code_mcp.domain.models import (
     ChunkLocation,
     ChunkType,
     IndexCounts,
+    IndexIdentity,
     IndexManifest,
     IndexUpdate,
     SearchResult,
@@ -52,8 +62,20 @@ from semantic_code_mcp.domain.models import (
 
 log = structlog.get_logger()
 
-# Bumped by any change to the tables' columns; an index of another version is rebuilt
+# Bumped by any change to the tables' columns; each version keeps an index of its own
 SCHEMA_VERSION = 1
+
+# An index's directory, under the project's, named by its layout and its identity's digest
+INDEX_DIRECTORY_FORMAT = "schema-{schema_version}-{identity_digest}"
+INDEX_DIRECTORY_PATTERN = "schema-*"
+IDENTITY_DIGEST_LENGTH = 16
+# An index nobody wrote for this long is removed by the next write of another index of the
+# project: no session indexed with its model or version for a week, and a rebuild costs
+# minutes where keeping it costs the disk it fills
+UNUSED_INDEX_RETENTION = timedelta(days=7)
+# What 0.4 kept directly in a project's index directory: its chunks table and its record
+# of mtimes, removed together
+LEGACY_ENTRIES = ("chunks.lance", "file_mtimes.json")
 
 CHUNKS_TABLE = "chunks"
 FILES_TABLE = "files"
@@ -61,8 +83,6 @@ MANIFEST_FILE = "manifest.json"
 WRITE_LOCK_FILE = "write.lock"
 GITIGNORE_FILE = ".gitignore"
 IGNORE_EVERYTHING = "*\n"
-# What 0.4 kept beside its table, removed when its index is rebuilt
-LEGACY_FILES = ("file_mtimes.json",)
 # Written beside its target, then renamed over it, so a crash never leaves half a file
 TEMPORARY_SUFFIX = ".tmp"
 
@@ -152,6 +172,14 @@ class StoredChunk(BaseModel):
         )
 
 
+class LeftIndex(BaseModel):
+    """An index of the project this store does not use, by the paths it is made of."""
+
+    model_config = ConfigDict(frozen=True)
+
+    parts: list[Path]
+
+
 class StoredFile(BaseModel):
     """A row of the files table."""
 
@@ -167,14 +195,19 @@ class StoredFile(BaseModel):
 
 
 class LanceDBIndexStore(IndexStore):
-    """One project's index in a LanceDB database directory.
+    """One project's index of one identity, in a LanceDB database directory of its own
+    under the project's index directory.
 
     Nothing touches the disk until it is first used, and only a write makes the
     directory; the connection is opened once, by whichever worker thread needs it first.
     """
 
-    def __init__(self, directory: Path, *, lock_timeout_seconds: float) -> None:
-        self._directory = directory
+    def __init__(
+        self, project_directory: Path, identity: IndexIdentity, *, lock_timeout_seconds: float
+    ) -> None:
+        self._project_directory = project_directory
+        self._identity = identity
+        self._directory = project_directory / index_directory_name(identity)
         self._lock_timeout_seconds = lock_timeout_seconds
         self._connecting = threading.Lock()
         self._connection: lancedb.DBConnection | None = None
@@ -182,9 +215,9 @@ class LanceDBIndexStore(IndexStore):
         self._kept_up_at: dict[str, int] = {}
 
     @property
-    @override
-    def schema_version(self) -> int:
-        return SCHEMA_VERSION
+    def directory(self) -> Path:
+        """Where this index lives."""
+        return self._directory
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -216,16 +249,23 @@ class LanceDBIndexStore(IndexStore):
             raise ValueError(message)
         database = self._created_database()
         with FileLock(self._directory / WRITE_LOCK_FILE, timeout=self._lock_timeout_seconds):
-            self._check_writable(update, vectors)
+            if update.chunks:
+                self._fit_layout(database, vectors.shape[VECTOR_LENGTH_AXIS])
             match update.scope:
                 case WriteScope.everything:
-                    self._empty(database, update, vectors)
+                    self._empty()
                 case WriteScope.changed_files:
                     self._remove_files(update)
             self._add_chunks(database, update.chunks, vectors)
             self._record_files(database, update.files)
-            write_atomically(self._directory / MANIFEST_FILE, update.manifest.model_dump_json())
+            manifest = IndexManifest(
+                identity=self._identity,
+                schema_version=SCHEMA_VERSION,
+                indexed_at=datetime.now(UTC),
+            )
+            write_atomically(self._directory / MANIFEST_FILE, manifest.model_dump_json())
             self._keep_up(every_table=update.scope == WriteScope.everything)
+        self._remove_unused_indexes()
         log.debug(
             "index_written",
             scope=update.scope,
@@ -282,54 +322,31 @@ class LanceDBIndexStore(IndexStore):
         )
         return sorted(merged, key=lambda result: result.score, reverse=True)[:limit]
 
-    def _check_writable(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
-        """Refuse, under the lock and before anything changes, a write of changed files
-        that the index cannot take as it stands now: one planned against an identity
-        another process has since replaced, or chunks of another width or layout."""
-        if update.scope != WriteScope.changed_files:
-            return
-        stored = self.manifest()
-        if stored is not None and stored.identity != update.manifest.identity:
-            message = f"The index was built again as {stored.identity} after this run planned"
-            raise IndexRebuiltElsewhereError(message)
+    def _fit_layout(self, database: lancedb.DBConnection, width: int) -> None:
+        """Start the index again when its chunks table does not hold chunks of this width,
+        as a model swapped under the same name gives. The records go first, then the table:
+        a write stopped between the two never leaves records of chunks that are gone."""
         stored_chunks = self._open(CHUNKS_TABLE)
-        width = vectors.shape[VECTOR_LENGTH_AXIS]
-        if (
-            update.chunks
-            and stored_chunks is not None
-            and stored_chunks.schema != chunks_schema(width)
-        ):
-            # A model swapped under the same name: the manifest cannot tell, the table can
-            message = (
-                "The index holds chunks of another layout or vector width than the "
-                f"{width}-wide vectors the model now gives; "
-                "re-index with force=true to build it again"
-            )
-            raise IndexWriteError(message)
+        if stored_chunks is None or stored_chunks.schema == chunks_schema(width):
+            return
+        log.warning("index_layout_replaced", directory=str(self._directory), width=width)
+        for name in (FILES_TABLE, CHUNKS_TABLE):
+            if self._open(name) is not None:
+                database.drop_table(name)
+                self._kept_up_at.pop(name, None)
 
-    def _empty(
-        self, database: lancedb.DBConnection, update: IndexUpdate, vectors: VectorMatrix
-    ) -> None:
+    def _empty(self) -> None:
         """Remove every record and chunk before a whole index is written again.
 
         The records go first: a write that stops between the two leaves chunks without
         records, which the next run reads as incomplete and builds again, never records of
         chunks that are gone. Rows are deleted and the tables kept, so a reader finds them
-        throughout. A chunks table is dropped instead, to be made again, when it is not of
-        the width and layout of the chunks written, or when no chunk is written to say.
+        throughout.
         """
-        stored_files = self._open(FILES_TABLE)
-        if stored_files is not None:
-            stored_files.delete(MATCH_EVERY_ROW)
-        stored_chunks = self._open(CHUNKS_TABLE)
-        if stored_chunks is not None:
-            width = vectors.shape[VECTOR_LENGTH_AXIS]
-            if update.chunks and stored_chunks.schema == chunks_schema(width):
-                stored_chunks.delete(MATCH_EVERY_ROW)
-            else:
-                database.drop_table(CHUNKS_TABLE)
-        for name in LEGACY_FILES:
-            (self._directory / name).unlink(missing_ok=True)
+        for name in (FILES_TABLE, CHUNKS_TABLE):
+            table = self._open(name)
+            if table is not None:
+                table.delete(MATCH_EVERY_ROW)
 
     def _remove_files(self, update: IndexUpdate) -> None:
         """Remove the chunks of every file written or removed, and the records of the removed."""
@@ -385,6 +402,20 @@ class LanceDBIndexStore(IndexStore):
                 self._kept_up_at[name] = table.version
                 log.debug("table_kept_up", table=name)
 
+    def _remove_unused_indexes(self) -> None:
+        """Remove each other index of the project that nothing wrote for
+        UNUSED_INDEX_RETENTION. One that vanishes or cannot be read meanwhile is left for
+        the next write. A session that writes such an index at the very moment it goes
+        fails that write once; its next run builds the index again."""
+        unused_before = time.time() - UNUSED_INDEX_RETENTION.total_seconds()
+        for left in left_indexes(self._project_directory, self._directory):
+            try:
+                if last_change(left) < unused_before:
+                    remove_index(left)
+                    log.info("unused_index_removed", parts=[str(part) for part in left.parts])
+            except OSError as error:
+                log.warning("unused_index_not_removed", error=str(error))
+
     def _count(self, name: str) -> int:
         table = self._open(name)
         return 0 if table is None else table.count_rows()
@@ -416,6 +447,46 @@ class LanceDBIndexStore(IndexStore):
             if self._connection is None:
                 self._connection = lancedb.connect(str(self._directory))
             return self._connection
+
+
+def index_directory_name(identity: IndexIdentity) -> str:
+    """The name of the directory an index of this identity and layout lives in."""
+    digest = hashlib.sha256(identity.model_dump_json().encode()).hexdigest()
+    return INDEX_DIRECTORY_FORMAT.format(
+        schema_version=SCHEMA_VERSION, identity_digest=digest[:IDENTITY_DIGEST_LENGTH]
+    )
+
+
+def left_indexes(project_directory: Path, own_directory: Path) -> list[LeftIndex]:
+    """The project's indexes other than this store's: one per identity directory, and the
+    entries 0.4 kept in the project's directory, as one."""
+    others = [
+        LeftIndex(parts=[directory])
+        for directory in sorted(project_directory.glob(INDEX_DIRECTORY_PATTERN))
+        if directory != own_directory
+    ]
+    legacy = [
+        project_directory / name for name in LEGACY_ENTRIES if (project_directory / name).exists()
+    ]
+    return [*others, LeftIndex(parts=legacy)] if legacy else others
+
+
+def last_change(left: LeftIndex) -> float:
+    """When an index was last written, in seconds since the epoch: the latest change to any
+    of its parts or to what lies directly inside one, where each write leaves a new file."""
+    entries = [
+        *left.parts,
+        *(child for part in left.parts if part.is_dir() for child in part.iterdir()),
+    ]
+    return max(entry.lstat().st_mtime for entry in entries)
+
+
+def remove_index(left: LeftIndex) -> None:
+    for part in left.parts:
+        if part.is_dir():
+            shutil.rmtree(part)
+        else:
+            part.unlink(missing_ok=True)
 
 
 def chunks_table(chunks: list[Chunk], vectors: VectorMatrix) -> pyarrow.Table:

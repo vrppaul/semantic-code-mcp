@@ -35,7 +35,7 @@ The rules every change is held to are in `AGENTS.md`, and those of each area und
 
 - `cli.py`, `app.py` — the entry point and the composition root: settings, logging, the server, its lifespan, and the store and chunkers every project gets.
 - `server/` — the three MCP tools, their answers and presenters, the profiling middleware.
-- `services/` — indexing (scan, plan against the stored file records and manifest, chunk, embed, then one write), search (re-index stale files, embed the query, rank) and the registry of projects.
+- `services/` — indexing (scan, plan against the stored file records, chunk, embed, then one write), search (re-index stale files, embed the query, rank) and the registry of projects.
 - `discovery.py`, `chunkers/`, `embedding.py`, `storage/` — the parts: which files, how they split, their vectors, where they are kept.
 - `domain/` — the models and the interfaces the parts implement.
 

@@ -52,13 +52,8 @@ class Embedder(ABC):
 
 
 class IndexStore(ABC):
-    """Keeps one project's index: the chunks with their vectors, the record of each file
-    they came from, and the manifest of what built them; finds chunks again."""
-
-    @property
-    @abstractmethod
-    def schema_version(self) -> int:
-        """The version of the layout this store writes; an index of another is rebuilt."""
+    """Keeps one project's index of one identity: the chunks with their vectors, the record
+    of each file they came from, and the manifest of what built them; finds chunks again."""
 
     @abstractmethod
     def manifest(self) -> IndexManifest | None:
@@ -78,10 +73,9 @@ class IndexStore(ABC):
         process or another, a cancelled request's thread included; the manifest is written
         last. The vector of each chunk is in its row of `vectors`.
 
-        A write of changed files is first checked, before anything changes: it fails with
-        `IndexRebuiltElsewhereError` when the stored identity is no longer the one it was
-        built from, and with `IndexWriteError` when its chunks do not fit the stored ones.
-        A whole-index write replaces everything and is not checked."""
+        Vectors of another width than those the index holds (a model swapped under the same
+        name) start the index again from this write: the files it does not hold are left
+        unrecorded, so the next run indexes them."""
 
     @abstractmethod
     def search_hybrid(

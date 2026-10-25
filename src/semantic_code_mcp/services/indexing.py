@@ -2,15 +2,14 @@
 
 A run plans before it changes anything: the records discovery takes of the files on
 disk, compared with the records the index keeps, give the files to index and the paths
-gone; the manifest of what built the index says whether it must be built again whole.
-Nothing is removed until the new chunks are embedded, and the store then replaces what
-changed in one write, so a reader finds the old index or the new one, or, during a
-whole-index write, for a moment an empty one.
+gone. Nothing is removed until the new chunks are embedded, and the store then replaces
+what changed in one write, so a reader finds the old index or the new one, or, during a
+whole-index write, for a moment an empty one. The index is the one of this server's model
+and chunker version; the store keeps those of others apart.
 """
 
 import asyncio
 import time
-from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -19,13 +18,11 @@ import structlog
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.discovery import SourceDiscovery
-from semantic_code_mcp.domain.errors import IndexRebuiltElsewhereError
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, VectorMatrix
 from semantic_code_mcp.domain.models import (
     Chunk,
     IndexCounts,
     IndexDelta,
-    IndexIdentity,
     IndexManifest,
     IndexReport,
     IndexStatus,
@@ -64,7 +61,7 @@ class IndexPlan(BaseModel):
 
     delta: IndexDelta
     scope: WriteScope
-    # Set when the index is built again whole because something it was built from changed
+    # Set when the index is built again whole, saying why
     rebuild_reason: RebuildReason | None
 
     @property
@@ -118,15 +115,7 @@ class IndexingService:
         """Bring the index up to date with the files: all of them when forced or when the
         index must be built again, else what changed."""
         async with self._lock:
-            started = time.perf_counter()
-            try:
-                return await self._index(project_root, started, force=force, progress=progress)
-            except IndexRebuiltElsewhereError:
-                # Planned again, the run now finds the identity it differs from and rebuilds;
-                # it reports in what is left of the band, so progress never goes back
-                log.info("index_rebuilt_elsewhere_planning_again", project=str(project_root))
-                remaining = progress.within(IndexPhase.writing.value, PROGRESS_TOTAL)
-                return await self._index(project_root, started, force=force, progress=remaining)
+            return await self._index(project_root, force=force, progress=progress)
 
     async def status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files, worked out off the event loop."""
@@ -147,9 +136,9 @@ class IndexingService:
         )
 
     async def _index(
-        self, project_root: Path, started: float, *, force: bool, progress: ProgressReporter
+        self, project_root: Path, *, force: bool, progress: ProgressReporter
     ) -> IndexReport:
-        """One attempt at a run, timed from `started`, when the run began."""
+        started = time.perf_counter()
         await progress.report(IndexPhase.scanning.value, "Scanning files...")
         files = await asyncio.to_thread(self._discovery.discover, project_root)
         log.debug("scanned_files", project=str(project_root), count=len(files))
@@ -179,7 +168,6 @@ class IndexingService:
                 files=[chunked_file.file for chunked_file in chunked],
                 chunks=chunks,
                 removed_paths=plan.delta.to_delete,
-                manifest=IndexManifest(identity=self._identity(), indexed_at=datetime.now(UTC)),
             )
             await asyncio.to_thread(self._store.write, update, vectors)
 
@@ -197,10 +185,9 @@ class IndexingService:
     def _plan(self, files: list[SourceFile], state: StoredState, *, force: bool) -> IndexPlan:
         """What a run over these files is to do, from what the store holds.
 
-        An index that must be built again is not read further: its records may be of
-        another layout, and every file is indexed anyway.
+        An index that must be built again is not read further: every file is indexed anyway.
         """
-        reason = rebuild_reason(state.manifest, counts=state.counts, expected=self._identity())
+        reason = rebuild_reason(state.counts)
         if reason is not None:
             return IndexPlan(
                 delta=IndexDelta(to_index=files, to_delete=[]),
@@ -210,14 +197,6 @@ class IndexingService:
         delta = plan_delta(files, self._store.indexed_files(), every_file=force)
         scope = WriteScope.everything if force else WriteScope.changed_files
         return IndexPlan(delta=delta, scope=scope, rebuild_reason=None)
-
-    def _identity(self) -> IndexIdentity:
-        """What an index built now is built from."""
-        return IndexIdentity(
-            model_name=self._embedder.model_name,
-            chunker_version=self._chunker.version,
-            schema_version=self._store.schema_version,
-        )
 
     def _chunk(self, files: list[SourceFile]) -> list[ChunkedFile]:
         """Chunk files one after another; tree-sitter holds the GIL, so threads gain nothing."""
@@ -277,21 +256,9 @@ def plan_delta(
     return IndexDelta(to_index=to_index, to_delete=to_delete)
 
 
-def rebuild_reason(
-    manifest: IndexManifest | None, *, counts: IndexCounts, expected: IndexIdentity
-) -> RebuildReason | None:
+def rebuild_reason(counts: IndexCounts) -> RebuildReason | None:
     """Why the index must be built again whole, or None when it can be brought up to date
-    file by file. A store with nothing in it and no manifest is new, not out of date."""
-    if manifest is None:
-        holds_data = counts.files > 0 or counts.chunks > 0
-        return RebuildReason.unversioned if holds_data else None
-    built = manifest.identity
-    if built.schema_version != expected.schema_version:
-        return RebuildReason.schema_changed
-    if built.model_name != expected.model_name:
-        return RebuildReason.model_changed
-    if built.chunker_version != expected.chunker_version:
-        return RebuildReason.chunker_changed
+    file by file."""
     if counts.files == 0 and counts.chunks > 0:
         return RebuildReason.incomplete
     return None
