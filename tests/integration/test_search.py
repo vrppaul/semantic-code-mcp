@@ -2,14 +2,12 @@
 
 from pathlib import Path
 
-from semantic_code_mcp.config import Settings, get_index_path
-from semantic_code_mcp.discovery import SourceDiscovery
+from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.models import ChunkType, SearchResult
-from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.services.projects import build_chunker
 from semantic_code_mcp.services.search import MIN_SCORE, SearchService
 from tests.fakes import FakeEmbedder, FakeVectorStore, ProgressRecorder
+from tests.helpers import indexing_service
 
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
@@ -36,21 +34,7 @@ def search_service(
     project: Path,
     embedder: FakeEmbedder,
 ) -> SearchService:
-    chunker = build_chunker()
-    index_path = get_index_path(settings, project)
-    index_path.mkdir(parents=True)
-    indexing = IndexingService(
-        discovery=SourceDiscovery(
-            extensions=chunker.supported_extensions,
-            ignore_patterns=settings.ignore_patterns,
-            use_gitignore=settings.use_gitignore,
-            git_timeout_seconds=settings.git_timeout_seconds,
-        ),
-        chunker=chunker,
-        embedder=embedder,
-        store=store,
-        cache_directory=index_path,
-    )
+    indexing = indexing_service(store, embedder, settings, project)
     return SearchService(store=store, embedder=embedder, indexing=indexing)
 
 

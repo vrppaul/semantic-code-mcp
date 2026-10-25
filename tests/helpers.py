@@ -5,7 +5,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from semantic_code_mcp.config import Settings, get_index_path
+from semantic_code_mcp.discovery import SourceDiscovery
+from semantic_code_mcp.domain.interfaces import Embedder, VectorStore
 from semantic_code_mcp.domain.models import Chunk, ChunkType
+from semantic_code_mcp.services.indexing import IndexingService
+from semantic_code_mcp.services.projects import build_chunker
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -29,6 +34,28 @@ def commit_all(repository: Path) -> None:
     """Stage and commit everything in a repository."""
     run_git(repository, "add", "--all")
     run_git(repository, "commit", "--quiet", "--message", "snapshot")
+
+
+def indexing_service(
+    store: VectorStore, embedder: Embedder, settings: Settings, project: Path
+) -> IndexingService:
+    """The indexing of one project over the given store and embedder, with the real
+    discovery and chunkers, its index directory made under the settings' cache."""
+    chunker = build_chunker()
+    index_path = get_index_path(settings, project)
+    index_path.mkdir(parents=True, exist_ok=True)
+    return IndexingService(
+        discovery=SourceDiscovery(
+            extensions=chunker.supported_extensions,
+            ignore_patterns=settings.ignore_patterns,
+            use_gitignore=settings.use_gitignore,
+            git_timeout_seconds=settings.git_timeout_seconds,
+        ),
+        chunker=chunker,
+        embedder=embedder,
+        store=store,
+        cache_directory=index_path,
+    )
 
 
 class ChunkSummary(BaseModel):

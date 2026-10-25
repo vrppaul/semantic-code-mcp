@@ -11,9 +11,10 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING, override
 
+import numpy
 import structlog
 
-from semantic_code_mcp.domain.interfaces import Embedder
+from semantic_code_mcp.domain.interfaces import Embedder, Vector, VectorMatrix
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
@@ -39,16 +40,16 @@ class SentenceTransformerEmbedder(Embedder):
         self._loaded_model()
 
     @override
-    def embed_text(self, text: str) -> list[float]:
-        return self._loaded_model().encode(text, convert_to_numpy=True).tolist()
+    def embed_query(self, text: str) -> Vector:
+        vector = self._loaded_model().encode(text, convert_to_numpy=True)
+        return numpy.asarray(vector, dtype=numpy.float32)
 
     @override
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        log.debug("embedding_batch", count=len(texts))
+    def embed_documents(self, texts: list[str]) -> VectorMatrix:
+        # For no texts the model gives a flat empty array, not rows of its width
+        log.debug("embedding_documents", count=len(texts))
         vectors = self._loaded_model().encode(texts, convert_to_numpy=True, show_progress_bar=False)
-        return vectors.tolist()
+        return numpy.asarray(vectors, dtype=numpy.float32)
 
     def _loaded_model(self) -> SentenceTransformer:
         """The model, loading it on the first call."""

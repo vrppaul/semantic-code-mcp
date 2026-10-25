@@ -10,6 +10,7 @@ authors = [{ name = "Pavel Paranin" }]
 dependencies = [
     "lancedb>=0.27.0",
     "mcp>=2.3.0",
+    "numpy>=2.4.1",
     "pyarrow>=23.0.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
@@ -297,7 +298,8 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "The domain is pure"
 type = "forbidden"
-# Models, interfaces and errors import pydantic and the standard library alone
+# Models and interfaces import pydantic, the standard library and numpy's array type
+# for vectors alone
 source_modules = ["semantic_code_mcp.domain"]
 forbidden_modules = [
     "structlog",

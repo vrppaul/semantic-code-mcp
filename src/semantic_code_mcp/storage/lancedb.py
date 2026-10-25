@@ -8,13 +8,13 @@ import pyarrow
 import structlog
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.domain.interfaces import VectorStore
+from semantic_code_mcp.domain.interfaces import Vector, VectorMatrix, VectorStore
 from semantic_code_mcp.domain.models import (
     HIGHEST_SCORE,
     LOWEST_SCORE,
+    Chunk,
     ChunkLocation,
     ChunkType,
-    ChunkWithEmbedding,
     SearchResult,
     StoreStatistics,
 )
@@ -22,6 +22,8 @@ from semantic_code_mcp.domain.models import (
 log = structlog.get_logger()
 
 EMBEDDING_DIMENSION = 384  # all-MiniLM-L6-v2
+# The axis of a vector matrix along one vector: rows are chunks, columns components
+VECTOR_LENGTH_AXIS = 1
 TABLE_NAME = "chunks"
 VECTOR_COLUMN = "vector"
 FILE_PATH_COLUMN = "file_path"
@@ -96,31 +98,19 @@ class LanceDBVectorStore(VectorStore):
         return self._database.open_table(TABLE_NAME)
 
     @override
-    def add_chunks(self, items: list[ChunkWithEmbedding]) -> None:
-        if not items:
+    def add_chunks(self, chunks: list[Chunk], vectors: VectorMatrix) -> None:
+        if not chunks:
             return
-        rows = [
-            {
-                VECTOR_COLUMN: item.embedding,
-                FILE_PATH_COLUMN: item.chunk.file_path,
-                LINE_START_COLUMN: item.chunk.line_start,
-                LINE_END_COLUMN: item.chunk.line_end,
-                CONTENT_COLUMN: item.chunk.content,
-                CHUNK_TYPE_COLUMN: item.chunk.chunk_type,
-                NAME_COLUMN: item.chunk.name,
-            }
-            for item in items
-        ]
-        self._table.add(rows)
-        log.debug("added_chunks", count=len(rows))
+        self._table.add(chunks_table(chunks, vectors))
+        log.debug("added_chunks", count=len(chunks))
         self._rebuild_full_text_index()
 
-    def search_vector(self, query_embedding: list[float], limit: int) -> list[SearchResult]:
+    def search_vector(self, query_vector: Vector, limit: int) -> list[SearchResult]:
         """The chunks nearest to a vector, scored by cosine similarity mapped to [0, 1]."""
         table = self._table
         if table.count_rows() == 0:
             return []
-        query = table.search(query_embedding)
+        query = table.search(query_vector)
         # lancedb's stubs type search() as the base builder, which lacks metric()
         rows = query.metric(COSINE_METRIC).limit(limit).to_list()  # ty: ignore[unresolved-attribute]
         return [
@@ -154,14 +144,14 @@ class LanceDBVectorStore(VectorStore):
     @override
     def search_hybrid(
         self,
-        query_embedding: list[float],
+        query_vector: Vector,
         query_text: str,
         limit: int,
         vector_weight: float,
     ) -> list[SearchResult]:
         """Vector and full-text hits, weighted and summed per chunk, best first."""
         merged = merge_weighted(
-            self.search_vector(query_embedding, limit),
+            self.search_vector(query_vector, limit),
             vector_weight,
             self.search_full_text(query_text, limit),
             HIGHEST_SCORE - vector_weight,
@@ -197,6 +187,31 @@ class LanceDBVectorStore(VectorStore):
             log.debug("rebuilt_full_text_index", column=CONTENT_COLUMN)
         except (OSError, ValueError, RuntimeError) as error:
             log.warning("full_text_index_not_built", error=str(error))
+
+
+def chunks_table(chunks: list[Chunk], vectors: VectorMatrix) -> pyarrow.Table:
+    """Chunks as rows of the chunks schema, each with the vector of its row in the matrix.
+
+    The matrix goes into Arrow as one flat buffer, without a Python float per component.
+    """
+    if len(chunks) != len(vectors):
+        message = f"{len(chunks)} chunks but {len(vectors)} vectors"
+        raise ValueError(message)
+    vector_column = pyarrow.FixedSizeListArray.from_arrays(
+        pyarrow.array(vectors.ravel()), vectors.shape[VECTOR_LENGTH_AXIS]
+    )
+    return pyarrow.table(
+        {
+            VECTOR_COLUMN: vector_column,
+            FILE_PATH_COLUMN: [chunk.file_path for chunk in chunks],
+            LINE_START_COLUMN: [chunk.line_start for chunk in chunks],
+            LINE_END_COLUMN: [chunk.line_end for chunk in chunks],
+            CONTENT_COLUMN: [chunk.content for chunk in chunks],
+            CHUNK_TYPE_COLUMN: [chunk.chunk_type for chunk in chunks],
+            NAME_COLUMN: [chunk.name for chunk in chunks],
+        },
+        schema=CHUNKS_SCHEMA,
+    )
 
 
 def merge_weighted(

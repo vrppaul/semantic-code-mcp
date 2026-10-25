@@ -1,17 +1,16 @@
 """Hand-written stand-ins for the services' parts: each keeps what it was handed."""
 
 import hashlib
+import itertools
+import threading
 from collections import defaultdict
 from typing import override
 
+import numpy
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.domain.interfaces import Embedder, VectorStore
-from semantic_code_mcp.domain.models import (
-    ChunkWithEmbedding,
-    SearchResult,
-    StoreStatistics,
-)
+from semantic_code_mcp.domain.interfaces import Embedder, Vector, VectorMatrix, VectorStore
+from semantic_code_mcp.domain.models import Chunk, SearchResult, StoreStatistics
 
 EMBEDDING_DIMENSION = 384
 BYTE_RANGE = 255
@@ -41,16 +40,16 @@ class FakeEmbedder(Embedder):
         self._loaded = True
 
     @override
-    def embed_text(self, text: str) -> list[float]:
+    def embed_query(self, text: str) -> Vector:
         self._loaded = True
         self.embedded_texts.append(text)
         return vector_of(text)
 
     @override
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> VectorMatrix:
         self._loaded = True
         self.embedded_texts.extend(texts)
-        return [vector_of(text) for text in texts]
+        return numpy.stack([vector_of(text) for text in texts])
 
 
 class FakeVectorStore(VectorStore):
@@ -58,18 +57,18 @@ class FakeVectorStore(VectorStore):
 
     def __init__(self, hits: list[SearchResult]) -> None:
         self.hits = hits
-        self.chunks_by_file: dict[str, list[ChunkWithEmbedding]] = defaultdict(list)
+        self.chunks_by_file: dict[str, list[Chunk]] = defaultdict(list)
         self.deleted_files: list[str] = []
 
     @override
-    def add_chunks(self, items: list[ChunkWithEmbedding]) -> None:
-        for item in items:
-            self.chunks_by_file[item.chunk.file_path].append(item)
+    def add_chunks(self, chunks: list[Chunk], vectors: VectorMatrix) -> None:
+        for chunk in chunks:
+            self.chunks_by_file[chunk.file_path].append(chunk)
 
     @override
     def search_hybrid(
         self,
-        query_embedding: list[float],
+        query_vector: Vector,
         query_text: str,
         limit: int,
         vector_weight: float,
@@ -94,32 +93,78 @@ class FakeVectorStore(VectorStore):
         self.chunks_by_file.clear()
 
 
-def vector_of(text: str) -> list[float]:
+class HeldWriteStore(FakeVectorStore):
+    """A store whose first chunk write is held until a later delete, or until a wait ends.
+
+    It stands in for a write still running in a worker thread after the request that
+    started it was cancelled. The order is fixed without branches: each call takes the
+    next event of its own sequence, and only the first write and the second delete
+    take a live one.
+    """
+
+    def __init__(self, *, longest_hold_seconds: float) -> None:
+        super().__init__(hits=[])
+        self.first_write_started = threading.Event()
+        self.first_write_landed = threading.Event()
+        self._longest_hold_seconds = longest_hold_seconds
+        first_write_released = threading.Event()
+        always_open = threading.Event()
+        always_open.set()
+        unused = threading.Event()
+        self._write_gates = itertools.chain([first_write_released], itertools.repeat(always_open))
+        self._write_marks = itertools.chain([self.first_write_landed], itertools.repeat(unused))
+        self._releases_on_delete = itertools.chain(
+            [unused, first_write_released], itertools.repeat(unused)
+        )
+
+    @override
+    def add_chunks(self, chunks: list[Chunk], vectors: VectorMatrix) -> None:
+        gate = next(self._write_gates)
+        landed = next(self._write_marks)
+        self.first_write_started.set()
+        gate.wait(self._longest_hold_seconds)
+        super().add_chunks(chunks, vectors)
+        landed.set()
+
+    @override
+    def delete_by_files(self, file_paths: list[str]) -> None:
+        super().delete_by_files(file_paths)
+        next(self._releases_on_delete).set()
+
+
+def vector_of(text: str) -> Vector:
     """A fixed vector for a text, its components in [-1, 1]."""
     digest = hashlib.sha256(text.encode()).digest()
     repeated = (digest * (EMBEDDING_DIMENSION // len(digest) + 1))[:EMBEDDING_DIMENSION]
-    return [byte / BYTE_RANGE * VECTOR_SPAN - VECTOR_OFFSET for byte in repeated]
+    components = numpy.frombuffer(repeated, dtype=numpy.uint8).astype(numpy.float32)
+    return components / BYTE_RANGE * VECTOR_SPAN - VECTOR_OFFSET
 
 
 class ProgressSnapshot(BaseModel):
-    """One progress report and whether the model was loaded when it came."""
+    """One progress report, and how far the embedder had got when it came."""
 
     model_config = ConfigDict(frozen=True)
 
     progress: float
     model_loaded: bool
+    texts_embedded: int
 
 
-class LoadWatchingRecorder:
-    """A progress callback that notes, at each report, whether an embedder had loaded."""
+class EmbedderWatchingRecorder:
+    """A progress callback that notes, at each report, whether the embedder had loaded
+    and how many texts it had embedded."""
 
-    def __init__(self, embedder: Embedder) -> None:
+    def __init__(self, embedder: FakeEmbedder) -> None:
         self._embedder = embedder
         self.snapshots: list[ProgressSnapshot] = []
 
     async def __call__(self, progress: float, _total: float, _message: str) -> None:
         self.snapshots.append(
-            ProgressSnapshot(progress=progress, model_loaded=self._embedder.is_loaded)
+            ProgressSnapshot(
+                progress=progress,
+                model_loaded=self._embedder.is_loaded,
+                texts_embedded=len(self._embedder.embedded_texts),
+            )
         )
 
 

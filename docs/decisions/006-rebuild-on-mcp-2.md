@@ -331,6 +331,10 @@ As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - The model loads in a worker thread right after its own progress report; an index run inside a search reports within the search's band of progress.
 - Property tests (hypothesis) move to stage 6, with the fusion they are most needed for. The old chunker tests still filter in comprehensions; TODO.md records it.
 
+Stage 5 is under way. As built, it differs from D2, D3 and D7 in these points:
+- `embed_documents` takes no progress callback: the indexing service embeds in slices of `EMBEDDING_SLICE_SIZE` chunks and reports before each, so the embedder stays a plain call in a worker thread and progress stays on the event loop.
+- The domain imports numpy for one thing, the type of a vector (`Vector`, `VectorMatrix` in `domain/interfaces.py`); numpy is a declared dependency.
+
 
 | Stage | Content | Release |
 |---|---|---|

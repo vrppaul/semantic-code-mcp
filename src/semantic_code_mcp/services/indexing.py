@@ -1,29 +1,29 @@
 """Indexing: find a project's files, see what changed, then chunk, embed and store them."""
 
 import asyncio
+import threading
 import time
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
+import numpy
 import structlog
 
 from semantic_code_mcp.discovery import SourceDiscovery
-from semantic_code_mcp.domain.interfaces import Chunker, Embedder, VectorStore
-from semantic_code_mcp.domain.models import (
-    Chunk,
-    ChunkWithEmbedding,
-    IndexResult,
-    IndexStatus,
-    ScanPlan,
-)
-from semantic_code_mcp.services.progress import ProgressReporter
+from semantic_code_mcp.domain.interfaces import Chunker, Embedder, VectorMatrix, VectorStore
+from semantic_code_mcp.domain.models import Chunk, IndexResult, IndexStatus, ScanPlan
+from semantic_code_mcp.services.progress import PROGRESS_TOTAL, ProgressReporter
 from semantic_code_mcp.services.timing import elapsed_milliseconds
 from semantic_code_mcp.storage.cache import CACHE_FILENAME, FileChangeCache
 
 log = structlog.get_logger()
 
 DURATION_DECIMALS = 3
+# Chunks embedded between two progress reports: about ten seconds on a laptop CPU
+EMBEDDING_SLICE_SIZE = 256
+# The vectors of no chunks: no rows, and with no vector seen, no columns
+NO_VECTORS_SHAPE = (0, 0)
 
 
 class IndexPhase(Enum):
@@ -34,13 +34,17 @@ class IndexPhase(Enum):
     chunking = 20.0
     loading_model = 60.0
     embedding = 70.0
+    writing = 95.0
 
 
 class IndexingService:
     """Keeps one project's index in step with its files.
 
-    One instance serves one project; its lock keeps two index runs of that project
-    from writing at once, which would store every changed file's chunks twice.
+    One instance serves one project. Its asyncio lock keeps two index runs of that
+    project from planning and embedding at once. A cancelled request releases that
+    lock while its worker thread may still be writing, so the write itself is one call
+    in one thread, under a thread lock: the next run writes only once it has landed.
+    Two writes side by side would store every changed file's chunks twice.
     """
 
     def __init__(
@@ -57,6 +61,7 @@ class IndexingService:
         self._store = store
         self._cache_directory = cache_directory
         self._lock = asyncio.Lock()
+        self._writing = threading.Lock()
 
     async def index(
         self, project_root: Path, *, force: bool, progress: ProgressReporter
@@ -135,32 +140,45 @@ class IndexingService:
     async def _embed_and_store(
         self, plan: ScanPlan, chunks: list[Chunk], progress: ProgressReporter
     ) -> None:
-        """Replace the chunks of every changed or deleted file, then record the files."""
-        await asyncio.to_thread(
-            self._store.delete_by_files, [*plan.files_to_delete, *plan.files_to_index]
+        """Embed the new chunks, then replace the chunks of every changed or deleted file
+        and record the files; the old chunks stay searchable while the new ones embed."""
+        vectors = await self._embed(chunks, progress)
+        await progress.report(IndexPhase.writing.value, "Writing the index...")
+        await asyncio.to_thread(self._write, plan, chunks, vectors)
+
+    def _write(self, plan: ScanPlan, chunks: list[Chunk], vectors: VectorMatrix) -> None:
+        """Replace the chunks of every changed or deleted file and record the files, as one
+        unit that a cancelled request's thread finishes before another run's begins."""
+        with self._writing:
+            self._store.delete_by_files([*plan.files_to_delete, *plan.files_to_index])
+            self._store.add_chunks(chunks, vectors)
+            self._record_files(plan)
+
+    async def _embed(self, chunks: list[Chunk], progress: ProgressReporter) -> VectorMatrix:
+        """The vectors of the chunks, embedded a slice at a time with a report before each,
+        so a long run shows it is moving."""
+        if not chunks:
+            return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
+        if not self._embedder.is_loaded:
+            await progress.report(IndexPhase.loading_model.value, "Loading the embedding model...")
+            await asyncio.to_thread(self._embedder.load)
+
+        started = time.perf_counter()
+        texts = [chunk.content for chunk in chunks]
+        band = progress.within(IndexPhase.embedding.value, IndexPhase.writing.value)
+        slices: list[VectorMatrix] = []
+        for slice_start in range(0, len(texts), EMBEDDING_SLICE_SIZE):
+            texts_slice = texts[slice_start : slice_start + EMBEDDING_SLICE_SIZE]
+            slice_end = slice_start + len(texts_slice)
+            await band.report(
+                slice_start / len(texts) * PROGRESS_TOTAL,
+                f"Embedding chunks {slice_start + 1}-{slice_end} of {len(texts)}...",
+            )
+            slices.append(await asyncio.to_thread(self._embedder.embed_documents, texts_slice))
+        log.debug(
+            "embedding_completed", chunks=len(chunks), duration_ms=elapsed_milliseconds(started)
         )
-
-        if chunks:
-            if not self._embedder.is_loaded:
-                await progress.report(
-                    IndexPhase.loading_model.value, "Loading the embedding model..."
-                )
-                await asyncio.to_thread(self._embedder.load)
-            await progress.report(IndexPhase.embedding.value, f"Embedding {len(chunks)} chunks...")
-            started = time.perf_counter()
-            embeddings = await asyncio.to_thread(
-                self._embedder.embed_batch, [chunk.content for chunk in chunks]
-            )
-            log.debug(
-                "embedding_completed", chunks=len(chunks), duration_ms=elapsed_milliseconds(started)
-            )
-            items = [
-                ChunkWithEmbedding(chunk=chunk, embedding=embedding)
-                for chunk, embedding in zip(chunks, embeddings, strict=True)
-            ]
-            await asyncio.to_thread(self._store.add_chunks, items)
-
-        await asyncio.to_thread(self._record_files, plan)
+        return numpy.concatenate(slices)
 
     def _record_files(self, plan: ScanPlan) -> None:
         """Record in the cache which files the index now holds, and drop the deleted."""

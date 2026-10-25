@@ -8,16 +8,25 @@ import pytest
 
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
-from semantic_code_mcp.services.indexing import IndexingService, IndexPhase
+from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService, IndexPhase
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.projects import ProjectRegistry, build_chunker
 from tests.conftest import MODEL_NAME
-from tests.fakes import FakeEmbedder, LoadWatchingRecorder, ProgressRecorder
-from tests.helpers import commit_all, make_repository
+from tests.fakes import (
+    EmbedderWatchingRecorder,
+    FakeEmbedder,
+    HeldWriteStore,
+    ProgressRecorder,
+)
+from tests.helpers import commit_all, indexing_service, make_repository
 
 NO_PROGRESS = ProgressReporter(None)
 # An mtime well after any file the test just wrote
 LATER_MTIME_SECONDS = 4_000_000_000
+# Functions in one file: two whole slices of chunks to embed and part of a third
+MANY = 2 * EMBEDDING_SLICE_SIZE + 10
+# How long a held write waits for the next run's delete before it goes on alone
+HOLD_SECONDS = 0.5
 
 
 @pytest.fixture
@@ -95,6 +104,26 @@ async def test_two_runs_at_once_store_each_chunk_once(
     status = await indexing.status(sample_project)
 
     assert status.chunks_count == 6
+
+
+async def test_a_run_cancelled_while_it_writes_leaves_each_chunk_once(
+    test_settings: Settings, sample_project: Path
+):
+    """An agent cancels a call during the write and calls again at once: the worker
+    thread of the first call still writes, and the second must not write beside it."""
+    store = HeldWriteStore(longest_hold_seconds=HOLD_SECONDS)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, sample_project)
+    first_run = asyncio.create_task(
+        indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    )
+    await asyncio.to_thread(store.first_write_started.wait)
+    first_run.cancel()
+
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    await asyncio.to_thread(store.first_write_landed.wait)
+    await asyncio.gather(first_run, return_exceptions=True)
+
+    assert store.statistics().chunks_count == 6
 
 
 async def test_a_file_that_is_not_utf8_does_not_stop_the_rest(
@@ -193,7 +222,7 @@ async def test_the_model_load_is_reported_before_it_happens(
     test_settings: Settings, sample_project: Path
 ):
     embedder = FakeEmbedder(loaded=False)
-    recorder = LoadWatchingRecorder(embedder)
+    recorder = EmbedderWatchingRecorder(embedder)
     registry = ProjectRegistry(settings=test_settings, embedder=embedder, chunker=build_chunker())
     services = await registry.services_for(sample_project)
 
@@ -202,6 +231,25 @@ async def test_the_model_load_is_reported_before_it_happens(
     loaded_at = {snapshot.progress: snapshot.model_loaded for snapshot in recorder.snapshots}
     assert loaded_at[IndexPhase.loading_model.value] is False
     assert loaded_at[IndexPhase.embedding.value] is True
+
+
+async def test_progress_is_reported_before_each_slice_of_chunks_is_embedded(
+    test_settings: Settings, tmp_path: Path
+):
+    project = tmp_path / "many"
+    project.mkdir()
+    (project / "many.py").write_text(
+        "".join(f"def function_{number}():\n    return {number}\n\n\n" for number in range(MANY))
+    )
+    embedder = FakeEmbedder()
+    recorder = EmbedderWatchingRecorder(embedder)
+    registry = ProjectRegistry(settings=test_settings, embedder=embedder, chunker=build_chunker())
+    services = await registry.services_for(project)
+
+    await services.indexing.index(project, force=False, progress=ProgressReporter(recorder))
+
+    embedded_at_reports = {snapshot.texts_embedded for snapshot in recorder.snapshots}
+    assert embedded_at_reports == {0, EMBEDDING_SLICE_SIZE, 2 * EMBEDDING_SLICE_SIZE, MANY}
 
 
 async def test_two_first_requests_for_one_project_share_its_services(

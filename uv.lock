@@ -1211,6 +1211,7 @@ source = { editable = "." }
 dependencies = [
     { name = "lancedb" },
     { name = "mcp" },
+    { name = "numpy" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1242,6 +1243,7 @@ dev = [
 requires-dist = [
     { name = "lancedb", specifier = ">=0.27.0" },
     { name = "mcp", specifier = ">=2.3.0" },
+    { name = "numpy", specifier = ">=2.4.1" },
     { name = "pyarrow", specifier = ">=23.0.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },

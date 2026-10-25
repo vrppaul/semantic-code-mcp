@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
+- Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project
 - A release runs the whole CI suite on the tagged commit before publishing to PyPI
@@ -48,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `index_status` loaded the embedding model it never uses, blocking for seconds
 - Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
+- An index call cancelled while it wrote, and called again at once, stored the changed files' chunks twice: the cancelled call's thread kept writing beside the new one
 - A status or search during a forced re-index could fail on a dropped table; a forced run now empties the table instead
 - A failure inside a tool reached the agent as `Error executing tool ...` without its cause
 - With `local_index`, two spellings of one project path got separate locks and stores

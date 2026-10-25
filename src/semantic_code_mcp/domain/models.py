@@ -48,15 +48,6 @@ class Chunk(BaseModel):
         return self
 
 
-class ChunkWithEmbedding(BaseModel):
-    """A chunk paired with its embedding vector for storage."""
-
-    model_config = ConfigDict(frozen=True)
-
-    chunk: Chunk
-    embedding: list[float]
-
-
 class ChunkLocation(BaseModel):
     """Where a chunk starts: the key under which two searches' hits of one chunk meet."""
 

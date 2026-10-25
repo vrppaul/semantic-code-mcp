@@ -6,12 +6,15 @@ fails when it is defined, not when a request first reaches the gap.
 
 from abc import ABC, abstractmethod
 
-from semantic_code_mcp.domain.models import (
-    Chunk,
-    ChunkWithEmbedding,
-    SearchResult,
-    StoreStatistics,
-)
+import numpy
+from numpy.typing import NDArray
+
+from semantic_code_mcp.domain.models import Chunk, SearchResult, StoreStatistics
+
+# The vector of one text
+type Vector = NDArray[numpy.float32]
+# The vectors of many texts, one row per text, in their order
+type VectorMatrix = NDArray[numpy.float32]
 
 
 class Embedder(ABC):
@@ -27,25 +30,26 @@ class Embedder(ABC):
         """Load the model now, if it is not in memory; blocks while it loads."""
 
     @abstractmethod
-    def embed_text(self, text: str) -> list[float]:
-        """The vector of one text; loads the model on first use."""
+    def embed_query(self, text: str) -> Vector:
+        """The vector of a search query; loads the model on first use."""
 
     @abstractmethod
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """The vectors of many texts, in order; loads the model on first use."""
+    def embed_documents(self, texts: list[str]) -> VectorMatrix:
+        """The vectors of at least one text to be searched, one row each; loads the model
+        on first use."""
 
 
 class VectorStore(ABC):
     """Keeps chunks with their vectors and finds them again."""
 
     @abstractmethod
-    def add_chunks(self, items: list[ChunkWithEmbedding]) -> None:
-        """Store chunks with their vectors."""
+    def add_chunks(self, chunks: list[Chunk], vectors: VectorMatrix) -> None:
+        """Store chunks with their vectors, the vector of each chunk in its row."""
 
     @abstractmethod
     def search_hybrid(
         self,
-        query_embedding: list[float],
+        query_vector: Vector,
         query_text: str,
         limit: int,
         vector_weight: float,

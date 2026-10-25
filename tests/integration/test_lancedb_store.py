@@ -2,31 +2,29 @@
 
 from pathlib import Path
 
+import numpy
 import pytest
 
-from semantic_code_mcp.domain.models import Chunk, ChunkType, ChunkWithEmbedding
+from semantic_code_mcp.domain.models import Chunk, ChunkType
 from semantic_code_mcp.storage.lancedb import LanceDBVectorStore
 from tests.fakes import EMBEDDING_DIMENSION
 
 TOWARD_QUERY = [0.9] * EMBEDDING_DIMENSION
-QUERY = [1.0] * EMBEDDING_DIMENSION
+QUERY = numpy.full(EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
 AWAY_FROM_QUERY = [-0.9] * EMBEDDING_DIMENSION
 ALTERNATING = [0.1, -0.1] * (EMBEDDING_DIMENSION // 2)
 LIMIT = 10
 VECTOR_WEIGHT = 0.5
 
 
-def stored(name: str, file_path: str, content: str, embedding: list[float]) -> ChunkWithEmbedding:
-    return ChunkWithEmbedding(
-        chunk=Chunk(
-            file_path=file_path,
-            line_start=1,
-            line_end=3,
-            content=content,
-            chunk_type=ChunkType.function,
-            name=name,
-        ),
-        embedding=embedding,
+def function_chunk(name: str, file_path: str, content: str) -> Chunk:
+    return Chunk(
+        file_path=file_path,
+        line_start=1,
+        line_end=3,
+        content=content,
+        chunk_type=ChunkType.function,
+        name=name,
     )
 
 
@@ -39,15 +37,15 @@ def store(tmp_path: Path) -> LanceDBVectorStore:
 def filled_store(store: LanceDBVectorStore) -> LanceDBVectorStore:
     store.add_chunks(
         [
-            stored("near", "/project/near.py", "def near(): return elapsed_time()", TOWARD_QUERY),
-            stored(
+            function_chunk("near", "/project/near.py", "def near(): return elapsed_time()"),
+            function_chunk(
                 "keyword",
                 "/project/indexer.py",
                 'log.debug("timing", duration_ms=round(time.time() - started))',
-                ALTERNATING,
             ),
-            stored("far", "/project/far.py", "def far(): return None", AWAY_FROM_QUERY),
-        ]
+            function_chunk("far", "/project/far.py", "def far(): return None"),
+        ],
+        numpy.array([TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY], dtype=numpy.float32),
     )
     return store
 

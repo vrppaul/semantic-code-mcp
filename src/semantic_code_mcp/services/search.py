@@ -101,12 +101,12 @@ class SearchService:
         started = time.perf_counter()
 
         embedding_started = time.perf_counter()
-        query_embedding = self._embedder.embed_text(query)
+        query_vector = self._embedder.embed_query(query)
         embedding_ms = elapsed_milliseconds(embedding_started)
 
         search_started = time.perf_counter()
         raw_results = self._store.search_hybrid(
-            query_embedding, query, limit * SEARCH_OVERFETCH_FACTOR, VECTOR_WEIGHT
+            query_vector, query, limit * SEARCH_OVERFETCH_FACTOR, VECTOR_WEIGHT
         )
         search_ms = elapsed_milliseconds(search_started)
 
