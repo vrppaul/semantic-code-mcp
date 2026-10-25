@@ -35,7 +35,8 @@ RESULTS_DIRECTORY = EVALS_DIRECTORY / "results"
 QUALITY_FILE = "quality.json"
 SPEED_FILE = "speed.json"
 SERVER_LOG_FILE = "server.log"
-DEFAULT_EDITS = 5
+# Enough single-file edits for the index's upkeep to run, so its growth shows settled
+DEFAULT_EDITS = 20
 JSON_INDENT = 2
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -200,9 +201,11 @@ def speed_summary(entry: CorpusSpeed) -> str:
         f"in {entry.full_index_seconds}s ({entry.files_per_second} files/s, "
         f"{entry.chunks_per_second} chunks/s); search p50 "
         f"{entry.warm_search_p50_milliseconds}ms p95 {entry.warm_search_p95_milliseconds}ms; "
+        f"status {entry.status_p50_milliseconds}ms; "
         f"model load {entry.model_load_seconds}s; first search {entry.first_search_seconds}s; "
         f"peak {entry.peak_memory_megabytes}MB; "
-        f"index growth {entry.index_growth_megabytes_per_edit}MB per edit"
+        f"index growth {entry.index_growth_megabytes_per_edit}MB per edit; "
+        f"search after an edit {entry.search_after_edit_p50_milliseconds}ms"
     )
 
 

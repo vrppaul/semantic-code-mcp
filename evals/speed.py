@@ -2,11 +2,12 @@
 
 Measured per corpus, in server processes of its own: the model load (a search of a
 one-file project), a full index from scratch with the model already loaded, warm search
-latency, how much the index grows with each single-file edit, the server's peak
-memory, and the first answer of a freshly started server on an up-to-date index — the
-process start and model load an agent waits for. Peak memory is read from `/proc`, so
-it is reported on Linux only. With 15 to 20 questions per corpus, p95 is close to the
-slowest search: read it as that.
+latency, an `index_status` call (each search makes one first), how much the index grows
+with each single-file edit and how long the search after it takes (it re-indexes the
+edited file first), the server's peak memory, and the first answer of a freshly started
+server on an up-to-date index — the process start and model load an agent waits for.
+Peak memory is read from `/proc`, so it is reported on Linux only. With 15 to 20
+questions per corpus, p95 is close to the slowest search: read it as that.
 """
 
 import os
@@ -14,6 +15,7 @@ import platform
 import statistics
 import tempfile
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
@@ -40,6 +42,12 @@ SERVER_COMMAND_MARK = b"semantic_code_mcp"
 WARM_UP_FILE_NAME = "warm_up.py"
 WARM_UP_SOURCE = "def warm_up():\n    return None\n"
 WARM_UP_QUERY = "warm up"
+# Status calls timed on the indexed corpus; each search makes the same check first
+STATUS_CALLS = 10
+# Where Linux names the processor, and the field that holds its model
+CPU_INFO = Path("/proc/cpuinfo")
+CPU_MODEL_FIELD = "model name"
+CPU_INFO_SEPARATOR = ":"
 
 
 class Machine(BaseModel):
@@ -65,7 +73,9 @@ class CorpusSpeed(BaseModel):
     chunks_per_second: float
     warm_search_p50_milliseconds: float
     warm_search_p95_milliseconds: float
+    status_p50_milliseconds: float
     index_growth_megabytes_per_edit: float
+    search_after_edit_p50_milliseconds: float
     peak_memory_megabytes: float | None
     model_load_seconds: float
     first_search_seconds: float
@@ -74,10 +84,27 @@ class CorpusSpeed(BaseModel):
 def current_machine() -> Machine:
     """The machine this process runs on."""
     return Machine(
-        processor=platform.processor() or platform.machine(),
+        processor=processor_model(),
         logical_cores=os.cpu_count() or 0,
         python=platform.python_version(),
     )
+
+
+def processor_model() -> str:
+    """The processor's model, as Linux names it; elsewhere what `platform` knows.
+
+    `platform.processor()` gives only `x86_64` on Linux, which every such machine shares.
+    """
+    try:
+        lines = CPU_INFO.read_text().splitlines()
+    except OSError:
+        return platform.processor() or platform.machine()
+    models = [
+        line.partition(CPU_INFO_SEPARATOR)[2].strip()
+        for line in lines
+        if line.startswith(CPU_MODEL_FIELD)
+    ]
+    return models[0] if models else platform.machine()
 
 
 async def measure_speed(
@@ -92,9 +119,10 @@ async def measure_speed(
         latencies = [
             await timed_search_seconds(connection, working_tree, query) for query in queries
         ]
-        growth_bytes = await index_growth_bytes(
-            connection, corpus, working_tree, index_directory, edits
-        )
+        status_seconds = [
+            await timed_status_seconds(connection, working_tree) for _ in range(STATUS_CALLS)
+        ]
+        edits_cost = await edit_cost(connection, corpus, working_tree, index_directory, edits)
         # Restoring the checkout touched the edited file: index it now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
@@ -114,7 +142,11 @@ async def measure_speed(
         chunks_per_second=rounded(report.chunks_indexed / report.duration_seconds),
         warm_search_p50_milliseconds=percentile_milliseconds(latencies, MEDIAN_CUT),
         warm_search_p95_milliseconds=percentile_milliseconds(latencies, NINETY_FIFTH_CUT),
-        index_growth_megabytes_per_edit=rounded(growth_bytes / BYTES_PER_MEGABYTE / edits),
+        status_p50_milliseconds=median_milliseconds(status_seconds),
+        index_growth_megabytes_per_edit=rounded(
+            edits_cost.growth_bytes / BYTES_PER_MEGABYTE / edits
+        ),
+        search_after_edit_p50_milliseconds=median_milliseconds(edits_cost.search_seconds),
         peak_memory_megabytes=peak_memory,
         model_load_seconds=rounded(model_load_seconds),
         first_search_seconds=rounded(first_search_seconds),
@@ -134,6 +166,13 @@ async def timed_model_load_seconds(connection: ServerConnection) -> float:
         return time.perf_counter() - started
 
 
+async def timed_status_seconds(connection: ServerConnection, working_tree: Path) -> float:
+    """How long one `index_status` call takes on an up-to-date index, seen from the client."""
+    started = time.perf_counter()
+    await connection.status(working_tree)
+    return time.perf_counter() - started
+
+
 async def timed_search_seconds(
     connection: ServerConnection, working_tree: Path, query: str
 ) -> float:
@@ -143,14 +182,24 @@ async def timed_search_seconds(
     return time.perf_counter() - started
 
 
-async def index_growth_bytes(
+class EditCost(BaseModel):
+    """What a run of single-file edits cost: how much the index grew, and how long each
+    search took that re-indexed the edited file before it answered."""
+
+    model_config = ConfigDict(frozen=True)
+
+    growth_bytes: int
+    search_seconds: tuple[float, ...]
+
+
+async def edit_cost(
     connection: ServerConnection,
     corpus: Corpus,
     working_tree: Path,
     index_directory: Path,
     edits: int,
-) -> int:
-    """How many bytes the index grows over a number of single-file edits.
+) -> EditCost:
+    """What a number of single-file edits cost the index and the searches after them.
 
     Each edit appends to the file that answers the corpus's first question, then asks
     that question, which re-indexes the file. The checkout is restored afterwards,
@@ -159,14 +208,23 @@ async def index_growth_bytes(
     edited_file = working_tree / corpus.queries[0].answers[0].path
     query = corpus.queries[0].text
     size_before = directory_bytes(index_directory)
+    search_seconds: list[float] = []
     try:
         for _ in range(edits):
             with edited_file.open("a") as edited:
                 edited.write(EDIT_SUFFIX)
-            await connection.search(working_tree, query, RESULTS_PER_QUERY)
+            search_seconds.append(await timed_search_seconds(connection, working_tree, query))
     finally:
         restore(working_tree)
-    return directory_bytes(index_directory) - size_before
+    return EditCost(
+        growth_bytes=directory_bytes(index_directory) - size_before,
+        search_seconds=tuple(search_seconds),
+    )
+
+
+def median_milliseconds(seconds: Sequence[float]) -> float:
+    """The median of durations, in milliseconds; one duration is its own median."""
+    return rounded(statistics.median(seconds) * MILLISECONDS_PER_SECOND)
 
 
 def percentile_milliseconds(seconds: list[float], cut: int) -> float:

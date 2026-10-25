@@ -1,6 +1,6 @@
 {
   "machine": {
-    "processor": "x86_64",
+    "processor": "12th Gen Intel(R) Core(TM) i7-1260P",
     "logical_cores": 16,
     "python": "3.14.3"
   },
@@ -9,43 +9,49 @@
       "corpus": "click",
       "files_indexed": 133,
       "chunks_indexed": 1746,
-      "full_index_seconds": 78.063,
-      "files_per_second": 1.7,
-      "chunks_per_second": 22.37,
-      "warm_search_p50_milliseconds": 63.19,
-      "warm_search_p95_milliseconds": 79.32,
+      "full_index_seconds": 75.675,
+      "files_per_second": 1.76,
+      "chunks_per_second": 23.07,
+      "warm_search_p50_milliseconds": 63.33,
+      "warm_search_p95_milliseconds": 82.43,
+      "status_p50_milliseconds": 28.37,
       "index_growth_megabytes_per_edit": 0.61,
-      "peak_memory_megabytes": 1115.92,
-      "model_load_seconds": 4.19,
-      "first_search_seconds": 7.59
+      "search_after_edit_p50_milliseconds": 1669.27,
+      "peak_memory_megabytes": 1223.73,
+      "model_load_seconds": 5.19,
+      "first_search_seconds": 7.13
     },
     {
       "corpus": "fd",
       "files_indexed": 32,
       "chunks_indexed": 688,
-      "full_index_seconds": 25.332,
-      "files_per_second": 1.26,
-      "chunks_per_second": 27.16,
-      "warm_search_p50_milliseconds": 59.34,
-      "warm_search_p95_milliseconds": 94.23,
+      "full_index_seconds": 26.199,
+      "files_per_second": 1.22,
+      "chunks_per_second": 26.26,
+      "warm_search_p50_milliseconds": 75.01,
+      "warm_search_p95_milliseconds": 108.81,
+      "status_p50_milliseconds": 23.57,
       "index_growth_megabytes_per_edit": 0.25,
-      "peak_memory_megabytes": 943.66,
-      "model_load_seconds": 5.67,
-      "first_search_seconds": 7.51
+      "search_after_edit_p50_milliseconds": 738.67,
+      "peak_memory_megabytes": 995.23,
+      "model_load_seconds": 5.87,
+      "first_search_seconds": 7.02
     },
     {
       "corpus": "semantic-code-mcp",
       "files_indexed": 61,
       "chunks_indexed": 602,
-      "full_index_seconds": 20.869,
-      "files_per_second": 2.92,
-      "chunks_per_second": 28.85,
-      "warm_search_p50_milliseconds": 68.15,
-      "warm_search_p95_milliseconds": 85.52,
+      "full_index_seconds": 18.899,
+      "files_per_second": 3.23,
+      "chunks_per_second": 31.85,
+      "warm_search_p50_milliseconds": 66.88,
+      "warm_search_p95_milliseconds": 94.12,
+      "status_p50_milliseconds": 26.81,
       "index_growth_megabytes_per_edit": 0.21,
-      "peak_memory_megabytes": 953.22,
-      "model_load_seconds": 5.7,
-      "first_search_seconds": 7.5
+      "search_after_edit_p50_milliseconds": 806.04,
+      "peak_memory_megabytes": 1061.55,
+      "model_load_seconds": 5.68,
+      "first_search_seconds": 6.71
     }
   ]
 }

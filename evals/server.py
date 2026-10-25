@@ -54,6 +54,14 @@ class IndexReport(BaseModel):
     duration_seconds: float
 
 
+class StatusReport(BaseModel):
+    """The answer of `index_status`, as far as the harness reads it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    files_count: int
+
+
 class ServerConnection:
     """A client session to one server process, with the tools the harness calls."""
 
@@ -64,6 +72,11 @@ class ServerConnection:
         """Index a project from scratch or incrementally, as `index_codebase` decides."""
         result = await self._session.call_tool("index_codebase", {"project_path": str(project)})
         return IndexReport.model_validate(tool_payload(result))
+
+    async def status(self, project: Path) -> StatusReport:
+        """Ask how far a project's index is, as every search does before it searches."""
+        result = await self._session.call_tool("index_status", {"project_path": str(project)})
+        return StatusReport.model_validate(tool_payload(result))
 
     async def search(self, project: Path, query: str, limit: int) -> SearchAnswer:
         """Search a project as an agent would."""
