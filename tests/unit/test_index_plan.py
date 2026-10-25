@@ -32,6 +32,7 @@ WRITTEN_AT = datetime(2026, 10, 25, tzinfo=UTC)
 EMPTY = IndexCounts(files=0, chunks=0)
 FULL = IndexCounts(files=2, chunks=6)
 CHUNKS_WITHOUT_RECORDS = IndexCounts(files=0, chunks=6)
+RECORDS_WITHOUT_CHUNKS = IndexCounts(files=2, chunks=0)
 
 
 def built_from(model_name: str, chunker_version: int, schema_version: int) -> IndexManifest:
@@ -66,6 +67,14 @@ def test_a_forced_run_indexes_every_file_and_drops_what_is_gone():
             CHUNKS_WITHOUT_RECORDS,
             RebuildReason.incomplete,
             id="chunks without records",
+        ),
+        pytest.param(built_from("model", 1, 1), EMPTY, None, id="every file deleted"),
+        pytest.param(built_from("model", 1, 1), RECORDS_WITHOUT_CHUNKS, None, id="no chunk"),
+        pytest.param(
+            built_from("other", 1, 1),
+            CHUNKS_WITHOUT_RECORDS,
+            RebuildReason.model_changed,
+            id="another model's chunks without records",
         ),
         pytest.param(
             built_from("model", 1, 0), FULL, RebuildReason.schema_changed, id="another schema"

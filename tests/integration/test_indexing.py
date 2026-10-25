@@ -476,6 +476,8 @@ async def test_an_index_whose_file_records_were_lost_is_rebuilt(
 async def test_a_run_planned_before_another_process_rebuilt_the_index_plans_again(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
+    """And its progress still only moves forward, through both attempts."""
+    recorder = ProgressRecorder()
     store_directory = tmp_path / "index"
     indexing = indexing_service(
         open_index_store(store_directory),
@@ -484,11 +486,12 @@ async def test_a_run_planned_before_another_process_rebuilt_the_index_plans_agai
         ChangingChunker(build_chunker(), partial(rebuild_as_another_model, store_directory)),
     )
 
-    report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    report = await indexing.index(sample_project, force=False, progress=ProgressReporter(recorder))
     status = await indexing.status(sample_project)
 
     assert report.rebuild_reason == RebuildReason.model_changed
     assert (status.manifest.identity.model_name, status.chunks_count) == (FAKE_MODEL_NAME, 6)
+    assert recorder.progress_values == sorted(recorder.progress_values)
 
 
 def rebuild_as_another_model(store_directory: Path) -> None:

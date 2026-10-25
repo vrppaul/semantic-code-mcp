@@ -4,7 +4,8 @@ A run plans before it changes anything: the records discovery takes of the files
 disk, compared with the records the index keeps, give the files to index and the paths
 gone; the manifest of what built the index says whether it must be built again whole.
 Nothing is removed until the new chunks are embedded, and the store then replaces what
-changed in one write, so a reader finds the old index or the new one.
+changed in one write, so a reader finds the old index or the new one, or, during a
+whole-index write, for a moment an empty one.
 """
 
 import asyncio
@@ -117,12 +118,15 @@ class IndexingService:
         """Bring the index up to date with the files: all of them when forced or when the
         index must be built again, else what changed."""
         async with self._lock:
+            started = time.perf_counter()
             try:
-                return await self._index(project_root, force=force, progress=progress)
+                return await self._index(project_root, started, force=force, progress=progress)
             except IndexRebuiltElsewhereError:
-                # Planned again, the run now finds the identity it differs from and rebuilds
+                # Planned again, the run now finds the identity it differs from and rebuilds;
+                # it reports in what is left of the band, so progress never goes back
                 log.info("index_rebuilt_elsewhere_planning_again", project=str(project_root))
-                return await self._index(project_root, force=force, progress=progress)
+                remaining = progress.within(IndexPhase.writing.value, PROGRESS_TOTAL)
+                return await self._index(project_root, started, force=force, progress=remaining)
 
     async def status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files, worked out off the event loop."""
@@ -143,10 +147,9 @@ class IndexingService:
         )
 
     async def _index(
-        self, project_root: Path, *, force: bool, progress: ProgressReporter
+        self, project_root: Path, started: float, *, force: bool, progress: ProgressReporter
     ) -> IndexReport:
-        started = time.perf_counter()
-
+        """One attempt at a run, timed from `started`, when the run began."""
         await progress.report(IndexPhase.scanning.value, "Scanning files...")
         files = await asyncio.to_thread(self._discovery.discover, project_root)
         log.debug("scanned_files", project=str(project_root), count=len(files))
@@ -282,8 +285,6 @@ def rebuild_reason(
     if manifest is None:
         holds_data = counts.files > 0 or counts.chunks > 0
         return RebuildReason.unversioned if holds_data else None
-    if counts.files == 0 and counts.chunks > 0:
-        return RebuildReason.incomplete
     built = manifest.identity
     if built.schema_version != expected.schema_version:
         return RebuildReason.schema_changed
@@ -291,4 +292,6 @@ def rebuild_reason(
         return RebuildReason.model_changed
     if built.chunker_version != expected.chunker_version:
         return RebuildReason.chunker_changed
+    if counts.files == 0 and counts.chunks > 0:
+        return RebuildReason.incomplete
     return None

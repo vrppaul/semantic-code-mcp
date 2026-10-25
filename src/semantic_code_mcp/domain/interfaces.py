@@ -75,10 +75,13 @@ class IndexStore(ABC):
     @abstractmethod
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
         """Apply one index run's write as a unit no other writer interleaves with, in this
-        process or another, a cancelled request's thread included: the chunks of every file
-        written or removed are replaced, then their records, then the manifest. The vector
-        of each chunk is in its row of `vectors`. Fails with `IndexWriteError` when the
-        index cannot take what is written."""
+        process or another, a cancelled request's thread included; the manifest is written
+        last. The vector of each chunk is in its row of `vectors`.
+
+        A write of changed files is first checked, before anything changes: it fails with
+        `IndexRebuiltElsewhereError` when the stored identity is no longer the one it was
+        built from, and with `IndexWriteError` when its chunks do not fit the stored ones.
+        A whole-index write replaces everything and is not checked."""
 
     @abstractmethod
     def search_hybrid(

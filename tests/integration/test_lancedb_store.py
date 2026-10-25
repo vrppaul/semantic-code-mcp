@@ -1,5 +1,6 @@
 """Tests for the LanceDB store: what is written comes back, by vector and by words."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,7 +19,12 @@ from semantic_code_mcp.domain.models import (
     SourceFile,
     WriteScope,
 )
-from semantic_code_mcp.storage.lancedb import WRITE_LOCK_FILE, LanceDBIndexStore
+from semantic_code_mcp.storage.lancedb import (
+    FILES_TABLE,
+    MANIFEST_FILE,
+    WRITE_LOCK_FILE,
+    LanceDBIndexStore,
+)
 from tests.fakes import EMBEDDING_DIMENSION
 
 TOWARD_QUERY = [0.9] * EMBEDDING_DIMENSION
@@ -30,6 +36,9 @@ VECTOR_WEIGHT = 0.5
 LOCK_TIMEOUT_SECONDS = 5.0
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
+# Modes for a table's files: read and enter only, so a write to it fails; and writable again
+READ_ONLY = 0o555
+WRITABLE = 0o755
 MANIFEST = IndexManifest(
     identity=IndexIdentity(model_name="fake-model", chunker_version=1, schema_version=1),
     indexed_at=datetime(2026, 10, 25, tzinfo=UTC),
@@ -221,3 +230,53 @@ def test_a_write_planned_before_another_process_rebuilt_the_index_is_refused(
         filled_store.write(update, vectors_of(TOWARD_QUERY))
 
     assert filled_store.manifest() == MANIFEST
+
+
+def write_bytes_that_are_not_utf8(manifest: Path) -> None:
+    manifest.write_bytes(b'{"identity": "\xff"}')
+
+
+def make_a_directory(manifest: Path) -> None:
+    manifest.mkdir()
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        pytest.param(write_bytes_that_are_not_utf8, id="not UTF-8"),
+        pytest.param(make_a_directory, id="a directory"),
+    ],
+)
+def test_a_manifest_that_cannot_be_read_counts_as_none(
+    filled_store: LanceDBIndexStore, tmp_path: Path, spoil: Callable[[Path], None]
+):
+    manifest = tmp_path / "index" / MANIFEST_FILE
+    manifest.unlink()
+    spoil(manifest)
+
+    assert filled_store.manifest() is None
+
+
+def test_a_whole_write_that_fails_midway_never_leaves_records_of_missing_chunks(
+    filled_store: LanceDBIndexStore, tmp_path: Path
+):
+    """Records go before chunks: a write stopped between them leaves chunks, never records
+    of chunks that are gone, which would read as an up-to-date, empty index."""
+    files_table_directory = tmp_path / "index" / f"{FILES_TABLE}.lance"
+    set_mode_of_tree(files_table_directory, READ_ONLY)
+    only = function_chunk("only", "/project/only.py", "def only(): pass")
+
+    with pytest.raises((OSError, RuntimeError)):
+        filled_store.write(
+            update_of([only], removed_paths=[], scope=WriteScope.everything),
+            vectors_of(TOWARD_QUERY),
+        )
+    set_mode_of_tree(files_table_directory, WRITABLE)
+
+    assert filled_store.counts() == IndexCounts(files=3, chunks=3)
+
+
+def set_mode_of_tree(directory: Path, mode: int) -> None:
+    """Set the mode of a directory, everything under it, and their directories."""
+    for path in [directory, *directory.rglob("*")]:
+        path.chmod(mode)

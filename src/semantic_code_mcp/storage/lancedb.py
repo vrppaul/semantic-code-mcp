@@ -1,9 +1,11 @@
 """LanceDB storage of one project's index: the chunks with their vectors, the record of
 each file they came from, and the manifest of what built them.
 
-A write is one call: the chunks of the changed and removed files are replaced, then
-their file records, then the manifest, all under a file lock in the index directory,
-so two server processes on one project never write side by side. The chunks table is
+A write is one call, under a file lock in the index directory, so two server processes
+on one project never write side by side. A write of changed files is checked first
+(the stored identity, the chunks' width and layout), then replaces those files'
+chunks, then their records; a whole-index write removes every record, then every
+chunk, then writes both again. The manifest comes last either way. The chunks table is
 made by the first write that has vectors, as wide as they are, and made again when a
 rebuild brings vectors of another width or the table predates this schema.
 
