@@ -1,7 +1,6 @@
 ---
 paths:
   - "src/semantic_code_mcp/server.py"
-  - "src/semantic_code_mcp/__init__.py"
 ---
 
 # MCP Server Rules
@@ -16,6 +15,7 @@ paths:
 - Include enough context in results for Claude to use them effectively
 
 ## Performance Targets
+Unmeasured until the benchmark of ADR 006 (D12) exists; v0.4.0 misses all four (ADR 006, Appendix B).
 - Search latency: < 100ms (excluding cold start)
 - Index speed: > 50 files/sec
 - Cold start (model load): < 3s

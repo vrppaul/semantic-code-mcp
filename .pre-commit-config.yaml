@@ -1,79 +1,81 @@
+# Every hook runs once, before the commit; only the message check runs on the message
+default_stages: [pre-commit]
+
 repos:
-  # Ruff - Fast Python linter and formatter
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.12
+  # Ruff — the project's own, the one `uv run` and CI use: a mirror pins a
+  # release of its own and drifts from the lock
+  - repo: local
     hooks:
-      # Run the linter
       - id: ruff
         name: ruff (linter)
-        args: [--fix]
+        entry: uv run ruff check --fix
+        language: system
         types_or: [python, pyi]
 
-      # Run the formatter
       - id: ruff-format
         name: ruff (formatter)
+        entry: uv run ruff format
+        language: system
         types_or: [python, pyi]
 
-  # Pre-commit hooks for general file checks
+      - id: typos
+        name: typos
+        # What pyproject.toml excludes stays excluded when the hook names a file
+        entry: uv run typos --force-exclude
+        language: system
+        types: [text]
+
+  # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      # Remove trailing whitespace
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
-
-      # Ensure files end with newline
       - id: end-of-file-fixer
-
-      # Check for merge conflict markers
       - id: check-merge-conflict
-
-      # Check YAML syntax
       - id: check-yaml
         args: [--unsafe]
-
-      # Check JSON syntax
       - id: check-json
-
-      # Check TOML syntax
       - id: check-toml
-
-      # Check for Python debug imports and calls
       - id: debug-statements
-
-      # Ensure docstrings come first
       - id: check-docstring-first
-
-      # Check for files that would conflict on case-insensitive filesystems
       - id: check-case-conflict
-
-      # Check for symlinks pointing to nothing
       - id: check-symlinks
-
-      # Don't commit large files
       - id: check-added-large-files
         args: [--maxkb=1024]
-
-      # Check Python AST (syntax errors)
       - id: check-ast
-
-      # Check builtin type constructor use (list() vs [])
       - id: check-builtin-literals
 
-  # ty - Astral's Rust-based type checker (local hook)
   - repo: local
     hooks:
+      # A warning fails the check (pyproject.toml, [tool.ty.terminal])
       - id: ty
         name: ty (type checker)
-        entry: bash -c 'uv run ty check || true'
+        entry: uv run ty check
         language: system
         types: [python]
         pass_filenames: false
-        stages: [pre-commit]
 
-  # Bandit - Security linting for Python
+      # Every test module loads, though a commit runs no test: a change
+      # elsewhere can leave one that no longer imports, unseen until its suite runs
+      - id: tests-collect
+        name: pytest (every test module loads)
+        entry: uv run pytest tests --collect-only -q
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: deptry
+        name: deptry (dependencies as declared)
+        entry: uv run deptry src
+        language: system
+        files: ^(src/|pyproject\.toml$)
+        pass_filenames: false
+
+  # Bandit — security linting. 1.8 fails on every file of Python 3.14's ast
+  # that holds a call with a keyword, skips the file and passes: 1.9 reads them
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.6
+    rev: 1.9.4
     hooks:
       - id: bandit
         name: bandit (security linter)
@@ -81,14 +83,26 @@ repos:
         additional_dependencies: ['bandit[toml]']
         exclude: ^tests/
 
-  # Validate pyproject.toml
   - repo: https://github.com/abravalheri/validate-pyproject
     rev: v0.24.1
     hooks:
       - id: validate-pyproject
         name: validate pyproject.toml
 
-  # Conventional commits enforcement
+  # The instruction files — AGENTS.md, and the rules of each area under
+  # .claude/rules/ — are read into agents' sessions, so each is held to its
+  # size. They are held to naming what is there too, which a commit breaks
+  # by moving a file without touching them: so this runs on every commit
+  - repo: local
+    hooks:
+      - id: instruction-files
+        name: instruction files (their size, the paths they name, how they are reached)
+        entry: uv run python scripts/check_instruction_files.py
+        language: system
+        always_run: true
+        pass_filenames: false
+
+  # Conventional commits, with a scope required
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.0.0
     hooks:

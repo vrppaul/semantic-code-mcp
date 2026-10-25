@@ -1,7 +1,7 @@
 # 001: Initial Architecture
 
-**Status**: accepted
-**Date**: 2025-01-24
+**Status**: superseded in part by 006 (the tool list and storage layout)
+**Date**: 2026-01-24 (written 2025-01-24 by mistake until 2026-10-25)
 
 ## Context
 

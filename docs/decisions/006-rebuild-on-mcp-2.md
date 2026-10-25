@@ -241,7 +241,7 @@ Pre-commit (local hooks through `uv run`, `default_stages: [pre-commit]`):
 - **`scripts/check_code_rules.py`**, adapted from claude-review: nested functions, short names, models taken apart by field name. The claude-review-specific parts go, and the file says which ones (its `.claude/rules/scripts.md` explains how to mark a partial copy).
 - **`scripts/check_instruction_files.py`**, copied whole from claude-review, as livereel did (D15). We adopt livereel's rule for such copies (`../livereel/.claude/rules/scripts.md`): a script taken whole is changed in claude-review and copied here, and its tests live there.
 - **`scripts/check_skill.py`**, ported from `../livereel/scripts/check-skill.ts`. It loads the server and lists its tools. It fails if the skill misses a tool or parameter, names one that does not exist, or lists languages other than the chunker registry's (D16).
-- `pytest --collect-only` on every commit, plus vulture, deptry and typos.
+- `pytest --collect-only` on every commit, plus deptry and typos. vulture lands in stage 4: on today's code it flags pydantic fields, MagicMock attributes and the dead settings D11 removes, so it starts on the rebuilt code.
 
 The code-rule gates (PLR2004, check_code_rules, import-linter, banned-api) land in stage 4 with the code written to pass them. Stage 2 adds only the gates the current code passes after small fixes.
 

@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `LICENSE` (MIT) and license, author and project URLs in the package metadata; the wheel used to ship without a license
+- CI runs every pre-commit gate, the tests and a build on each push to `master` and each pull request
+- `CONTRIBUTING.md`, `SECURITY.md` and a pull request template
+
 ### Changed
+- A release now runs the whole CI suite on the tagged commit and waits for the owner's approval before publishing to PyPI
+- The gates check what they claim: `ty` fails on any warning (it used to end in `|| true`), bandit 1.9.4 replaces 1.8.6 (which crashed on every Python 3.14 file and passed), ruff runs the locked version, and hooks for deptry, typos, test collection and the agent instruction files were added
+- `CLAUDE.md` is a symlink to `AGENTS.md`, rewritten on the template of the owner's other projects; ADR 002 is superseded
 - File discovery asks git for tracked files and for untracked files that `.gitignore` does not exclude; `use_gitignore=false` walks the file system instead, for repos whose `.gitignore` hides source on purpose (#2, #3)
 - `ignore_patterns` apply in git mode too. A pattern without a slash matches a directory or file name at any depth (`node_modules`); a pattern with a slash matches from the project root (`build/**`). The defaults now also skip `.mypy_cache`, `.ruff_cache`, `.tox`, `.cache`, `site-packages`, `.semantic-code` and top-level `target/`, `dist/`, `build/`
 - Outside a git work tree, `.gitignore` is no longer parsed by hand; only `ignore_patterns` apply
@@ -67,7 +75,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clean shutdown on Ctrl+C (SIGINT handler instead of traceback)
 - Removed redundant `.value` calls on `StrEnum` members
 
-## [0.1.0] - 2026-01-31
+## [0.2.0] - 2026-01-31
+
+### Changed
+- README: configuration examples for environment variables, the release process and the project structure
+
+## [0.1.1] - 2026-01-31
+
+The first release on PyPI. No 0.1.0 was ever tagged; until 2026-10-25 this entry was headed 0.1.0.
+
 
 ### Added
 - `IndexService` orchestrating full index pipeline (scan → detect → chunk → embed) with progress callbacks

@@ -4,7 +4,7 @@ Add, commit, and push all current changes. If "$ARGUMENTS" contains "release", a
 
 1. Run `git status` and `git diff --staged` and `git diff` to understand what changed.
 2. Stage the relevant files (prefer specific files over `git add -A`).
-3. Write a commit message following Conventional Commits with required scope (`type(scope): description`). Add `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>`.
+3. Write a commit message following Conventional Commits with required scope (`type(scope): description`). End it with the attribution lines the session's instructions give (`Co-Authored-By` with the current model's name).
 4. Commit and push.
 
 ## If releasing (`$ARGUMENTS` contains "release")

@@ -4,10 +4,14 @@ dynamic = ["version"]
 description = "Local MCP server for semantic code search"
 readme = "README.md"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Pavel Paranin" }]
 dependencies = [
     "lancedb>=0.27.0",
     "mcp>=1.26.0,<2",
     "pandas>=3.0.0",
+    "pyarrow>=23.0.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
     "sentence-transformers>=5.2.0",
@@ -18,6 +22,11 @@ dependencies = [
     "tree-sitter-python>=0.25.0",
     "tree-sitter-rust>=0.24.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/vrppaul/semantic-code-mcp"
+Issues = "https://github.com/vrppaul/semantic-code-mcp/issues"
+Changelog = "https://github.com/vrppaul/semantic-code-mcp/blob/master/CHANGELOG.md"
 
 [project.scripts]
 semantic-code-mcp = "semantic_code_mcp.cli:main"
@@ -43,12 +52,15 @@ packages = ["src/semantic_code_mcp"]
 
 [dependency-groups]
 dev = [
+    "deptry>=0.25.1",
     "pre-commit>=4.5.1",
     "pyinstrument>=5.1.2",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.14.14",
     "ty>=0.0.13",
+    "typos>=1.51.1",
+    "vulture>=2.16",
 ]
 
 [tool.pytest.ini_options]
@@ -68,7 +80,11 @@ exclude = [
     "*.pyc",
     "build",
     "dist",
+    # Taken whole from claude-review and held to its ruff settings there
+    # (.claude/rules/scripts.md): formatting it here would part the two copies
+    "scripts/check_instruction_files.py",
 ]
+force-exclude = true
 
 [tool.ruff.format]
 quote-style = "double"
@@ -122,13 +138,30 @@ known-first-party = ["semantic_code_mcp"]
 [tool.ty.environment]
 python-version = "3.14"
 
-[tool.ty.rules]
-possibly-missing-attribute = "warn"
-no-matching-overload = "warn"
-invalid-assignment = "warn"
-invalid-return-type = "warn"
-invalid-argument-type = "warn"
-missing-argument = "warn"
+[tool.ty.src]
+# The tests are held to ruff; no type check reads them
+exclude = ["tests"]
+
+[tool.ty.terminal]
+# A warning is a finding like any other: it fails the check, in a hook and in CI alike
+error-on-warning = true
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+    # sentence-transformers imports it; declared to pin it to the CPU-only index
+    "torch",
+    # LanceDB's to_pandas() needs it; it leaves with to_pandas() (ADR 006, D4)
+    "pandas",
+]
+# Dev-only profiling, imported only when SEMANTIC_CODE_MCP_PROFILE is set
+DEP004 = ["pyinstrument"]
+
+[tool.typos.default.extend-identifiers]
+NDArray = "NDArray"
+
+[tool.typos.files]
+# The tests hold deliberate misspellings and foreign words as test data
+extend-exclude = ["tests/"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]

@@ -1,6 +1,6 @@
 # 002: Agent Instruction Files (CLAUDE.md & AGENTS.md)
 
-**Status**: implemented
+**Status**: superseded by 006 (`CLAUDE.md` is now a symlink to `AGENTS.md`, held by a gate)
 **Date**: 2026-01-30
 
 ## Context

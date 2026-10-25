@@ -20,7 +20,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — hybrid semantic + keyword search with recency boosting
 
-Indexing is incremental (mtime-based) and uses `git ls-files` for fast file discovery. The embedding model loads lazily on first query.
+Indexing is incremental (mtime-based). In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
 
 ## Installation
 
@@ -130,6 +130,8 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling |
+| `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
+| `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 
 Pass environment variables via the `env` field in your MCP config:
 
@@ -170,13 +172,13 @@ claude mcp add --scope user semantic-code \
 
 ```bash
 uv sync                            # Install dependencies
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 uv run python -m semantic_code_mcp # Run server
 uv run pytest                      # Run tests
-uv run ruff check src/             # Lint
-uv run ruff format src/            # Format
+uv run pre-commit run --all-files  # Every gate a commit runs
 ```
 
-Pre-commit hooks enforce linting, formatting, type-checking (`ty`), security scanning (`bandit`), and [Conventional Commits](https://www.conventionalcommits.org/).
+Pre-commit hooks run ruff, ty, bandit, deptry, typos, a check that every test module loads, a check of the agent instruction files, and [Conventional Commits](https://www.conventionalcommits.org/). CI runs the same hooks and the tests on every push to `master` and every pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Releasing
 
@@ -187,7 +189,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-CI builds the package, publishes to PyPI, and creates a GitHub Release with auto-generated notes.
+CI runs the whole suite on the tagged commit, waits for the owner's approval, then builds the package, publishes to PyPI, and creates a GitHub Release with auto-generated notes.
 
 ### Adding a New Language
 
@@ -210,7 +212,7 @@ from enum import StrEnum, auto
 import tree_sitter_mylang as tsmylang
 from tree_sitter import Language, Node
 
-from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker
+from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, field_text
 from semantic_code_mcp.models import Chunk, ChunkType
 
 
@@ -228,8 +230,11 @@ class MyLangChunker(BaseTreeSitterChunker):
         for node in root.children:
             match node.type:
                 case NodeType.function_definition:
-                    name = node.child_by_field_name("name").text.decode()
-                    chunks.append(self._make_chunk(node, file_path, lines, ChunkType.function, name))
+                    name = field_text(node, "name")
+                    if name is not None:
+                        chunks.append(
+                            self._make_chunk(node, node, file_path, lines, ChunkType.function, name)
+                        )
                 # ... other node types
         return chunks
 ```
@@ -243,12 +248,13 @@ def get_chunkers(self) -> list[BaseTreeSitterChunker]:
     return [PythonChunker(), RustChunker(), MarkdownChunker(), MyLangChunker()]
 ```
 
-The `CompositeChunker` handles dispatch by file extension automatically. Use `BaseTreeSitterChunker._make_chunk()` for consistent chunk construction. See `chunkers/python.py` and `chunkers/rust.py` for complete examples.
+The `CompositeChunker` handles dispatch by file extension automatically. `BaseTreeSitterChunker._make_chunk(first_node, last_node, ...)` builds a chunk spanning two nodes (a doc comment and the item under it, say) and trims trailing blank lines; a file in which your chunker finds nothing becomes one `module` chunk unless you set `whole_file_fallback = False`. See `chunkers/python.py` and `chunkers/rust.py` for complete examples.
 
 ### Project Structure
 
 - `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
 - `src/semantic_code_mcp/services/` — IndexService (scan/chunk/index), SearchService (search + auto-index)
+- `src/semantic_code_mcp/discovery.py` — which files get indexed (git or a file-system walk, ignore patterns)
 - `src/semantic_code_mcp/indexer.py` — embed + store pipeline
 - `docs/decisions/` — architecture decision records
 - `TODO.md` — epics and planning

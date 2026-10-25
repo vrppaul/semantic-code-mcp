@@ -1,3 +1,10 @@
+---
+paths:
+  - "TODO.md"
+  - "CHANGELOG.md"
+  - "docs/decisions/*.md"
+---
+
 # Documentation System
 
 ## File Purposes
@@ -9,6 +16,7 @@
 TODO.md (what & why) → decisions/ (how) → task list (doing) → CHANGELOG.md (done)
 
 ## TODO.md Format
+An item done is removed, never ticked off.
 ```markdown
 ## Pending
 
@@ -29,14 +37,14 @@ Follow https://keepachangelog.com:
 ### Added
 - New feature description
 
-## [0.1.0] - 2024-01-24
+## [0.1.0] - 2026-01-24
 
 ### Added
 - Initial feature
 ```
 
 ## docs/decisions/ Convention
-- Filename: `NNN-short-title.md` (e.g., `001-initial-architecture.md`)
+- Filename: NNN-short-title.md, as `docs/decisions/001-initial-architecture.md`
 - Sequential numbering, never reuse numbers
 
 ## Decision Document Structure
@@ -59,14 +67,10 @@ What else did we consider and why was it rejected?
 What are the implications of this decision?
 ```
 
-## Agent Instruction Files
-- **CLAUDE.md** - Claude Code context, loaded every session. Keep under 80 lines.
-- **AGENTS.md** - Cross-agent instructions (GitHub Copilot, Codex, Cursor). Keep in sync with CLAUDE.md.
-- See `.claude/rules/agent-docs.md` for detailed maintenance rules.
-
 ## When to Create/Update
 - New epic idea → add to TODO.md
 - Starting implementation planning → create decisions/ doc
-- Completing work → move from TODO.md to CHANGELOG.md
-- Changing commands, stack, or boundaries → update both CLAUDE.md and AGENTS.md
+- Completing work → remove it from TODO.md, record it in CHANGELOG.md under `[Unreleased]`
+- A plan that changes → change its decision document; a decision replaced → mark it superseded and name its successor
+- Changing commands, stack, or boundaries → update AGENTS.md
 - Always keep these in sync with actual state

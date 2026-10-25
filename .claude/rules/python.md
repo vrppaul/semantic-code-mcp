@@ -30,7 +30,6 @@ paths:
 
 ## Error Handling
 - Use specific exceptions, not generic Exception
-- Let MCP framework handle tool errors (return error responses)
 - Log errors with full context before re-raising
 
 ## Enums
@@ -40,6 +39,5 @@ paths:
 - Tree-sitter node types must be `NodeType(StrEnum)` enums per chunker — no raw string comparisons
 
 ## Module Structure
-- **NEVER** put code in `__init__.py` files - they should only contain imports/exports
-- Keep `__init__.py` minimal: just `"""Docstring."""` or re-exports
-- Put actual code in dedicated modules
+- Every `src/semantic_code_mcp/**/__init__.py` holds a docstring only; code lives in named modules and imports name the module (`semantic_code_mcp.models.domain`).
+- `src/semantic_code_mcp/models/__init__.py` still re-exports; that goes in ADR 006, stage 4.

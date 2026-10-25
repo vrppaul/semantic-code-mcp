@@ -1,95 +1,22 @@
 # TODO
 
-## In Progress
-
-### Search Quality & Output Improvements
-Improve search result quality and output format for better usability.
-
-**Tier 1 - Quick Wins:**
-- [x] Score threshold filtering - filter out low-confidence results (score < 0.3)
-- [x] Remove unused Searcher class - dead code in search/searcher.py
-- [x] Truncate long results - cap at ~50 lines with "..." indicator
-- [x] Group results by file - sort results so same-file chunks are together
-- [ ] Configurable min_score parameter - let callers control the quality threshold (default 0.3)
-- [x] Stronger exact match boost - exact phrase/keyword matches should get +30-50% boost, not just +5%
-- [x] Hybrid search with keyword fallback - run semantic + keyword search in parallel, merge results. Ensures exact identifier matches surface even with low semantic similarity
-
-**Tier 2 - Medium Effort:**
-- [x] Keyword boost (hybrid search) - boost results containing query words literally
-- [x] Parallel chunking - use asyncio.gather for parallel file processing
-- [x] File recency boost - factor mtime into ranking
-
-**Tier 3 - Larger Effort:**
-- [x] Module-level code - extend chunker to capture module docstrings (see decision 003)
-- [ ] Background re-indexing - return stale results while re-indexing
-- [ ] Separate docstrings - index docstrings separately for better matching
-- [ ] Code-specific embedding model - evaluate UniXcoder/CodeBERT
+What we mean to build and why. How each epic is built lives in `docs/decisions/`; an item done is removed and recorded in `CHANGELOG.md`.
 
 ## In Progress
 
-### Multi-language Support
-Currently Python, Rust, and Markdown. Need JS/TS for web projects, Go for systems work. Tree-sitter supports all of these. See decision 004 for architecture and README for how to add a new language.
-
-**Architecture (implemented):** `BaseTreeSitterChunker` base class + `CompositeChunker` dispatcher.
-- `BaseTreeSitterChunker` — shared logic (parsing, line extraction, Chunk construction)
-- Language-specific subclasses (`PythonChunker`, `RustChunker`) — AST walking rules only
-- `CompositeChunker` — dispatches by file extension, implements `ChunkerProtocol`
-- `Container.get_chunkers()` — single registration point for all language chunkers
-
-**Remaining languages:**
-- [x] Add Markdown chunker (`tree-sitter-markdown`) — heading-based sections for documentation search. See decision 005.
-- [ ] Add JavaScript/TypeScript chunker (`tree-sitter-javascript`, `tree-sitter-typescript`)
-- [ ] Add Go chunker (`tree-sitter-go`) — receiver methods, package comments
+### Rebuild on mcp 2.x
+The published 0.4.0 does not start on mcp 2.x, the index dropped code without a word, search ranks prose over the code it describes, indexing runs 20–50× under our own target, and our gates passed without checking anything. `docs/decisions/006-rebuild-on-mcp-2.md` holds the plan in ten stages, from a hotfix to the skill and the plugin; the stages and their state live there.
 
 ## Pending
 
-### Performance Optimization
-Profiling infrastructure added (pyinstrument). Use `SEMANTIC_CODE_MCP_PROFILE=1` to generate profiles.
+### JavaScript, TypeScript and Go
+Web and systems projects are invisible to search today. Tree-sitter has the grammars. Wait for ADR 006's chunker base (span helper, fallback chunk, `CHUNKER_VERSION`) so new languages do not inherit its old holes, and spike tree-sitter tags queries as the per-language definition of a symbol first.
 
-**Completed:**
-- [x] FTS index skip - avoid rebuilding if already exists (~80ms saved per search)
-- [x] Batch embedding generation (already implemented)
+### Background re-indexing
+A search after a large change waits for the whole re-index. Answering from the old index while a new one builds would hide that wait. It needs the per-project lock and the files table of ADR 006 first.
 
-**Remaining:**
-- [ ] LanceDB index tuning (IVF partitions, PQ compression)
+### More tools: find_symbol, find_similar, list_indexed_files
+"Where is X defined" across languages, "code like this", and "what is indexed" are cheap given the index, and Grep answers the first only with every usage mixed in. ADR 006 defers them until the search surface settles.
 
-## Done
-
-### Package Restructuring & Enum Standardization
-Flattened `indexer/` package — `chunkers/` and `embedder.py` at top level, `indexer/` collapsed to single module. `IndexService` now owns scanning, change detection, chunking, and status; `Indexer` is a pure embed+store pipeline. `CompositeChunker` (renamed from `MultiLanguageChunker`) passed directly to `IndexService`. All enums standardized to `StrEnum` + `auto()` with `NodeType` enums per chunker replacing raw string comparisons. Container uses `cached_property` for singletons.
-
-### Publish to PyPI for `uvx` Distribution
-Published v0.1.0 to PyPI. Installable via `uvx semantic-code-mcp`. README updated with platform-specific install instructions (macOS/Windows vs Linux CPU-only torch). GitHub Actions workflow publishes automatically on tag push using PyPI trusted publishers (OIDC). Clean Ctrl+C shutdown fix included.
-
-### Reduce Install Size (CPU-only PyTorch)
-Configured uv to pull torch from CPU-only PyTorch index. Venv reduced from 7.8GB to 1.7GB (78% smaller). No CUDA/nvidia/triton packages installed.
-
-### Code Quality & Architecture Cleanup
-Post-DI cleanup pass. Improved consistency, type safety, and modularity.
-- Specific exception types in chunker.py (`OSError`, `ValueError`, `UnicodeDecodeError`) and lancedb.py (`OSError`, `ValueError`, `RuntimeError`)
-- `search_hybrid()` split into 30-line method + extracted `_merge_results()`
-- Tree-sitter `Node` type hints already present on all chunker methods
-- `ty` in pre-commit, all diagnostics fixed
-
-### Services Layer & Strict Linting
-Extracted `IndexService` and `SearchService`, architecture review fixes, strict lint config.
-- `IndexService` orchestrates scan → detect → chunk → embed with progress + timing
-- `SearchService` auto-indexes via `IndexService`, non-optional `SearchOutcome.index_result`
-- `server.py` reduced to thin tool layer delegating to services
-- SQL injection fix, atomic cache writes, FTS log levels
-- Lazy `sentence-transformers` import (torch no longer loaded at startup, ~4s saved)
-- Strict ruff rules (C901, DTZ, ASYNC, SLF, PIE, T20, PERF, FURB, PLC0415)
-- ty type-checker added to pre-commit with targeted rules
-
-### Dependency Injection Refactor
-Converted from direct instantiation to proper DI with a composition root.
-- Container with lazy model loading and per-project connection caching
-- Global settings singleton (`configure_settings()` / `get_settings()`)
-- `app.py` composition root (`create_app()`) wiring settings, logging, profiling, container
-- `server.py` stripped to pure tool definitions — no init code
-- Shared store/embedder between SearchService and Indexer (no redundant instances)
-- `cache_dir` injected into Indexer (no internal `get_index_path` calls)
-- Split `models.py` into domain models + `responses.py` for API types
-- Real timing data in `SearchOutcome` instead of hardcoded zeros
-- `_ensure_table()` made public, dead ranking code removed
-- SearchService tests added (10 tests)
+### LanceDB index tuning
+A flat cosine scan answers in 23–36 ms at 11.5k chunks. IVF or PQ indexes pay off only on much larger corpora; revisit when one over 100k chunks shows the need.
