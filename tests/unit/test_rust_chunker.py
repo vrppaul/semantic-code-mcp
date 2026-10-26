@@ -255,8 +255,7 @@ fn configure() {}
         chunks = chunker.chunk_string("   \n\n  ", Path("test.rs"))
         assert chunks == []
 
-    def test_syntax_errors(self):
-        """A file that does not parse is still indexed, whole."""
+    def test_a_file_in_which_no_definition_parses_is_indexed_whole(self):
         code = """fn broken( {
     this is not valid rust
 """
@@ -264,8 +263,7 @@ fn configure() {}
 
         assert summarize(chunks) == [module_named("broken")]
 
-    def test_line_numbers_1_indexed(self):
-        """Line numbers count from one and cover each definition."""
+    def test_a_chunk_s_lines_count_from_one_and_cover_its_definition(self):
         code = """// comment
 
 fn first() {

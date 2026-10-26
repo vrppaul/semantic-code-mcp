@@ -62,8 +62,7 @@ class TestPythonChunker:
         assert "Greet someone by name" in chunks[0].content
         assert "Args:" in chunks[0].content
 
-    def test_extract_class(self):
-        """A class and each of its methods are chunks of their own."""
+    def test_a_class_and_each_of_its_methods_are_chunks_of_their_own(self):
         code = '''class Person:
     """A person with a name."""
 
@@ -75,8 +74,7 @@ class TestPythonChunker:
         assert summarize(chunks) == [class_named("Person"), method_named("__init__")]
         assert "A person with a name" in chunks[0].content
 
-    def test_extract_method(self):
-        """Extracts methods from a class."""
+    def test_each_method_of_a_class_is_a_chunk_in_its_order(self):
         code = '''class Calculator:
     def add(self, a: int, b: int) -> int:
         """Add two numbers."""
@@ -94,8 +92,7 @@ class TestPythonChunker:
             method_named("subtract"),
         ]
 
-    def test_line_numbers_are_correct(self):
-        """Line numbers count from one and cover each definition."""
+    def test_a_chunk_s_lines_count_from_one_and_cover_its_definition(self):
         code = """# Comment at top
 
 def first():
@@ -229,8 +226,7 @@ class User:
         assert summarize(chunks) == [class_named("User")]
         assert chunks[0].content.startswith("@dataclass")
 
-    def test_handles_syntax_error_gracefully(self):
-        """A file that does not parse is still indexed, whole."""
+    def test_a_file_in_which_no_definition_parses_is_indexed_whole(self):
         code = """def broken(
     # missing closing paren and colon
 """
