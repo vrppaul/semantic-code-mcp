@@ -3,14 +3,18 @@
 import re
 
 import pytest
+from hypothesis import given, strategies
 from mcp.server.mcpserver.exceptions import ToolError
 
 from semantic_code_mcp.domain.globs import (
     LONGEST_GLOB,
     NEGATION_INSTEAD,
+    PARENT_DIRECTORY,
     PARENT_DIRECTORY_INSTEAD,
     REFUSED_CHARACTERS,
     TOO_LONG,
+    parts_of,
+    read_glob,
 )
 from semantic_code_mcp.server.tools import given_glob
 
@@ -54,9 +58,31 @@ def test_a_glob_reads_from_the_directory_searched(glob: str | None, read: str | 
         pytest.param("{{slug}}/**", REFUSED_CHARACTERS["{"], id="braces taken literally"),
         pytest.param("\\*.py", REFUSED_CHARACTERS["\\"], id="an escape of a .gitignore"),
         pytest.param(" !tests", NEGATION_INSTEAD, id="a leading ! of a .gitignore"),
-        pytest.param("?" * (LONGEST_GLOB + 1), TOO_LONG, id="too long for the store's regex"),
     ],
 )
 def test_a_glob_the_search_cannot_read_is_refused_with_the_reason(glob: str, reason: str):
     with pytest.raises(ToolError, match=re.escape(f"{reason}: {glob}")):
         given_glob(glob)
+
+
+@pytest.mark.parametrize(
+    "glob",
+    [
+        pytest.param("?" * (LONGEST_GLOB + 1), id="as written"),
+        pytest.param("a/" + "?" * (LONGEST_GLOB - len("a/")), id="once read, with its leading /"),
+    ],
+)
+def test_a_glob_too_long_for_the_store_s_regex_is_refused_without_its_echo(glob: str):
+    with pytest.raises(ToolError, match=f"^{re.escape(TOO_LONG)}$"):
+        given_glob(glob)
+
+
+# What a glob an agent writes is made of, but the characters a search refuses outright
+WRITTEN_GLOBS = strategies.text(alphabet="ab.*?/ !\t", max_size=40).filter(
+    lambda glob: PARENT_DIRECTORY not in parts_of(glob) and not glob.strip().startswith("!")
+)
+
+
+@given(glob=WRITTEN_GLOBS)
+def test_a_glob_read_reads_the_same_again(glob: str):
+    assert read_glob(read_glob(glob)) == read_glob(glob)

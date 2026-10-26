@@ -161,7 +161,6 @@ SQL_AND = " AND "
 SQL_NOT = "NOT "
 REGEX_MATCH_FUNCTION = "regexp_like"
 PREFIX_MATCH_FUNCTION = "starts_with"
-# How a path names its directories, in both tables
 
 FILES_SCHEMA = pyarrow.schema(
     [

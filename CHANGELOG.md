@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each `search_code` result names its `parent`: the class, impl, module or heading it sits in, as `Stack` for `Stack.push` and `Guide > Install` for a section
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
-- `search_code` takes `chunk_kinds`, `languages`, `path_glob` and `exclude_glob`, applied before the best hits are taken, so a narrow search still fills its results (#3). A glob reads as in a `.gitignore`, from the directory searched, without character classes; one holding a class, braces, an escape, a leading `!` or `..` is refused with the reason
+- `search_code` takes `chunk_kinds`, `languages`, `path_glob` and `exclude_glob`, applied before the best hits are taken, so a narrow search still fills its results (#3). A glob reads as in a `.gitignore`, from the directory searched, without character classes; one holding a class, braces, an escape, a leading `!` or `..`, or of more than 1000 characters, is refused with the reason
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
 - `SEMANTIC_CODE_MCP_MIN_SIMILARITY` (0.35) and `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` (0.25): how close in meaning to the query a hit must be to stay, without and with its words matching the query's
 - `python -m evals quality` scores code and documentation questions apart, asks a sample of bare names, held-out questions, and questions no corpus answers, of other fields and of programming, and reports what they get

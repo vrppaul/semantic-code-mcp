@@ -46,7 +46,8 @@ PATH_GLOB_DESCRIPTION = (
     " does not count), with one before a name a path from that directory (`src/**/*.py`,"
     " `/tests`); `*` stays within a directory, `**` crosses any number, `?` is one"
     " character, and a directory takes what it holds. No character classes (`[ab]`),"
-    " braces, escapes, a leading `!` or `..`: each is refused with the reason."
+    " braces, escapes, a leading `!`, `..` or more than 1000 characters: each is refused"
+    " with the reason."
 )
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
 

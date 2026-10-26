@@ -99,7 +99,7 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `chunk_kinds` | `list[str]` | all | Only chunks of these kinds: `module`, `function`, `method`, `class`, `section` |
 | `languages` | `list[str]` | all | Only chunks of files in these languages: `python`, `rust`, `markdown` |
-| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth below the directory `project_path` names (`*.rs`, and `tests/`, as a trailing slash does not count), with one before a name a path from that directory (`src/**/*.py`, `/tests`); `*` stays within a directory, `**` crosses any number, `?` is one character, a directory takes what it holds; a character class (`[ab]`), braces, escapes, a leading `!` or `..` is refused with the reason |
+| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth below the directory `project_path` names (`*.rs`, and `tests/`, as a trailing slash does not count), with one before a name a path from that directory (`src/**/*.py`, `/tests`); `*` stays within a directory, `**` crosses any number, `?` is one character, a directory takes what it holds; a character class (`[ab]`), braces, escapes, a leading `!`, `..` or more than 1000 characters is refused with the reason |
 | `exclude_glob` | `str` | none | No file this glob names, read as `path_glob` is |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 

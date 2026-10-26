@@ -18,7 +18,8 @@ CURRENT_DIRECTORY = "."
 PARENT_DIRECTORY = ".."
 # A part a path spells the directory it is in with, or that two slashes leave
 NAMELESS_PARTS = frozenset({"", CURRENT_DIRECTORY})
-# The longest glob a search reads: thousands of wildcards overflow the store's regex
+# The longest glob a search reads, once read: thousands of wildcards overflow the store's
+# regex. Its refusal does not repeat the glob back.
 LONGEST_GLOB = 1000
 TOO_LONG = f"A glob of more than {LONGEST_GLOB} characters is not read"
 # What a glob of a .gitignore or a shell may start with or hold that a search does not
@@ -31,7 +32,10 @@ REFUSED_CHARACTERS = {
         "Braces are not read; search once for each name or narrow by languages, and let ?"
         " stand for a brace a path holds"
     ),
-    "\\": "Escapes are not read; ? stands for the character an escape would keep",
+    "\\": (
+        "Escapes are not read, and / alone separates directories; ? stands for the character"
+        " an escape would keep"
+    ),
 }
 PARENT_DIRECTORY_INSTEAD = (
     "A glob reads from the directory searched and cannot step out of it; name a directory"
@@ -54,6 +58,14 @@ def read_glob(glob: str | None) -> str | None:
     if refusal is not None:
         message = f"{refusal}: {glob}"
         raise UnreadableGlobError(message)
+    read = spelling_of(glob)
+    if read is not None and len(read) > LONGEST_GLOB:
+        raise UnreadableGlobError(TOO_LONG)
+    return read
+
+
+def spelling_of(glob: str) -> str | None:
+    """The one spelling of a glob a search can read, or None for one naming no part."""
     parts = parts_of(glob)
     named = [part for part in parts if part not in NAMELESS_PARTS]
     if not named:
@@ -65,9 +77,8 @@ def read_glob(glob: str | None) -> str | None:
 
 
 def refusal_of(glob: str) -> str | None:
-    """Why a search cannot read a glob as its writer meant; None when it can."""
-    if len(glob) > LONGEST_GLOB:
-        return TOO_LONG
+    """Why a search cannot read a glob as its writer meant, its length aside; None when it
+    can."""
     if glob.strip().startswith(NEGATION):
         return NEGATION_INSTEAD
     if PARENT_DIRECTORY in parts_of(glob):
