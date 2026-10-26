@@ -164,27 +164,27 @@ def test_full_text_search_finds_an_exact_identifier(filled_store: LanceDBIndexSt
 @pytest.mark.parametrize(
     "words",
     [
-        pytest.param("item count", id="of an identifier in camel case"),
+        pytest.param("item", id="of its name in camel case"),
         pytest.param("bounded stack", id="of the class it is a method of"),
     ],
 )
-def test_full_text_search_finds_a_chunk_by_the_words_of_its_identifiers(
+def test_full_text_search_finds_a_chunk_by_the_words_of_its_name_and_parent(
     store: LanceDBIndexStore, words: str
 ):
     method = Chunk(
-        chunk_id="stack-push",
+        chunk_id="stack-add",
         path=Path("src/stack.rs"),
         language=Language.rust,
         kind=ChunkKind.method,
-        name="push",
+        name="addItem",
         parent="BoundedStack",
         line_start=4,
         line_end=6,
-        content="fn push(&mut self) { self.itemCount += 1; }",
+        content="fn addItem(&mut self) { self.count += 1; }",
     )
     store.write(update_of([method], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
-    assert [candidate.chunk.name for candidate in matching(store, words)] == ["push"]
+    assert [candidate.chunk.name for candidate in matching(store, words)] == ["addItem"]
 
 
 def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(

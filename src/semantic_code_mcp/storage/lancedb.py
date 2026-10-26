@@ -145,19 +145,6 @@ COSINE_METRIC = "cosine"
 # leave them out
 DISTANCE_COLUMN = "_distance"
 FULL_TEXT_SCORE_COLUMN = "_score"
-# What a search reads of each candidate: the chunk and its vector, not its search text
-CANDIDATE_COLUMNS = [
-    CHUNK_ID_COLUMN,
-    VECTOR_COLUMN,
-    PATH_COLUMN,
-    LANGUAGE_COLUMN,
-    KIND_COLUMN,
-    NAME_COLUMN,
-    PARENT_COLUMN,
-    LINE_START_COLUMN,
-    LINE_END_COLUMN,
-    CONTENT_COLUMN,
-]
 # What a search finds when the index holds no chunks yet
 NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 # How a single quote is written inside a quoted SQL string
@@ -221,6 +208,11 @@ class StoredChunk(BaseModel):
             content=self.content,
         )
         return Candidate(chunk=chunk, similarity=similarity)
+
+
+# What a search reads of each candidate: the columns a stored chunk is made of, which its
+# fields name, and its vector; not its search text
+CANDIDATE_COLUMNS = (*StoredChunk.model_fields, VECTOR_COLUMN)
 
 
 class LeftIndex(BaseModel):
@@ -367,9 +359,9 @@ class LanceDBIndexStore(IndexStore):
             return NO_CANDIDATES
         # An open table reads the version it was opened at, so both channels see one index
         query = table.search(query_vector)
-        # lancedb's stubs type search() as the base builder, which lacks metric()
+        # lancedb's stubs type search() as the base builder, which lacks distance_type()
         nearest = (
-            query.metric(COSINE_METRIC)  # ty: ignore[unresolved-attribute]
+            query.distance_type(COSINE_METRIC)  # ty: ignore[unresolved-attribute]
             .select([*CANDIDATE_COLUMNS, DISTANCE_COLUMN])
             .limit(per_channel)
             .to_arrow()

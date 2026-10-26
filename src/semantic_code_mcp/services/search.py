@@ -54,8 +54,10 @@ class SimilarityFloors(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    without_keyword: float
-    with_keyword: float
+    # A hit no keyword matched
+    meaning_only: float
+    # A hit whose words match the query's
+    words_match: float
 
 
 class SearchService:
@@ -144,5 +146,5 @@ def indexing_message(status: IndexStatus) -> str:
 def is_relevant(hit: SearchHit, floors: SimilarityFloors) -> bool:
     """Whether a hit stays: its meaning near enough the query's, and less near where its
     words match the query's too."""
-    floor = floors.without_keyword if hit.keyword_rank is None else floors.with_keyword
+    floor = floors.meaning_only if hit.keyword_rank is None else floors.words_match
     return hit.similarity >= floor

@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
-- `SEMANTIC_CODE_MCP_MIN_SIMILARITY` (0.35) and `SEMANTIC_CODE_MCP_MIN_KEYWORD_SIMILARITY` (0.25): how close in meaning to the query a hit must be to stay, without and with its words matching the query's
+- `SEMANTIC_CODE_MCP_MIN_SIMILARITY` (0.35) and `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` (0.2): how close in meaning to the query a hit must be to stay, without and with its words matching the query's
 - `python -m evals quality` asks eight questions no corpus answers and reports what they get
 - `LICENSE` (MIT) and license, author and project URLs in the package metadata; the wheel used to ship without a license
 - CI runs every pre-commit gate, the tests and a build on each push to `master` and each pull request
@@ -33,9 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
 - A `search_code` result's `chunk_type` is now `kind`
 - `search_code` ranks by Reciprocal Rank Fusion of what the vector and the keyword searches found, in one version of the index, instead of a weighted sum of their scores: the right file's mean reciprocal rank went from 0.455 / 0.549 / 0.698 to 0.497 / 0.502 / 0.785 on click / fd / this repository
-- The keyword search finds an identifier written in camel case by its words (`getUserName` by "user name", `HTTPServer` by "server"), and a chunk by its name and by what it is part of: a method by its class's name, a section by its headings above
+- The keyword search finds a chunk by the words of its name (`getUserName` by "user name", `HTTPServer` by "server") and by what it is part of: a method by its class's name, a section by its headings above
 - A section of a document ranks below code that the search finds alike: prose no longer outranks the code it describes (#3)
-- A search drops a hit below a cosine similarity of 0.35 to the query, or of 0.25 when its words match the query's, instead of below a blended score of 0.3: a question no corpus answers now gets nothing, where it got about three results
+- A search drops a hit below a cosine similarity of 0.35 to the query, or of 0.2 when its words match the query's, instead of below a blended score of 0.3: a question no corpus answers now gets nothing, where it got about three results
 - A `search_code` result's `score` is now `similarity`, the cosine similarity of its chunk to the query; results come in the fused order, no longer grouped by file: the right file's mean reciprocal rank went from 0.497 / 0.502 / 0.785 to 0.539 / 0.585 / 0.825
 - The index keeps each file by its path from the project root, so a project moved with its local index (`.semantic-code/`) keeps it
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included

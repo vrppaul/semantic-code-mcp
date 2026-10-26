@@ -23,10 +23,10 @@ from tests.helpers import indexing_service, registry_of
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
 CLOSE = 0.9
-FLOORS = SimilarityFloors(without_keyword=0.2, with_keyword=0.1)
+FLOORS = SimilarityFloors(meaning_only=0.2, words_match=0.1)
 # Too far in meaning for a hit no keyword matched, near enough for one whose words match
-BETWEEN_THE_FLOORS = (FLOORS.without_keyword + FLOORS.with_keyword) / 2
-BELOW_BOTH_FLOORS = FLOORS.with_keyword / 2
+BETWEEN_THE_FLOORS = (FLOORS.meaning_only + FLOORS.words_match) / 2
+BELOW_BOTH_FLOORS = FLOORS.words_match / 2
 # A file no project of these tests holds
 ELSEWHERE = "nowhere/old.py"
 
@@ -196,7 +196,7 @@ async def test_a_search_keeps_what_the_floors_of_the_settings_let_through(
     settings = Settings(
         cache_dir=test_settings.cache_dir,
         min_similarity=LOWEST_SIMILARITY,
-        min_keyword_similarity=LOWEST_SIMILARITY,
+        min_similarity_when_words_match=LOWEST_SIMILARITY,
     )
     search = registry_of(settings, FakeEmbedder(), build_chunker()).services_for(sample_project)
 

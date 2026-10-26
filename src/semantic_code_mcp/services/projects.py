@@ -79,8 +79,8 @@ class ProjectRegistry:
                 embedder=self._embedder,
                 indexing=indexing,
                 floors=SimilarityFloors(
-                    without_keyword=self._settings.min_similarity,
-                    with_keyword=self._settings.min_keyword_similarity,
+                    meaning_only=self._settings.min_similarity,
+                    words_match=self._settings.min_similarity_when_words_match,
                 ),
             ),
         )
