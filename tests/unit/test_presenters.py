@@ -10,8 +10,8 @@ from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexStatus,
     Language,
+    SearchHit,
     SearchReport,
-    SearchResult,
     SearchTimings,
 )
 from semantic_code_mcp.server.presenters import (
@@ -25,7 +25,7 @@ TIMINGS = SearchTimings(embedding_ms=1.0, search_ms=2.0, total_ms=3.0)
 PROJECT_ROOT = Path("/project")
 
 
-def hit_of(content: str) -> SearchResult:
+def hit_of(content: str) -> SearchHit:
     chunk = Chunk(
         chunk_id="module-method",
         path=Path("src/module.py"),
@@ -37,7 +37,9 @@ def hit_of(content: str) -> SearchResult:
         line_end=content.count("\n") + 1,
         content=content,
     )
-    return SearchResult(chunk=chunk, score=0.5)
+    return SearchHit(
+        chunk=chunk, similarity=0.5, vector_rank=1, keyword_rank=None, fused_score=1 / 61
+    )
 
 
 def test_a_hit_names_its_file_by_its_absolute_path_and_says_what_it_is_part_of():

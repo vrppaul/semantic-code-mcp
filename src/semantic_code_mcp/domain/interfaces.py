@@ -15,7 +15,7 @@ from semantic_code_mcp.domain.models import (
     IndexCounts,
     IndexManifest,
     IndexUpdate,
-    SearchResult,
+    SearchCandidates,
     SourceFile,
 )
 
@@ -102,14 +102,12 @@ class IndexStore(ABC):
         unrecorded, so the next run indexes them."""
 
     @abstractmethod
-    def search_hybrid(
-        self,
-        query_vector: Vector,
-        query_text: str,
-        limit: int,
-        vector_weight: float,
-    ) -> list[SearchResult]:
-        """The best chunks by vector similarity and full-text match combined."""
+    def search_candidates(
+        self, query_vector: Vector, query_text: str, per_channel: int
+    ) -> SearchCandidates:
+        """The `per_channel` chunks nearest the query's vector and the `per_channel` whose
+        words best match its text, each with the cosine similarity of its vector to the
+        query's, both read from one version of the index."""
 
 
 class Chunker(ABC):

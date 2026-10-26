@@ -20,7 +20,9 @@ class SearchResultView(BaseModel):
     # The qualified name of what the chunk is defined in: a class, an impl, a heading
     parent: str | None
     content: str
-    score: float
+    # How close the chunk's meaning is to the query's, a cosine similarity in [-1, 1]; the
+    # hits come in the order fusing both channels' ranks gives, not by this
+    similarity: float
     truncated: bool
 
 

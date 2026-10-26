@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
+- The ranking boost of files edited within the last week
 - Settings that nothing read: `SEMANTIC_CODE_MCP_EMBEDDING_DEVICE`, `SEMANTIC_CODE_MCP_CHUNKING_TARGET_TOKENS`, `SEMANTIC_CODE_MCP_CHUNKING_MAX_TOKENS`
 - The `pandas` dependency
 
@@ -29,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
 - A `search_code` result's `chunk_type` is now `kind`
+- `search_code` ranks by Reciprocal Rank Fusion of what the vector and the keyword searches found, in one version of the index, instead of a weighted sum of their scores: the right file's mean reciprocal rank went from 0.455 / 0.549 / 0.698 to 0.497 / 0.502 / 0.785 on click / fd / this repository
+- A `search_code` result's `score` is now `similarity`, the cosine similarity of its chunk to the query; results come in the fused order
 - The index keeps each file by its path from the project root, so a project moved with its local index (`.semantic-code/`) keeps it
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
 - Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done

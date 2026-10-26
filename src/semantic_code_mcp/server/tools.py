@@ -61,7 +61,7 @@ async def search_code(
     Returns:
         Matching chunks with the file's absolute path, line range, name, kind (module,
         function, method, class, section), the class, impl or heading it belongs to, content
-        and score.
+        and similarity to the query.
     """
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)

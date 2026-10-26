@@ -6,8 +6,8 @@ from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexReport,
     IndexStatus,
+    SearchHit,
     SearchReport,
-    SearchResult,
 )
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
@@ -25,7 +25,7 @@ from semantic_code_mcp.services.timing import MILLISECOND_DECIMALS, MILLISECONDS
 # A hit's content is cut to this many lines; the agent reads the file for the rest
 MAX_RESULT_LINES = 50
 TRUNCATION_MARK = "\n... (truncated)"
-SCORE_DECIMALS = 3
+SIMILARITY_DECIMALS = 3
 # A rough count of tokens in English text and code
 CHARACTERS_PER_TOKEN = 4
 
@@ -34,16 +34,16 @@ def present_search(
     report: SearchReport, project_root: Path, *, include_debug: bool
 ) -> SearchCodeResponse:
     """The answer of `search_code`, with timings and counts when asked for."""
-    results = [present_hit(result, project_root) for result in report.results]
+    results = [present_hit(hit, project_root) for hit in report.results]
     return SearchCodeResponse(
         results=results,
         debug=present_search_debug(report, results) if include_debug else None,
     )
 
 
-def present_hit(result: SearchResult, project_root: Path) -> SearchResultView:
+def present_hit(hit: SearchHit, project_root: Path) -> SearchResultView:
     """One hit, its file by its absolute path, its content cut to MAX_RESULT_LINES."""
-    chunk = result.chunk
+    chunk = hit.chunk
     lines = chunk.content.split("\n")
     truncated = len(lines) > MAX_RESULT_LINES
     content = "\n".join(lines[:MAX_RESULT_LINES]) + TRUNCATION_MARK if truncated else chunk.content
@@ -55,7 +55,7 @@ def present_hit(result: SearchResult, project_root: Path) -> SearchResultView:
         kind=chunk.kind,
         parent=chunk.parent,
         content=content,
-        score=round(result.score, SCORE_DECIMALS),
+        similarity=round(hit.similarity, SIMILARITY_DECIMALS),
         truncated=truncated,
     )
 

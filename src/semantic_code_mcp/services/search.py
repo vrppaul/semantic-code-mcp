@@ -1,4 +1,9 @@
-"""Search: bring the index up to date, then find the chunks closest to a query."""
+"""Search: bring the index up to date, then find the chunks closest to a query.
+
+Each channel of the store brings its candidates, the vector channel by meaning and the
+keyword channel by words, and fusion ranks them as one list. A hit only the vector
+channel found, and far in meaning from the query, is noise and goes.
+"""
 
 import asyncio
 import time
@@ -8,30 +13,24 @@ from pathlib import Path
 
 from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
 from semantic_code_mcp.domain.models import (
-    HIGHEST_SCORE,
     IndexReport,
     IndexStatus,
+    SearchHit,
     SearchReport,
-    SearchResult,
     SearchTimings,
 )
+from semantic_code_mcp.services.fusion import fuse
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.timing import elapsed_milliseconds
 
-# Hits below this blended score are noise
-MIN_SCORE = 0.3
-# Share of the vector score in the blend; the full-text score takes the rest
-VECTOR_WEIGHT = 0.5
-
-# Recency: files edited within the last week get a small score boost (up to +5%)
-# to surface recently-touched code. 5% is small enough not to override relevance.
-ONE_WEEK_SECONDS = 7 * 24 * 60 * 60
-MAX_RECENCY_BOOST = 0.05
-
-# Overfetch 2x because score filtering and deduplication typically remove 30-50% of
-# raw results; 2x keeps the pipeline simple while enough candidates fill the limit.
-SEARCH_OVERFETCH_FACTOR = 2
+# A hit no keyword matched is kept from this cosine similarity to the query up: the
+# blended score's floor of 0.3 kept such a hit, which scored (1 + similarity) / 4, from
+# a similarity of 0.2
+MIN_SIMILARITY = 0.2
+# Each channel brings this many candidates per result asked for, so fusion can lift a
+# chunk one channel ranks below the limit
+CANDIDATES_PER_RESULT = 2
 
 # The timings of a search that had nothing to look through
 NO_TIMINGS = SearchTimings(embedding_ms=0.0, search_ms=0.0, total_ms=0.0)
@@ -89,13 +88,11 @@ class SearchService:
             await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
             await asyncio.to_thread(self._embedder.load)
         await progress.report(SearchPhase.searching.value, "Searching...")
-        report = await asyncio.to_thread(self._run_search, query, project_root, limit, index_report)
+        report = await asyncio.to_thread(self._run_search, query, limit, index_report)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 
-    def _run_search(
-        self, query: str, project_root: Path, limit: int, index_report: IndexReport | None
-    ) -> SearchReport:
+    def _run_search(self, query: str, limit: int, index_report: IndexReport | None) -> SearchReport:
         started = time.perf_counter()
 
         embedding_started = time.perf_counter()
@@ -103,22 +100,16 @@ class SearchService:
         embedding_ms = elapsed_milliseconds(embedding_started)
 
         search_started = time.perf_counter()
-        raw_results = self._store.search_hybrid(
-            query_vector, query, limit * SEARCH_OVERFETCH_FACTOR, VECTOR_WEIGHT
+        candidates = self._store.search_candidates(
+            query_vector, query, limit * CANDIDATES_PER_RESULT
         )
+        hits = fuse(candidates)
         search_ms = elapsed_milliseconds(search_started)
 
-        kept = [result for result in raw_results if result.score >= MIN_SCORE]
-        now = time.time()
-        boosted = sorted(
-            (with_recency_boost(result, project_root, now) for result in kept),
-            key=lambda result: result.score,
-            reverse=True,
-        )
-
+        kept = [hit for hit in hits if is_relevant(hit)]
         return SearchReport(
-            results=group_by_file(boosted[:limit]),
-            filtered_count=len(raw_results) - len(kept),
+            results=group_by_file(kept[:limit]),
+            filtered_count=len(hits) - len(kept),
             timings=SearchTimings(
                 embedding_ms=embedding_ms,
                 search_ms=search_ms,
@@ -135,24 +126,17 @@ def indexing_message(status: IndexStatus) -> str:
     return f"Re-indexing {status.stale_files_count} stale files..."
 
 
-def with_recency_boost(result: SearchResult, project_root: Path, now: float) -> SearchResult:
-    """A hit whose file changed within the last week, scored up by as much as MAX_RECENCY_BOOST."""
-    try:
-        age_seconds = now - (project_root / result.chunk.path).stat().st_mtime
-    except OSError:
-        return result
-    if age_seconds >= ONE_WEEK_SECONDS:
-        return result
-    boost = MAX_RECENCY_BOOST * (1 - age_seconds / ONE_WEEK_SECONDS)
-    return result.with_score(min(HIGHEST_SCORE, result.score + boost))
+def is_relevant(hit: SearchHit) -> bool:
+    """Whether a hit stays: its words match the query's, or its meaning is near enough."""
+    return hit.keyword_rank is not None or hit.similarity >= MIN_SIMILARITY
 
 
-def group_by_file(results: list[SearchResult]) -> list[SearchResult]:
+def group_by_file(hits: list[SearchHit]) -> list[SearchHit]:
     """Hits grouped by file, the file with the best hit first, each file's hits in order."""
-    by_file: dict[Path, list[SearchResult]] = defaultdict(list)
-    for result in results:
-        by_file[result.chunk.path].append(result)
+    by_file: dict[Path, list[SearchHit]] = defaultdict(list)
+    for hit in hits:
+        by_file[hit.chunk.path].append(hit)
     ordered_files = sorted(
-        by_file, key=lambda path: max(hit.score for hit in by_file[path]), reverse=True
+        by_file, key=lambda path: max(hit.fused_score for hit in by_file[path]), reverse=True
     )
     return [hit for path in ordered_files for hit in by_file[path]]

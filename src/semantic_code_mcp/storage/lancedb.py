@@ -52,15 +52,18 @@ from pathlib import Path
 from typing import override
 
 import lancedb
+import numpy
 import pyarrow
 import structlog
 from filelock import FileLock
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
-    HIGHEST_SCORE,
-    LOWEST_SCORE,
+    HIGHEST_SIMILARITY,
+    LOWEST_SIMILARITY,
+    Candidate,
     Chunk,
     ChunkKind,
     IndexCounts,
@@ -68,7 +71,7 @@ from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexUpdate,
     Language,
-    SearchResult,
+    SearchCandidates,
     SourceFile,
 )
 
@@ -129,17 +132,13 @@ MTIME_COLUMN = "mtime_ns"
 SIZE_COLUMN = "size_bytes"
 # The axis of a vector matrix along one vector: rows are chunks, columns components
 VECTOR_LENGTH_AXIS = 1
+# The length of a vector of zeros, which has no direction to compare
+NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
 COSINE_METRIC = "cosine"
-# Columns LanceDB adds to a hit: the cosine distance of a vector hit, the score of a text hit
-DISTANCE_COLUMN = "_distance"
-FULL_TEXT_SCORE_COLUMN = "_score"
-
-# Score normalization constants
-COSINE_DISTANCE_MAX = 2.0  # cosine distance range is [0, 2] by definition
-FULL_TEXT_SCORE_DIVISOR = 10.0  # empirical: the full-text scores seen peak around 5-15
-FULL_TEXT_DEFAULT_SCORE = 0.5  # fallback when a text hit carries no score
+# What a search finds when the index holds no chunks yet
+NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 # How a single quote is written inside a quoted SQL string
 SQL_QUOTE = "'"
 SQL_ESCAPED_QUOTE = "''"
@@ -186,8 +185,8 @@ class StoredChunk(BaseModel):
     line_end: int
     content: str
 
-    def scored(self, score: float) -> SearchResult:
-        """This row as a search hit with a score."""
+    def candidate(self, similarity: float) -> Candidate:
+        """This row as a chunk a search found, with its similarity to the query."""
         chunk = Chunk(
             chunk_id=self.chunk_id,
             path=Path(self.path),
@@ -199,7 +198,7 @@ class StoredChunk(BaseModel):
             line_end=self.line_end,
             content=self.content,
         )
-        return SearchResult(chunk=chunk, score=score)
+        return Candidate(chunk=chunk, similarity=similarity)
 
 
 class LeftIndex(BaseModel):
@@ -302,8 +301,7 @@ class LanceDBIndexStore(IndexStore):
             .limit(None)
             .to_arrow()
         )
-        vectors = rows.column(VECTOR_COLUMN).combine_chunks()
-        matrix = vectors.flatten().to_numpy().reshape(rows.num_rows, vectors.type.list_size)
+        matrix = vector_matrix(rows)
         return dict(zip(rows.column(CHUNK_ID_COLUMN).to_pylist(), matrix, strict=True))
 
     @override
@@ -338,53 +336,21 @@ class LanceDBIndexStore(IndexStore):
             removed=len(update.removed_paths),
         )
 
-    def search_vector(self, query_vector: Vector, limit: int) -> list[SearchResult]:
-        """The chunks nearest to a vector, scored by cosine similarity mapped to [0, 1]."""
+    @override
+    def search_candidates(
+        self, query_vector: Vector, query_text: str, per_channel: int
+    ) -> SearchCandidates:
         table = self._open(CHUNKS_TABLE)
         if table is None:
-            return []
+            return NO_CANDIDATES
+        # An open table reads the version it was opened at, so both channels see one index
         query = table.search(query_vector)
         # lancedb's stubs type search() as the base builder, which lacks metric()
-        rows = query.metric(COSINE_METRIC).limit(limit).to_list()  # ty: ignore[unresolved-attribute]
-        return [
-            StoredChunk.model_validate(row).scored(
-                clamp_score(HIGHEST_SCORE - row[DISTANCE_COLUMN] / COSINE_DISTANCE_MAX)
-            )
-            for row in rows
-        ]
-
-    def search_full_text(self, query_text: str, limit: int) -> list[SearchResult]:
-        """The chunks whose text best matches the words of a query."""
-        table = self._open(CHUNKS_TABLE)
-        if table is None or not has_full_text_index(table):
-            return []
-        rows = table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE).limit(limit).to_list()
-        return [
-            StoredChunk.model_validate(row).scored(
-                clamp_score(
-                    row.get(FULL_TEXT_SCORE_COLUMN, FULL_TEXT_DEFAULT_SCORE)
-                    / FULL_TEXT_SCORE_DIVISOR
-                )
-            )
-            for row in rows
-        ]
-
-    @override
-    def search_hybrid(
-        self,
-        query_vector: Vector,
-        query_text: str,
-        limit: int,
-        vector_weight: float,
-    ) -> list[SearchResult]:
-        """Vector and full-text hits, weighted and summed per chunk, best first."""
-        merged = merge_weighted(
-            self.search_vector(query_vector, limit),
-            vector_weight,
-            self.search_full_text(query_text, limit),
-            HIGHEST_SCORE - vector_weight,
+        nearest = query.metric(COSINE_METRIC).limit(per_channel).to_arrow()  # ty: ignore[unresolved-attribute]
+        return SearchCandidates(
+            by_vector=candidates_of(nearest, query_vector),
+            by_keyword=keyword_candidates(table, query_text, query_vector, per_channel),
         )
-        return sorted(merged, key=lambda result: result.score, reverse=True)[:limit]
 
     def _fit_layout(self, database: lancedb.DBConnection, width: int) -> None:
         """Start the index again when its chunks table does not hold chunks of this width,
@@ -666,31 +632,42 @@ def write_atomically(path: Path, text: str) -> None:
         raise
 
 
-def merge_weighted(
-    primary: list[SearchResult],
-    primary_weight: float,
-    secondary: list[SearchResult],
-    secondary_weight: float,
-) -> list[SearchResult]:
-    """Merge two ranked lists: each hit's score times its list's weight, summed per chunk."""
-    merged: dict[str, SearchResult] = {
-        result.chunk.chunk_id: result.with_score(result.score * primary_weight)
-        for result in primary
-    }
-    for result in secondary:
-        weighted = result.score * secondary_weight
-        chunk_id = result.chunk.chunk_id
-        earlier = merged.get(chunk_id)
-        if earlier is None:
-            merged[chunk_id] = result.with_score(weighted)
-        else:
-            merged[chunk_id] = earlier.with_score(clamp_score(earlier.score + weighted))
-    return list(merged.values())
+def keyword_candidates(
+    table: lancedb.table.Table, query_text: str, query_vector: Vector, limit: int
+) -> list[Candidate]:
+    """The chunks whose words best match the query's, best first; none while the table
+    has no full-text index, as after a write stopped between the table and its index."""
+    if not has_full_text_index(table):
+        return []
+    rows = table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE).limit(limit).to_arrow()
+    return candidates_of(rows, query_vector)
 
 
-def clamp_score(score: float) -> float:
-    """A score held to [0, 1]."""
-    return max(LOWEST_SCORE, min(HIGHEST_SCORE, score))
+def candidates_of(rows: pyarrow.Table, query_vector: Vector) -> list[Candidate]:
+    """Rows a channel found, in its order, each with its vector's similarity to the query."""
+    similarities = cosine_similarities(vector_matrix(rows), query_vector)
+    chunks = rows.drop_columns([VECTOR_COLUMN]).to_pylist()
+    return [
+        StoredChunk.model_validate(row).candidate(float(similarity))
+        for row, similarity in zip(chunks, similarities, strict=True)
+    ]
+
+
+def vector_matrix(rows: pyarrow.Table) -> VectorMatrix:
+    """The vectors of rows as a matrix, a row each, read as one flat buffer."""
+    vectors = rows.column(VECTOR_COLUMN).combine_chunks()
+    return vectors.flatten().to_numpy().reshape(rows.num_rows, vectors.type.list_size)
+
+
+def cosine_similarities(vectors: VectorMatrix, query: Vector) -> NDArray[numpy.float32]:
+    """The cosine similarity of each row's vector to the query's: 0 where either is all
+    zeros, which points nowhere, and held to its range, which rounding oversteps by a hair."""
+    norms = numpy.linalg.norm(vectors, axis=VECTOR_LENGTH_AXIS) * numpy.linalg.norm(query)
+    products = vectors @ query
+    similarities = numpy.divide(
+        products, norms, out=numpy.zeros_like(products), where=norms > NO_LENGTH
+    )
+    return numpy.clip(similarities, LOWEST_SIMILARITY, HIGHEST_SIMILARITY)
 
 
 def quote_sql(value: str) -> str:

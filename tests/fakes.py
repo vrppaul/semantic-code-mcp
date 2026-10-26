@@ -19,7 +19,7 @@ from semantic_code_mcp.domain.models import (
     IndexIdentity,
     IndexManifest,
     IndexUpdate,
-    SearchResult,
+    SearchCandidates,
     SourceFile,
 )
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
@@ -93,12 +93,12 @@ class FakeEmbedder(Embedder):
 
 
 class FakeIndexStore(IndexStore):
-    """A store that answers every search with the hits it was given and keeps what is
-    written: each chunk with its vector, each file's record. Once written, its manifest
+    """A store that answers every search with the candidates it was given and keeps what
+    is written: each chunk with its vector, each file's record. Once written, its manifest
     names the fake model; it has no full-text index to keep up."""
 
-    def __init__(self, hits: list[SearchResult]) -> None:
-        self.hits = hits
+    def __init__(self, candidates: SearchCandidates) -> None:
+        self.candidates = candidates
         self.chunks_by_file: dict[Path, list[Chunk]] = defaultdict(list)
         self.vectors_by_file: dict[Path, list[Vector]] = defaultdict(list)
         self.files_by_path: dict[Path, SourceFile] = {}
@@ -158,14 +158,13 @@ class FakeIndexStore(IndexStore):
         )
 
     @override
-    def search_hybrid(
-        self,
-        query_vector: Vector,
-        query_text: str,
-        limit: int,
-        vector_weight: float,
-    ) -> list[SearchResult]:
-        return self.hits[:limit]
+    def search_candidates(
+        self, query_vector: Vector, query_text: str, per_channel: int
+    ) -> SearchCandidates:
+        return SearchCandidates(
+            by_vector=self.candidates.by_vector[:per_channel],
+            by_keyword=self.candidates.by_keyword[:per_channel],
+        )
 
 
 class VersionedChunker(Chunker):

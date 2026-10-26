@@ -11,6 +11,7 @@ import pytest
 from filelock import FileLock, Timeout
 
 from semantic_code_mcp.domain.models import (
+    Candidate,
     Chunk,
     ChunkKind,
     IndexCounts,
@@ -22,6 +23,7 @@ from semantic_code_mcp.domain.models import (
 from semantic_code_mcp.storage.lancedb import (
     CHUNKS_TABLE,
     MANIFEST_FILE,
+    NO_CANDIDATES,
     REMOVING_PREFIX,
     SCHEMA_VERSION,
     USE_MARK_INTERVAL,
@@ -36,7 +38,8 @@ QUERY = numpy.full(EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
 AWAY_FROM_QUERY = [-0.9] * EMBEDDING_DIMENSION
 ALTERNATING = [0.1, -0.1] * (EMBEDDING_DIMENSION // 2)
 LIMIT = 10
-VECTOR_WEIGHT = 0.5
+# A text no chunk's words match, so a search finds by vector alone
+NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
@@ -91,6 +94,16 @@ def vectors_of(*rows: list[float]) -> numpy.ndarray:
     return numpy.array(rows, dtype=numpy.float32)
 
 
+def nearest(store: LanceDBIndexStore, query: numpy.ndarray = QUERY) -> list[Candidate]:
+    """What the vector channel of a search finds."""
+    return store.search_candidates(query, NO_WORDS_MATCH, LIMIT).by_vector
+
+
+def matching(store: LanceDBIndexStore, text: str) -> list[Candidate]:
+    """What the keyword channel of a search for the text finds."""
+    return store.search_candidates(QUERY, text, LIMIT).by_keyword
+
+
 @pytest.fixture
 def store(tmp_path: Path) -> LanceDBIndexStore:
     return LanceDBIndexStore(
@@ -117,9 +130,11 @@ def filled_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
 
 
 def test_vector_search_ranks_the_nearest_chunk_first(filled_store: LanceDBIndexStore):
-    results = filled_store.search_vector(QUERY, LIMIT)
-
-    assert [result.chunk.name for result in results] == ["near", "keyword", "far"]
+    assert [candidate.chunk.name for candidate in nearest(filled_store)] == [
+        "near",
+        "keyword",
+        "far",
+    ]
 
 
 def test_a_chunk_comes_back_from_a_search_as_it_was_written(store: LanceDBIndexStore):
@@ -137,13 +152,13 @@ def test_a_chunk_comes_back_from_a_search_as_it_was_written(store: LanceDBIndexS
 
     store.write(update_of([method], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
-    assert [result.chunk for result in store.search_vector(QUERY, LIMIT)] == [method]
+    assert [candidate.chunk for candidate in nearest(store)] == [method]
 
 
 def test_full_text_search_finds_an_exact_identifier(filled_store: LanceDBIndexStore):
-    results = filled_store.search_full_text("duration_ms", LIMIT)
-
-    assert [result.chunk.name for result in results] == ["keyword"]
+    assert [candidate.chunk.name for candidate in matching(filled_store, "duration_ms")] == [
+        "keyword"
+    ]
 
 
 def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
@@ -154,22 +169,24 @@ def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
         update_of([later], removed_paths=[Path("indexer.py")]), vectors_of(TOWARD_QUERY)
     )
 
-    assert [
-        result.chunk.name for result in filled_store.search_full_text("retry_budget", LIMIT)
-    ] == ["later"]
-    assert filled_store.search_full_text("duration_ms", LIMIT) == []
+    assert [candidate.chunk.name for candidate in matching(filled_store, "retry_budget")] == [
+        "later"
+    ]
+    assert matching(filled_store, "duration_ms") == []
 
 
-def test_hybrid_search_returns_both_the_nearest_and_the_keyword_match(
+def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
     filled_store: LanceDBIndexStore,
 ):
-    results = filled_store.search_hybrid(QUERY, "duration_ms", 2, VECTOR_WEIGHT)
+    candidates = filled_store.search_candidates(QUERY, "duration_ms", LIMIT)
 
-    assert {result.chunk.name for result in results} == {"near", "keyword"}
+    assert [
+        candidate.similarity for candidate in [*candidates.by_vector, *candidates.by_keyword]
+    ] == pytest.approx([1.0, 0.0, -1.0, 0.0])
 
 
 def test_an_empty_store_finds_nothing(store: LanceDBIndexStore):
-    assert store.search_hybrid(QUERY, "anything", LIMIT, VECTOR_WEIGHT) == []
+    assert store.search_candidates(QUERY, "anything", LIMIT) == NO_CANDIDATES
 
 
 def test_removing_files_takes_only_their_chunks_and_records(filled_store: LanceDBIndexStore):
@@ -232,9 +249,7 @@ def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_un
 
     wide_query = numpy.full(2 * EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
     assert filled_store.counts() == IndexCounts(files=1, chunks=1)
-    assert [result.chunk.name for result in filled_store.search_vector(wide_query, LIMIT)] == [
-        "near"
-    ]
+    assert [candidate.chunk.name for candidate in nearest(filled_store, wide_query)] == ["near"]
 
 
 def test_an_index_of_another_identity_on_the_project_is_kept_apart(
@@ -464,7 +479,7 @@ def test_a_chunk_written_again_under_its_id_stands_where_it_now_is(
     filled_store: LanceDBIndexStore,
 ):
     """Lines inserted above a function move it, its text and id unchanged."""
-    near = filled_store.search_vector(QUERY, LIMIT)[0].chunk
+    near = nearest(filled_store)[0].chunk
     moved = Chunk(
         chunk_id=near.chunk_id,
         path=near.path,
@@ -479,7 +494,7 @@ def test_a_chunk_written_again_under_its_id_stands_where_it_now_is(
 
     filled_store.write(update_of([moved], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
-    assert filled_store.search_vector(QUERY, LIMIT)[0].chunk == moved
+    assert nearest(filled_store)[0].chunk == moved
 
 
 def test_the_vectors_of_stored_chunks_come_back_by_their_ids(filled_store: LanceDBIndexStore):

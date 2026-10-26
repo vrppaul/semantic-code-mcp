@@ -24,7 +24,7 @@ from semantic_code_mcp.domain.models import IndexCounts, IndexIdentity
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
 from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES
+from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES, NO_CANDIDATES
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
@@ -362,7 +362,9 @@ async def test_the_model_loads_and_embeds_off_the_event_loop(
     test_settings: Settings, sample_project: Path
 ):
     embedder = FakeEmbedder(loaded=False)
-    indexing = indexing_service(FakeIndexStore(hits=[]), embedder, test_settings, build_chunker())
+    indexing = indexing_service(
+        FakeIndexStore(NO_CANDIDATES), embedder, test_settings, build_chunker()
+    )
 
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
@@ -422,7 +424,7 @@ async def test_each_chunk_is_stored_with_its_own_vector_across_slices(
     test_settings: Settings, tmp_path: Path
 ):
     project = many_functions_project(tmp_path, TWO_AND_A_PART_SLICES)
-    store = FakeIndexStore(hits=[])
+    store = FakeIndexStore(NO_CANDIDATES)
     indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
 
     await indexing.index(project, force=False, progress=NO_PROGRESS)

@@ -7,8 +7,9 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 FIRST_LINE = 1
-LOWEST_SCORE = 0.0
-HIGHEST_SCORE = 1.0
+# The range of a cosine similarity: opposite meanings to the same
+LOWEST_SIMILARITY = -1.0
+HIGHEST_SIMILARITY = 1.0
 
 
 class Language(StrEnum):
@@ -78,25 +79,56 @@ class Chunk(BaseModel):
         return self
 
 
-class SearchResult(BaseModel):
-    """A chunk with a similarity score from search."""
+def similarity_in_range(similarity: float) -> float:
+    """A cosine similarity, which lies in [-1, 1]."""
+    if not LOWEST_SIMILARITY <= similarity <= HIGHEST_SIMILARITY:
+        message = f"similarity must be between {LOWEST_SIMILARITY} and {HIGHEST_SIMILARITY}"
+        raise ValueError(message)
+    return similarity
+
+
+class Candidate(BaseModel):
+    """A chunk one channel of a search found, and how close its meaning is to the query."""
 
     model_config = ConfigDict(frozen=True)
 
     chunk: Chunk
-    score: float
+    # The cosine similarity of the chunk's stored vector and the query's
+    similarity: float
 
-    @field_validator("score")
+    @field_validator("similarity")
     @classmethod
-    def score_must_be_in_range(cls, score: float) -> float:
-        if not LOWEST_SCORE <= score <= HIGHEST_SCORE:
-            message = f"score must be between {LOWEST_SCORE} and {HIGHEST_SCORE}"
-            raise ValueError(message)
-        return score
+    def similarity_must_be_in_range(cls, similarity: float) -> float:
+        return similarity_in_range(similarity)
 
-    def with_score(self, score: float) -> SearchResult:
-        """The same hit with another score."""
-        return SearchResult(chunk=self.chunk, score=score)
+
+class SearchCandidates(BaseModel):
+    """What each channel of a search found, best first, read from one version of the
+    index: the chunks nearest the query's vector, and those whose words match its words."""
+
+    model_config = ConfigDict(frozen=True)
+
+    by_vector: list[Candidate]
+    by_keyword: list[Candidate]
+
+
+class SearchHit(BaseModel):
+    """A chunk a search returns: where each channel ranked it, and the score fusing those
+    ranks, which orders the hits."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunk: Chunk
+    similarity: float
+    # Counted from one; None where the channel did not find the chunk
+    vector_rank: int | None
+    keyword_rank: int | None
+    fused_score: float
+
+    @field_validator("similarity")
+    @classmethod
+    def similarity_must_be_in_range(cls, similarity: float) -> float:
+        return similarity_in_range(similarity)
 
 
 class SourceFile(BaseModel):
@@ -236,7 +268,7 @@ class SearchReport(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    results: list[SearchResult]
+    results: list[SearchHit]
     filtered_count: int
     timings: SearchTimings
     # Set when the search had to index stale files first
