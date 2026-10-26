@@ -1,15 +1,19 @@
 """Indexing: find a project's files, see what changed, then chunk, embed and store them.
 
 A run plans before it changes anything: the records discovery takes of the files on
-disk, compared with the records the index keeps, give the files to index and the paths
-gone. Nothing is removed until the new chunks are embedded, and the store then replaces
-what changed in one write, so a reader finds the old index or the new one, or, during a
-whole-index write, for a moment an empty one. The index is the one of this server's model
-and chunker version; the store keeps those of others apart.
+disk, compared with the records the index keeps and the files its chunks come from,
+give the files to index and the paths gone. It then writes a slice of whole files at a
+time, each slice's chunks taking the place of what the index held of those files, so a
+reader always finds every file's old chunks or its new ones, and a run stopped midway
+keeps the slices it wrote. A chunk whose text the index holds already keeps its stored
+vector, so an edit embeds only the chunks it changed; a forced run embeds everything
+again. The index is the one of this server's model and chunker version; the store keeps
+those of others apart.
 """
 
 import asyncio
 import time
+from collections.abc import Set
 from enum import Enum
 from pathlib import Path
 
@@ -18,18 +22,20 @@ import structlog
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.discovery import SourceDiscovery
-from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, VectorMatrix
+from semantic_code_mcp.domain.interfaces import (
+    Chunker,
+    Embedder,
+    IndexStore,
+    Vector,
+    VectorMatrix,
+)
 from semantic_code_mcp.domain.models import (
     Chunk,
-    IndexCounts,
     IndexDelta,
-    IndexManifest,
     IndexReport,
     IndexStatus,
     IndexUpdate,
-    RebuildReason,
     SourceFile,
-    WriteScope,
 )
 from semantic_code_mcp.services.progress import PROGRESS_TOTAL, ProgressReporter
 from semantic_code_mcp.services.timing import elapsed_milliseconds
@@ -37,45 +43,31 @@ from semantic_code_mcp.services.timing import elapsed_milliseconds
 log = structlog.get_logger()
 
 DURATION_DECIMALS = 3
-# Chunks embedded between two progress reports: about ten seconds on a laptop CPU
+# Chunks embedded between two progress reports, about ten seconds on a laptop CPU; and
+# the fewest a write holds, but the last of a run
 EMBEDDING_SLICE_SIZE = 256
 # The vectors of no chunks: no rows, and with no vector seen, no columns
 NO_VECTORS_SHAPE = (0, 0)
+# The axis of a vector matrix along one vector: rows are chunks, columns components
+VECTOR_LENGTH_AXIS = 1
+# A run of more writes than this asks the store to fold them into its indexes at its end
+WRITES_KEPT_UP_AS_THEY_COME = 1
+# What a status takes the chunks' paths to be: reading them would cost every search about
+# ten milliseconds (measured), for chunks only a crashed run leaves unrecorded, and the
+# run that follows a crash, the files it left unrecorded being stale, reads them
+CHUNK_PATHS_UNREAD: frozenset[Path] = frozenset()
 
 
 class IndexPhase(Enum):
-    """The steps of an index run, each worth how far along the run is when it starts."""
+    """The steps of an index run, each worth how far along the run is when it starts.
+
+    Embedding and writing share the band from `embedding` to the end, a slice at a time;
+    the model loads inside it, when the first chunk needs embedding."""
 
     scanning = 5.0
     planning = 10.0
     chunking = 20.0
-    loading_model = 60.0
-    embedding = 70.0
-    writing = 95.0
-
-
-class IndexPlan(BaseModel):
-    """What one index run is to do, worked out before it changes anything."""
-
-    model_config = ConfigDict(frozen=True)
-
-    delta: IndexDelta
-    scope: WriteScope
-    # Set when the index is built again whole, saying why
-    rebuild_reason: RebuildReason | None
-
-    @property
-    def needs_write(self) -> bool:
-        return self.delta.has_work or self.rebuild_reason is not None
-
-
-class StoredState(BaseModel):
-    """What the store holds before a run, as far as planning needs it."""
-
-    model_config = ConfigDict(frozen=True)
-
-    manifest: IndexManifest | None
-    counts: IndexCounts
+    embedding = 30.0
 
 
 class ChunkedFile(BaseModel):
@@ -85,6 +77,27 @@ class ChunkedFile(BaseModel):
 
     file: SourceFile
     chunks: list[Chunk]
+
+
+class WriteSlice(BaseModel):
+    """Whole files of a run, written together."""
+
+    model_config = ConfigDict(frozen=True)
+
+    files: list[ChunkedFile]
+
+    @property
+    def chunks(self) -> list[Chunk]:
+        return [chunk for chunked_file in self.files for chunk in chunked_file.chunks]
+
+
+class EmbeddingProgress(BaseModel):
+    """Where a run's embedding stands: how many of its chunks are behind it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    done: int
+    total: int
 
 
 class IndexingService:
@@ -112,8 +125,8 @@ class IndexingService:
     async def index(
         self, project_root: Path, *, force: bool, progress: ProgressReporter
     ) -> IndexReport:
-        """Bring the index up to date with the files: all of them when forced or when the
-        index must be built again, else what changed."""
+        """Bring the index up to date with the files: all of them when forced, else what
+        changed."""
         async with self._lock:
             return await self._index(project_root, force=force, progress=progress)
 
@@ -122,17 +135,16 @@ class IndexingService:
         return await asyncio.to_thread(self._status, project_root)
 
     def _status(self, project_root: Path) -> IndexStatus:
-        """How far the project's index is from its files: how much it holds, how many files
-        changed since (new, modified or deleted), and whether it must be built again."""
+        """How far the project's index is from its files: how much it holds, and how many
+        files changed since (new, modified or deleted)."""
         files = self._discovery.discover(project_root)
-        state = self._stored_state()
-        plan = self._plan(files, state, force=False)
+        delta = plan_delta(files, self._store.indexed_files(), CHUNK_PATHS_UNREAD, every_file=False)
+        counts = self._store.counts()
         return IndexStatus(
-            files_count=state.counts.files,
-            chunks_count=state.counts.chunks,
-            stale_files_count=len(plan.delta.to_index) + len(plan.delta.to_delete),
-            manifest=state.manifest,
-            rebuild_reason=plan.rebuild_reason,
+            files_count=counts.files,
+            chunks_count=counts.chunks,
+            stale_files_count=len(delta.to_index) + len(delta.to_delete),
+            manifest=self._store.manifest(),
         )
 
     async def _index(
@@ -144,59 +156,34 @@ class IndexingService:
         log.debug("scanned_files", project=str(project_root), count=len(files))
 
         await progress.report(IndexPhase.planning.value, f"Found {len(files)} files, planning...")
-        state = await asyncio.to_thread(self._stored_state)
-        plan = await asyncio.to_thread(self._plan, files, state, force=force)
-        log.debug(
-            "index_planned",
-            to_index=len(plan.delta.to_index),
-            to_delete=len(plan.delta.to_delete),
-            scope=plan.scope,
-            rebuild_reason=plan.rebuild_reason,
-        )
+        delta = await asyncio.to_thread(self._plan, files, force=force)
+        log.debug("index_planned", to_index=len(delta.to_index), to_delete=len(delta.to_delete))
 
-        chunks: list[Chunk] = []
-        if plan.needs_write:
+        chunks_indexed = 0
+        if delta.has_work:
             await progress.report(
-                IndexPhase.chunking.value, f"Chunking {len(plan.delta.to_index)} files..."
+                IndexPhase.chunking.value, f"Chunking {len(delta.to_index)} files..."
             )
-            chunked = await asyncio.to_thread(self._chunk, project_root, plan.delta.to_index)
-            chunks = [chunk for chunked_file in chunked for chunk in chunked_file.chunks]
-            vectors = await self._embed(chunks, progress)
-            await progress.report(IndexPhase.writing.value, "Writing the index...")
-            update = IndexUpdate(
-                scope=plan.scope,
-                files=[chunked_file.file for chunked_file in chunked],
-                chunks=chunks,
-                removed_paths=plan.delta.to_delete,
+            chunked = await asyncio.to_thread(self._chunk, project_root, delta.to_index)
+            chunks_indexed = await self._write(
+                write_slices(chunked, EMBEDDING_SLICE_SIZE),
+                delta.to_delete,
+                reuse_vectors=not force,
+                progress=progress.within(IndexPhase.embedding.value, PROGRESS_TOTAL),
             )
-            await asyncio.to_thread(self._store.write, update, vectors)
 
         return IndexReport(
-            files_indexed=len(plan.delta.to_index),
-            chunks_indexed=len(chunks),
-            files_deleted=len(plan.delta.to_delete),
+            files_indexed=len(delta.to_index),
+            chunks_indexed=chunks_indexed,
+            files_deleted=len(delta.to_delete),
             duration_seconds=round(time.perf_counter() - started, DURATION_DECIMALS),
-            rebuild_reason=plan.rebuild_reason,
         )
 
-    def _stored_state(self) -> StoredState:
-        return StoredState(manifest=self._store.manifest(), counts=self._store.counts())
-
-    def _plan(self, files: list[SourceFile], state: StoredState, *, force: bool) -> IndexPlan:
-        """What a run over these files is to do, from what the store holds.
-
-        An index that must be built again is not read further: every file is indexed anyway.
-        """
-        reason = rebuild_reason(state.counts)
-        if reason is not None:
-            return IndexPlan(
-                delta=IndexDelta(to_index=files, to_delete=[]),
-                scope=WriteScope.everything,
-                rebuild_reason=reason,
-            )
-        delta = plan_delta(files, self._store.indexed_files(), every_file=force)
-        scope = WriteScope.everything if force else WriteScope.changed_files
-        return IndexPlan(delta=delta, scope=scope, rebuild_reason=None)
+    def _plan(self, files: list[SourceFile], *, force: bool) -> IndexDelta:
+        """What a run over these files is to do, from what the store holds."""
+        return plan_delta(
+            files, self._store.indexed_files(), self._store.chunked_paths(), every_file=force
+        )
 
     def _chunk(self, project_root: Path, files: list[SourceFile]) -> list[ChunkedFile]:
         """Chunk files one after another; tree-sitter holds the GIL, so threads gain nothing."""
@@ -213,38 +200,131 @@ class IndexingService:
         )
         return chunked
 
-    async def _embed(self, chunks: list[Chunk], progress: ProgressReporter) -> VectorMatrix:
-        """The vectors of the chunks, embedded a slice at a time with a report before each,
-        so a long run shows it is moving."""
+    async def _write(
+        self,
+        slices: list[WriteSlice],
+        removed_paths: list[Path],
+        *,
+        reuse_vectors: bool,
+        progress: ProgressReporter,
+    ) -> int:
+        """Embed and write the slices one after another, the removals with the first; then,
+        after more than one write, have the store fold them into its indexes. The number of
+        chunks written."""
+        total = sum(len(write_slice.chunks) for write_slice in slices)
+        done = 0
+        removals = removed_paths
+        for write_slice in slices:
+            chunks = write_slice.chunks
+            vectors = await self._vectors(
+                chunks,
+                reuse=reuse_vectors,
+                progress=progress,
+                position=EmbeddingProgress(done=done, total=total),
+            )
+            update = IndexUpdate(
+                files=[chunked_file.file for chunked_file in write_slice.files],
+                chunks=chunks,
+                removed_paths=removals,
+            )
+            await asyncio.to_thread(self._store.write, update, vectors)
+            done += len(chunks)
+            removals = []
+        if len(slices) > WRITES_KEPT_UP_AS_THEY_COME:
+            await asyncio.to_thread(self._store.keep_up)
+        return total
+
+    async def _vectors(
+        self,
+        chunks: list[Chunk],
+        *,
+        reuse: bool,
+        progress: ProgressReporter,
+        position: EmbeddingProgress,
+    ) -> VectorMatrix:
+        """The vectors of a slice's chunks, row by row: the stored one of each chunk the
+        index holds already, when reused, and the rest embedded. A stored vector of another
+        width than the model's (a model swapped under the same name) is not reused."""
+        if not chunks:
+            return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
+        stored: dict[str, Vector] = {}
+        if reuse:
+            chunk_ids = [chunk.chunk_id for chunk in chunks]
+            stored = await asyncio.to_thread(self._store.stored_vectors, chunk_ids)
+        missing = [chunk for chunk in chunks if chunk.chunk_id not in stored]
+        embedded = await self._embed(missing, progress, position)
+        if stored and missing and of_another_width(stored, embedded):
+            return await self._embed(chunks, progress, position)
+        vectors_by_id = {
+            **stored,
+            **dict(zip([chunk.chunk_id for chunk in missing], embedded, strict=True)),
+        }
+        return numpy.stack([vectors_by_id[chunk.chunk_id] for chunk in chunks])
+
+    async def _embed(
+        self, chunks: list[Chunk], progress: ProgressReporter, position: EmbeddingProgress
+    ) -> VectorMatrix:
+        """The vectors of the chunks, embedded EMBEDDING_SLICE_SIZE at a time with a report
+        before each, the model loaded first if it is not, so a long run shows it is moving."""
         if not chunks:
             return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
         if not self._embedder.is_loaded:
-            await progress.report(IndexPhase.loading_model.value, "Loading the embedding model...")
+            await progress.report(
+                position.done / position.total * PROGRESS_TOTAL, "Loading the embedding model..."
+            )
             await asyncio.to_thread(self._embedder.load)
 
         started = time.perf_counter()
         texts = [chunk.content for chunk in chunks]
-        band = progress.within(IndexPhase.embedding.value, IndexPhase.writing.value)
-        slices: list[VectorMatrix] = []
-        for slice_start in range(0, len(texts), EMBEDDING_SLICE_SIZE):
-            texts_slice = texts[slice_start : slice_start + EMBEDDING_SLICE_SIZE]
-            slice_end = slice_start + len(texts_slice)
-            await band.report(
-                slice_start / len(texts) * PROGRESS_TOTAL,
-                f"Embedding chunks {slice_start + 1}-{slice_end} of {len(texts)}...",
+        batches: list[VectorMatrix] = []
+        for batch_start in range(0, len(texts), EMBEDDING_SLICE_SIZE):
+            batch = texts[batch_start : batch_start + EMBEDDING_SLICE_SIZE]
+            behind = position.done + batch_start
+            await progress.report(
+                behind / position.total * PROGRESS_TOTAL,
+                f"Embedding {len(batch)} chunks, {behind} of {position.total} done...",
             )
-            slices.append(await asyncio.to_thread(self._embedder.embed_documents, texts_slice))
+            batches.append(await asyncio.to_thread(self._embedder.embed_documents, batch))
         log.debug(
             "embedding_completed", chunks=len(chunks), duration_ms=elapsed_milliseconds(started)
         )
-        return numpy.concatenate(slices)
+        return numpy.concatenate(batches)
+
+
+def write_slices(chunked: list[ChunkedFile], size: int) -> list[WriteSlice]:
+    """The files in order, grouped into slices of at least `size` chunks, the last one
+    fewer; one slice, empty, when there are no files, so a run that only removes files
+    still writes once."""
+    slices: list[WriteSlice] = []
+    current: list[ChunkedFile] = []
+    current_chunks = 0
+    for chunked_file in chunked:
+        current.append(chunked_file)
+        current_chunks += len(chunked_file.chunks)
+        if current_chunks >= size:
+            slices.append(WriteSlice(files=current))
+            current = []
+            current_chunks = 0
+    if current or not slices:
+        slices.append(WriteSlice(files=current))
+    return slices
+
+
+def of_another_width(stored: dict[str, Vector], embedded: VectorMatrix) -> bool:
+    """Whether stored vectors are of another width than vectors the model gave now."""
+    stored_width = len(next(iter(stored.values())))
+    return stored_width != embedded.shape[VECTOR_LENGTH_AXIS]
 
 
 def plan_delta(
-    on_disk: list[SourceFile], indexed: list[SourceFile], *, every_file: bool
+    on_disk: list[SourceFile],
+    indexed: list[SourceFile],
+    chunked_paths: Set[Path],
+    *,
+    every_file: bool,
 ) -> IndexDelta:
     """The files to index — every file, or those new or changed since their record — and
-    the recorded paths no longer on disk."""
+    the paths no longer on disk that the index holds records or chunks of."""
     recorded = {file.path: file for file in indexed}
     paths_on_disk = {source.path for source in on_disk}
     to_index = (
@@ -252,13 +332,5 @@ def plan_delta(
         if every_file
         else [source for source in on_disk if recorded.get(source.path) != source]
     )
-    to_delete = sorted(path for path in recorded if path not in paths_on_disk)
+    to_delete = sorted((recorded.keys() | chunked_paths) - paths_on_disk)
     return IndexDelta(to_index=to_index, to_delete=to_delete)
-
-
-def rebuild_reason(counts: IndexCounts) -> RebuildReason | None:
-    """Why the index must be built again whole, or None when it can be brought up to date
-    file by file."""
-    if counts.files == 0 and counts.chunks > 0:
-        return RebuildReason.incomplete
-    return None

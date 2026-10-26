@@ -18,10 +18,9 @@ from semantic_code_mcp.domain.models import (
     IndexUpdate,
     Language,
     SourceFile,
-    WriteScope,
 )
 from semantic_code_mcp.storage.lancedb import (
-    FILES_TABLE,
+    CHUNKS_TABLE,
     MANIFEST_FILE,
     REMOVING_PREFIX,
     SCHEMA_VERSION,
@@ -79,11 +78,8 @@ def record_of(path: str) -> SourceFile:
     return SourceFile(path=Path(path), mtime_ns=1, size_bytes=1)
 
 
-def update_of(
-    chunks: list[Chunk], removed_paths: list[Path], scope: WriteScope = WriteScope.changed_files
-) -> IndexUpdate:
+def update_of(chunks: list[Chunk], removed_paths: list[Path]) -> IndexUpdate:
     return IndexUpdate(
-        scope=scope,
         files=[record_of(chunk.path.as_posix()) for chunk in chunks],
         chunks=chunks,
         removed_paths=removed_paths,
@@ -186,17 +182,6 @@ def test_removing_files_takes_only_their_chunks_and_records(filled_store: LanceD
         "indexer.py",
     ]
     assert filled_store.counts().chunks == 2
-
-
-def test_a_write_of_everything_replaces_every_chunk_and_record(filled_store: LanceDBIndexStore):
-    only = function_chunk("only", "only.py", "def only(): pass")
-
-    filled_store.write(
-        update_of([only], removed_paths=[], scope=WriteScope.everything), vectors_of(TOWARD_QUERY)
-    )
-
-    assert [result.chunk.name for result in filled_store.search_vector(QUERY, LIMIT)] == ["only"]
-    assert [str(file.path) for file in filled_store.indexed_files()] == ["only.py"]
 
 
 def test_a_write_records_what_built_the_index(store: LanceDBIndexStore):
@@ -435,23 +420,92 @@ def test_a_manifest_that_cannot_be_read_counts_as_none(
     assert filled_store.manifest() is None
 
 
-def test_a_whole_write_that_fails_midway_never_leaves_records_of_missing_chunks(
+def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     filled_store: LanceDBIndexStore,
 ):
-    """Records go before chunks: a write stopped between them leaves chunks, never records
-    of chunks that are gone, which would read as an up-to-date, empty index."""
-    files_table_directory = filled_store.directory / f"{FILES_TABLE}.lance"
-    set_mode_of_tree(files_table_directory, READ_ONLY)
-    only = function_chunk("only", "only.py", "def only(): pass")
+    """Chunks go before records: a write stopped between them leaves the old records, which
+    the next run reads as files changed, never new records over chunks that are not there."""
+    chunks_table_directory = filled_store.directory / f"{CHUNKS_TABLE}.lance"
+    set_mode_of_tree(chunks_table_directory, READ_ONLY)
+    edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
+    update = IndexUpdate(
+        files=[SourceFile(path=Path("near.py"), mtime_ns=2, size_bytes=2)],
+        chunks=[edited],
+        removed_paths=[],
+    )
 
     with pytest.raises((OSError, RuntimeError)):
-        filled_store.write(
-            update_of([only], removed_paths=[], scope=WriteScope.everything),
-            vectors_of(TOWARD_QUERY),
-        )
-    set_mode_of_tree(files_table_directory, WRITABLE)
+        filled_store.write(update, vectors_of(TOWARD_QUERY))
+    set_mode_of_tree(chunks_table_directory, WRITABLE)
 
-    assert filled_store.counts() == IndexCounts(files=3, chunks=3)
+    assert sorted(filled_store.indexed_files(), key=lambda file: file.path) == [
+        record_of("far.py"),
+        record_of("indexer.py"),
+        record_of("near.py"),
+    ]
+
+
+def test_a_file_s_new_chunks_take_the_place_of_its_old_ones_in_one_commit(
+    filled_store: LanceDBIndexStore,
+):
+    """A reader sees the file's old chunks or its new ones, never neither."""
+    chunks_table = lancedb.connect(str(filled_store.directory)).open_table(CHUNKS_TABLE)
+    version_before = chunks_table.version
+    edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
+
+    filled_store.write(update_of([edited], removed_paths=[]), vectors_of(TOWARD_QUERY))
+
+    chunks_table.checkout_latest()
+    assert (chunks_table.version, filled_store.counts().chunks) == (version_before + 1, 3)
+
+
+def test_a_chunk_written_again_under_its_id_stands_where_it_now_is(
+    filled_store: LanceDBIndexStore,
+):
+    """Lines inserted above a function move it, its text and id unchanged."""
+    near = filled_store.search_vector(QUERY, LIMIT)[0].chunk
+    moved = Chunk(
+        chunk_id=near.chunk_id,
+        path=near.path,
+        language=near.language,
+        kind=near.kind,
+        name=near.name,
+        parent="Timer",
+        line_start=near.line_start + 2,
+        line_end=near.line_end + 2,
+        content=near.content,
+    )
+
+    filled_store.write(update_of([moved], removed_paths=[]), vectors_of(TOWARD_QUERY))
+
+    assert filled_store.search_vector(QUERY, LIMIT)[0].chunk == moved
+
+
+def test_the_vectors_of_stored_chunks_come_back_by_their_ids(filled_store: LanceDBIndexStore):
+    found = filled_store.stored_vectors(["near.py#near", "nowhere.py#missing"])
+
+    assert list(found) == ["near.py#near"]
+    assert numpy.array_equal(found["near.py#near"], vectors_of(TOWARD_QUERY)[0])
+
+
+def test_the_paths_the_chunks_come_from_come_back(filled_store: LanceDBIndexStore):
+    assert filled_store.chunked_paths() == {Path("near.py"), Path("indexer.py"), Path("far.py")}
+
+
+def test_keeping_up_folds_every_chunk_into_the_full_text_index(filled_store: LanceDBIndexStore):
+    later = function_chunk("later", "later.py", "def later(): return retry_budget")
+    filled_store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
+
+    filled_store.keep_up()
+
+    assert unindexed_rows(filled_store) == 0
+
+
+def unindexed_rows(store: LanceDBIndexStore) -> int:
+    """How many chunks the full-text index of a store does not hold yet."""
+    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
+    full_text_index = chunks_table.list_indices()[0]
+    return chunks_table.index_stats(full_text_index.name).num_unindexed_rows
 
 
 def set_mode_of_tree(directory: Path, mode: int) -> None:

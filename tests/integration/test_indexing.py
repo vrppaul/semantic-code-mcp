@@ -15,15 +15,16 @@ from semantic_code_mcp.app import build_chunker, build_registry, open_index_stor
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
-from semantic_code_mcp.domain.models import IndexIdentity, RebuildReason
+from semantic_code_mcp.domain.models import IndexCounts, IndexIdentity
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
-from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService, IndexPhase
+from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES, MATCH_EVERY_ROW
+from semantic_code_mcp.storage.lancedb import CHUNKS_TABLE, FILES_TABLE, LEGACY_ENTRIES
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
     FAKE_MODEL_NAME,
+    CancelOnceWritten,
     ChangingChunker,
     ChunkCountRecorder,
     EmbedderWatchingRecorder,
@@ -50,6 +51,13 @@ TWO_AND_A_PART_SLICES = 2 * EMBEDDING_SLICE_SIZE + 10
 WIDE = 16
 # 0.4's record of mtimes, which it kept in a project-local index directory
 LEGACY_RECORDS = LEGACY_ENTRIES[1]
+# A filter every row of a table matches
+MATCH_EVERY_ROW = "true"
+# A function added to a module of the sample project
+ADDED_FUNCTION = "\n\ndef added():\n    return 1\n"
+# Files whose functions fill one write with the first two and a second with the third
+FILES_OF_FUNCTIONS = 3
+FUNCTIONS_PER_FILE = EMBEDDING_SLICE_SIZE * 3 // 4
 # What the fakes and the chunkers in these tests build an index from
 IDENTITY = IndexIdentity(model_name=FAKE_MODEL_NAME, chunker_version=CHUNKER_VERSION)
 
@@ -358,9 +366,14 @@ async def test_the_model_load_is_reported_before_it_happens(
 
     await indexing.index(sample_project, force=False, progress=ProgressReporter(recorder))
 
-    loaded_at = {snapshot.progress: snapshot.model_loaded for snapshot in recorder.snapshots}
-    assert loaded_at[IndexPhase.loading_model.value] is False
-    assert loaded_at[IndexPhase.embedding.value] is True
+    # Scanning, planning, chunking, loading the model, embedding the one slice
+    assert [snapshot.model_loaded for snapshot in recorder.snapshots] == [
+        False,
+        False,
+        False,
+        False,
+        True,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -368,12 +381,12 @@ async def test_the_model_load_is_reported_before_it_happens(
     [
         pytest.param(
             TWO_AND_A_PART_SLICES,
-            [0, 0, 0, 0, EMBEDDING_SLICE_SIZE, 2 * EMBEDDING_SLICE_SIZE, TWO_AND_A_PART_SLICES],
+            [0, 0, 0, 0, EMBEDDING_SLICE_SIZE, 2 * EMBEDDING_SLICE_SIZE],
             id="the last slice in part",
         ),
         pytest.param(
             2 * EMBEDDING_SLICE_SIZE,
-            [0, 0, 0, 0, EMBEDDING_SLICE_SIZE, 2 * EMBEDDING_SLICE_SIZE],
+            [0, 0, 0, 0, EMBEDDING_SLICE_SIZE],
             id="whole slices",
         ),
     ],
@@ -381,7 +394,7 @@ async def test_the_model_load_is_reported_before_it_happens(
 async def test_progress_is_reported_before_each_slice_of_chunks_is_embedded(
     test_settings: Settings, tmp_path: Path, functions: int, embedded_at_reports: list[int]
 ):
-    """Reports come at scanning, planning, chunking, before each slice, and at writing."""
+    """Reports come at scanning, planning, chunking, and before each slice."""
     project = many_functions_project(tmp_path, functions)
     embedder = FakeEmbedder()
     recorder = EmbedderWatchingRecorder(embedder)
@@ -427,16 +440,130 @@ def test_one_project_has_one_set_of_services(test_settings: Settings, sample_pro
     assert registry.services_for(sample_project) is registry.services_for(sample_project)
 
 
-async def test_an_index_whose_file_records_were_lost_is_rebuilt(
+async def test_files_whose_records_were_lost_are_indexed_again_without_doubled_chunks(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
-    """A whole-index write that stopped after removing the records leaves chunks alone."""
     store = open_index_store(tmp_path / "index", IDENTITY)
     indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
     lancedb.connect(str(store.directory)).open_table(FILES_TABLE).delete(MATCH_EVERY_ROW)
 
-    status = await indexing.status(sample_project)
     report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
-    assert (status.rebuild_reason, report.files_indexed) == (RebuildReason.incomplete, 2)
+    assert (report.files_indexed, store.counts()) == (2, IndexCounts(files=2, chunks=6))
+
+
+async def test_an_edited_file_embeds_only_its_chunks_whose_text_changed(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
+        sample_project, force=False, progress=NO_PROGRESS
+    )
+    edited = sample_project / "main.py"
+    edited.write_text(edited.read_text() + ADDED_FUNCTION)
+    touch_later(edited)
+    embedder = FakeEmbedder()
+
+    await indexing_service(store, embedder, test_settings, build_chunker()).index(
+        sample_project, force=False, progress=NO_PROGRESS
+    )
+
+    assert embedder.embedded_texts == [ADDED_FUNCTION.strip()]
+
+
+async def test_a_forced_run_embeds_every_chunk_again(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """A model swapped under its own name gives other vectors that nothing else can see."""
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
+        sample_project, force=False, progress=NO_PROGRESS
+    )
+    embedder = FakeEmbedder()
+
+    await indexing_service(store, embedder, test_settings, build_chunker()).index(
+        sample_project, force=True, progress=NO_PROGRESS
+    )
+
+    assert len(embedder.embedded_texts) == 6
+
+
+async def test_an_edit_after_a_model_of_another_width_took_its_name_is_embedded_at_the_new_width(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """The edited file's unchanged chunks hold vectors of the old width: none is reused."""
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
+        sample_project, force=False, progress=NO_PROGRESS
+    )
+    edited = sample_project / "main.py"
+    edited.write_text(edited.read_text() + ADDED_FUNCTION)
+    touch_later(edited)
+    wider = indexing_service(store, FakeEmbedder(dimension=WIDE), test_settings, build_chunker())
+
+    await wider.index(sample_project, force=False, progress=NO_PROGRESS)
+    status = await wider.status(sample_project)
+
+    assert (store.counts(), status.stale_files_count) == (IndexCounts(files=1, chunks=4), 1)
+
+
+async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
+    test_settings: Settings, tmp_path: Path
+):
+    """The next run indexes only the rest."""
+    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+
+    with pytest.raises(asyncio.CancelledError):
+        await indexing.index(
+            project, force=False, progress=ProgressReporter(CancelOnceWritten(store))
+        )
+
+    assert store.counts() == IndexCounts(files=2, chunks=2 * FUNCTIONS_PER_FILE)
+
+
+async def test_a_first_index_of_several_writes_leaves_every_chunk_in_the_full_text_index(
+    test_settings: Settings, tmp_path: Path
+):
+    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
+    store = open_index_store(tmp_path / "index", IDENTITY)
+
+    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
+        project, force=False, progress=NO_PROGRESS
+    )
+
+    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
+    full_text_index = chunks_table.list_indices()[0]
+    assert chunks_table.index_stats(full_text_index.name).num_unindexed_rows == 0
+
+
+async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_index(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """A write that stopped between a new file's chunks and its record left them behind."""
+    (sample_project / "gone.py").write_text("def gone():\n    return 0\n")
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    lancedb.connect(str(store.directory)).open_table(FILES_TABLE).delete("path = 'gone.py'")
+    (sample_project / "gone.py").unlink()
+
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+    assert store.counts() == IndexCounts(files=2, chunks=6)
+
+
+def functions_in_files(root: Path, files: int, functions: int) -> Path:
+    """A project of several files, each holding a number of small functions, one chunk each."""
+    project = root / "functions"
+    project.mkdir()
+    for file_number in range(files):
+        (project / f"module_{file_number}.py").write_text(
+            "".join(
+                f"def function_{file_number}_{number}():\n    return {number}\n\n\n"
+                for number in range(functions)
+            )
+        )
+    return project

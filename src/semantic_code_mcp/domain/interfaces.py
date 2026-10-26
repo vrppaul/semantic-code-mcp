@@ -69,9 +69,25 @@ class IndexStore(ABC):
         """How many files and chunks the index holds."""
 
     @abstractmethod
+    def chunked_paths(self) -> set[Path]:
+        """The paths of the files the index holds chunks of, recorded or not: a write that
+        stopped between a file's chunks and its record leaves them unrecorded."""
+
+    @abstractmethod
+    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
+        """The stored vector of each of these chunks the index holds, by chunk id."""
+
+    @abstractmethod
+    def keep_up(self) -> None:
+        """Fold what was written into the index's own indexes now, as after a run of many
+        writes, rather than when enough writes have gathered."""
+
+    @abstractmethod
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
-        """Apply one index run's write as a unit no other writer interleaves with, in this
-        process or another, a cancelled request's thread included; the manifest is written
+        """Apply one write of an index run as a unit no other writer interleaves with, in
+        this process or another, a cancelled request's thread included: the chunks of the
+        files written take the place of those files' and the removed files' chunks, so a
+        reader finds a file's old chunks or its new ones; then their records; the manifest
         last. The vector of each chunk is in its row of `vectors`.
 
         Vectors of another width than those the index holds (a model swapped under the same

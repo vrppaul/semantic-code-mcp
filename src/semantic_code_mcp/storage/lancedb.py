@@ -20,9 +20,9 @@ pins its directory (Windows); lock files are never deleted, since a writer may b
 waiting on one.
 
 A write is one call, under the index's write lock, so two server processes on one index
-never write side by side. A write of changed files replaces those files'
-chunks, then their records; a whole-index write removes every record, then every chunk,
-then writes both again. The manifest comes last either way. The chunks table is made by
+never write side by side. Its chunks take the place of the chunks of the files it writes
+and removes in one merge keyed by chunk id, so a reader finds a file's old chunks or its
+new ones; then their records; the manifest last. The chunks table is made by
 the first write that has vectors, as wide as they are; vectors of another width (a model
 swapped under the same name) drop the records, then the table, and the index starts
 again from the write, its other files unrecorded so the next run indexes them.
@@ -32,8 +32,8 @@ connection still sees what another process wrote, and a table not yet made reads
 empty. So old versions are pruned only once they are older than any
 read can last; the upkeep that compacts the tables, folds new rows into the full-text
 index and prunes runs after a write once a table has gathered enough versions, not on
-every write, where it would cost more than the write itself; after a whole index is
-written it runs at once, so its rows are not searched unindexed until then.
+every write, where it would cost more than the write itself; after a run of many writes
+the run asks for it at once, so its rows are not searched unindexed until then.
 
 The project's index directory holds a `.gitignore` of `*`, so a project-local index
 never shows in the project's own repository, nor what 0.4 left there.
@@ -70,7 +70,6 @@ from semantic_code_mcp.domain.models import (
     Language,
     SearchResult,
     SourceFile,
-    WriteScope,
 )
 
 log = structlog.get_logger()
@@ -130,8 +129,6 @@ MTIME_COLUMN = "mtime_ns"
 SIZE_COLUMN = "size_bytes"
 # The axis of a vector matrix along one vector: rows are chunks, columns components
 VECTOR_LENGTH_AXIS = 1
-# A filter every row matches
-MATCH_EVERY_ROW = "true"
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
 COSINE_METRIC = "cosine"
@@ -283,6 +280,37 @@ class LanceDBIndexStore(IndexStore):
         return IndexCounts(files=self._count(FILES_TABLE), chunks=self._count(CHUNKS_TABLE))
 
     @override
+    def chunked_paths(self) -> set[Path]:
+        table = self._open(CHUNKS_TABLE)
+        if table is None:
+            return set()
+        # One column of every row, no vectors read
+        rows = table.search().select([PATH_COLUMN]).limit(None).to_arrow()
+        return {Path(path) for path in rows.column(PATH_COLUMN).to_pylist()}
+
+    @override
+    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
+        table = self._open(CHUNKS_TABLE)
+        if table is None or not chunk_ids:
+            return {}
+        quoted = ", ".join(quote_sql(chunk_id) for chunk_id in chunk_ids)
+        rows = (
+            table.search()
+            .where(f"{CHUNK_ID_COLUMN} IN ({quoted})")
+            .select([CHUNK_ID_COLUMN, VECTOR_COLUMN])
+            .limit(None)
+            .to_arrow()
+        )
+        vectors = rows.column(VECTOR_COLUMN).combine_chunks()
+        matrix = vectors.flatten().to_numpy().reshape(rows.num_rows, vectors.type.list_size)
+        return dict(zip(rows.column(CHUNK_ID_COLUMN).to_pylist(), matrix, strict=True))
+
+    @override
+    def keep_up(self) -> None:
+        with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
+            self._keep_up(every_table=True)
+
+    @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
         if len(update.chunks) != len(vectors):
             message = f"{len(update.chunks)} chunks but {len(vectors)} vectors"
@@ -293,23 +321,17 @@ class LanceDBIndexStore(IndexStore):
             database = self._created_database()
             if update.chunks:
                 self._fit_layout(database, vectors.shape[VECTOR_LENGTH_AXIS])
-            match update.scope:
-                case WriteScope.everything:
-                    self._empty()
-                case WriteScope.changed_files:
-                    self._remove_files(update)
-            self._add_chunks(database, update.chunks, vectors)
-            self._record_files(database, update.files)
+            self._write_chunks(database, update, vectors)
+            self._write_records(database, update)
             manifest = IndexManifest(
                 identity=self._identity,
                 schema_version=SCHEMA_VERSION,
                 indexed_at=datetime.now(UTC),
             )
             write_atomically(self._directory / MANIFEST_FILE, manifest.model_dump_json())
-            self._keep_up(every_table=update.scope == WriteScope.everything)
+            self._keep_up(every_table=False)
         log.debug(
             "index_written",
-            scope=update.scope,
             files=len(update.files),
             chunks=len(update.chunks),
             removed=len(update.removed_paths),
@@ -376,58 +398,54 @@ class LanceDBIndexStore(IndexStore):
                 database.drop_table(name)
                 self._kept_up_at.pop(name, None)
 
-    def _empty(self) -> None:
-        """Remove every record and chunk before a whole index is written again.
-
-        The records go first: a write that stops between the two leaves chunks without
-        records, which the next run reads as incomplete and builds again, never records of
-        chunks that are gone. Rows are deleted and the tables kept, so a reader finds them
-        throughout.
-        """
-        for name in (FILES_TABLE, CHUNKS_TABLE):
-            table = self._open(name)
-            if table is not None:
-                table.delete(MATCH_EVERY_ROW)
-
-    def _remove_files(self, update: IndexUpdate) -> None:
-        """Remove the chunks of every file written or removed, and the records of the removed."""
-        written_or_removed = [*(file.path for file in update.files), *update.removed_paths]
-        stored_chunks = self._open(CHUNKS_TABLE)
-        if stored_chunks is not None and written_or_removed:
-            stored_chunks.delete(path_filter(PATH_COLUMN, written_or_removed))
-        stored_files = self._open(FILES_TABLE)
-        if stored_files is not None and update.removed_paths:
-            stored_files.delete(path_filter(PATH_COLUMN, update.removed_paths))
-
-    def _add_chunks(
-        self, database: lancedb.DBConnection, chunks: list[Chunk], vectors: VectorMatrix
+    def _write_chunks(
+        self, database: lancedb.DBConnection, update: IndexUpdate, vectors: VectorMatrix
     ) -> None:
-        """Add chunks, making the table as wide as their vectors if there is none, and its
-        full-text index if it has none; upkeep keeps that index current afterwards."""
-        if not chunks:
-            return
-        rows = chunks_table(chunks, vectors)
+        """Put the chunks of the files written in place of what the index held of them and
+        of the files removed, in one commit; a chunk whose id is stored already is updated
+        where it stands. Makes the table, and its full-text index, if there is none."""
         table = self._open(CHUNKS_TABLE)
         if table is None:
-            table = database.create_table(CHUNKS_TABLE, data=rows)
+            if not update.chunks:
+                return
+            table = database.create_table(CHUNKS_TABLE, data=chunks_table(update.chunks, vectors))
         else:
-            table.add(rows)
+            replaced = [*(file.path for file in update.files), *update.removed_paths]
+            if not replaced:
+                return
+            rows = (
+                chunks_table(update.chunks, vectors)
+                if update.chunks
+                else table.schema.empty_table()
+            )
+            (
+                table.merge_insert(CHUNK_ID_COLUMN)
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .when_not_matched_by_source_delete(path_filter(PATH_COLUMN, replaced))
+                .execute(rows)
+            )
         if not has_full_text_index(table):
             table.create_fts_index(CONTENT_COLUMN)
 
-    def _record_files(self, database: lancedb.DBConnection, files: list[SourceFile]) -> None:
-        """Record the files written, after their chunks: a crash between the two leaves a
-        file unrecorded, and so indexed again by the next run."""
-        if not files:
-            return
-        rows = files_table(files)
+    def _write_records(self, database: lancedb.DBConnection, update: IndexUpdate) -> None:
+        """Record the files written and drop the records of the files removed, after their
+        chunks: a write stopped between the two leaves the old records, which the next run
+        reads as files changed or gone, and writes again."""
         table = self._open(FILES_TABLE)
         if table is None:
-            database.create_table(FILES_TABLE, data=rows)
+            if update.files:
+                database.create_table(FILES_TABLE, data=files_table(update.files))
             return
-        table.merge_insert(
-            PATH_COLUMN
-        ).when_matched_update_all().when_not_matched_insert_all().execute(rows)
+        if update.removed_paths:
+            table.delete(path_filter(PATH_COLUMN, update.removed_paths))
+        if update.files:
+            (
+                table.merge_insert(PATH_COLUMN)
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute(files_table(update.files))
+            )
 
     def _keep_up(self, *, every_table: bool) -> None:
         """Compact a table, fold its new rows into its indexes and prune its old versions:

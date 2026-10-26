@@ -1,5 +1,6 @@
 """Hand-written stand-ins for the services' parts: each keeps what it was handed."""
 
+import asyncio
 import hashlib
 import threading
 from collections import defaultdict
@@ -20,7 +21,6 @@ from semantic_code_mcp.domain.models import (
     IndexUpdate,
     SearchResult,
     SourceFile,
-    WriteScope,
 )
 
 EMBEDDING_DIMENSION = 384
@@ -87,7 +87,7 @@ class FakeEmbedder(Embedder):
 class FakeIndexStore(IndexStore):
     """A store that answers every search with the hits it was given and keeps what is
     written: each chunk with its vector, each file's record. Once written, its manifest
-    names the fake model."""
+    names the fake model; it has no full-text index to keep up."""
 
     def __init__(self, hits: list[SearchResult]) -> None:
         self.hits = hits
@@ -112,14 +112,25 @@ class FakeIndexStore(IndexStore):
         )
 
     @override
+    def chunked_paths(self) -> set[Path]:
+        return set(self.chunks_by_file)
+
+    @override
+    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
+        stored = {
+            chunk.chunk_id: vector
+            for path, chunks in self.chunks_by_file.items()
+            for chunk, vector in zip(chunks, self.vectors_by_file[path], strict=True)
+        }
+        return {chunk_id: stored[chunk_id] for chunk_id in stored.keys() & set(chunk_ids)}
+
+    @override
+    def keep_up(self) -> None:
+        return
+
+    @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
-        replaced = {
-            WriteScope.everything: [*self.chunks_by_file, *self.files_by_path],
-            WriteScope.changed_files: [
-                *(file.path for file in update.files),
-                *update.removed_paths,
-            ],
-        }[update.scope]
+        replaced = [*(file.path for file in update.files), *update.removed_paths]
         for path in replaced:
             self.chunks_by_file.pop(path, None)
             self.vectors_by_file.pop(path, None)
@@ -181,6 +192,29 @@ class ChangingChunker(VersionedChunker):
     def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
         self._change()
         return self._inner.chunk_file(project_root, path)
+
+
+def go_on() -> None:
+    """Let the run go on."""
+
+
+def cancel() -> None:
+    raise asyncio.CancelledError
+
+
+# How a client that hangs up answers a report: before the store holds a chunk, and after
+ANSWERS_TO_A_REPORT = {False: go_on, True: cancel}
+
+
+class CancelOnceWritten:
+    """A progress callback that cancels the run at its first report after the store first
+    holds a chunk: a client that hung up while the run was under way."""
+
+    def __init__(self, store: IndexStore) -> None:
+        self._store = store
+
+    async def __call__(self, _progress: float, _total: float, _message: str) -> None:
+        ANSWERS_TO_A_REPORT[self._store.counts().chunks > 0]()
 
 
 class ChunkCountRecorder:

@@ -83,7 +83,6 @@ def present_search_debug(report: SearchReport, results: list[SearchResultView]) 
         else IndexingSummaryView(
             files_indexed=indexing.files_indexed,
             chunks_indexed=indexing.chunks_indexed,
-            rebuild_reason=indexing.rebuild_reason,
         ),
     )
 
@@ -95,7 +94,6 @@ def present_index(report: IndexReport) -> IndexCodebaseResponse:
         chunks_indexed=report.chunks_indexed,
         files_deleted=report.files_deleted,
         duration_seconds=report.duration_seconds,
-        rebuild_reason=report.rebuild_reason,
     )
 
 
@@ -108,7 +106,6 @@ def present_status(status: IndexStatus) -> IndexStatusResponse:
         chunks_count=status.chunks_count,
         stale_files_count=status.stale_files_count,
         manifest=None if status.manifest is None else present_manifest(status.manifest),
-        rebuild_reason=status.rebuild_reason,
     )
 
 

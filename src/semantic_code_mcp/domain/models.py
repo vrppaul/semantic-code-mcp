@@ -159,33 +159,26 @@ class IndexManifest(BaseModel):
     indexed_at: datetime
 
 
-class RebuildReason(StrEnum):
-    """Why an index cannot be brought up to date file by file and is built again whole."""
-
-    # Chunks without file records: a whole-index write that stopped midway
-    incomplete = auto()
-
-
-class WriteScope(StrEnum):
-    """How much of the index one write replaces."""
-
-    # The chunks and records of the files written and of the files removed
-    changed_files = auto()
-    # Every chunk and record: a forced run, or a rebuild
-    everything = auto()
-
-
 class IndexUpdate(BaseModel):
-    """One write of an index run: the files indexed with their chunks, and the paths
-    removed. The chunks' vectors travel beside it."""
+    """One write of an index run: whole files with their chunks, which take the place of
+    what the index held of them, and the paths removed. A run writes a slice of its files
+    at a time; the chunks' vectors travel beside it."""
 
     model_config = ConfigDict(frozen=True)
 
-    scope: WriteScope
     # The files indexed, as the scan found them
     files: list[SourceFile]
     chunks: list[Chunk]
     removed_paths: list[Path]
+
+    @model_validator(mode="after")
+    def chunks_belong_to_the_files_written(self) -> IndexUpdate:
+        written = {file.path for file in self.files}
+        strays = sorted({chunk.path for chunk in self.chunks} - written)
+        if strays:
+            message = f"chunks of files the write does not hold: {strays}"
+            raise ValueError(message)
+        return self
 
 
 class IndexCounts(BaseModel):
@@ -207,8 +200,6 @@ class IndexStatus(BaseModel):
     # Files the index no longer matches: new, modified or deleted since it was written
     stale_files_count: int
     manifest: IndexManifest | None
-    # Set when the next run has to build the index again whole
-    rebuild_reason: RebuildReason | None
 
     @property
     def is_indexed(self) -> bool:
@@ -224,8 +215,6 @@ class IndexReport(BaseModel):
     chunks_indexed: int
     files_deleted: int
     duration_seconds: float
-    # Set when the run built the index again whole, saying why
-    rebuild_reason: RebuildReason | None
 
 
 class SearchTimings(BaseModel):

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `pandas` dependency
 
 ### Added
-- `index_status` reports the index's `manifest` (model, chunker version, storage schema version) and a `rebuild_reason` when the next search must build it again whole; `index_codebase` and the search's debug block report the `rebuild_reason` of a run that did
+- `index_status` reports the index's `manifest` (model, chunker version, storage schema version)
 - Each `search_code` result names its `parent`: the class, impl, module or heading it sits in, as `Stack` for `Stack.push` and `Guide > Install` for a section
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done
 - The index keeps a record of each file and a manifest of what built it, in place of `file_mtimes.json`
 - Each model, chunker version and storage layout keeps an index of its own beside the others in the project's index directory: two sessions of different versions or models never build each other's index again, and switching back finds the old one. The first search after the upgrade builds a new index; one that no session read or wrote for a week is removed, 0.4's included, but never while a writer holds it
-- A run writes once, after embedding: a forced re-index or a rebuild keeps the old index searchable until the new one is ready, instead of emptying it first
-- A write no longer rebuilds the full-text index; the index is compacted, its new rows indexed and old versions pruned once twenty versions have gathered, and at once after a whole index is written
+- An index run writes a slice of files at a time: a forced re-index keeps every file searchable throughout, instead of emptying the index first, and a first index stopped midway keeps the files it wrote
+- An edit re-embeds only the chunks whose text it changed; a forced re-index embeds every chunk again
+- A write no longer rebuilds the full-text index; the index is compacted, its new rows indexed and old versions pruned once twenty versions have gathered, and at once after an index run of many writes
 - `index_status` of a project never indexed no longer creates its index directory
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project

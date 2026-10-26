@@ -67,7 +67,7 @@ class SearchService:
         status = await self._indexing.status(project_root)
 
         index_report: IndexReport | None = None
-        if status.rebuild_reason is not None or status.stale_files_count:
+        if status.stale_files_count:
             await progress.report(SearchPhase.indexing.value, indexing_message(status))
             index_report = await self._indexing.index(
                 project_root,
@@ -130,8 +130,6 @@ class SearchService:
 
 def indexing_message(status: IndexStatus) -> str:
     """What a search tells the client it is doing before it indexes."""
-    if status.rebuild_reason is not None:
-        return f"Rebuilding the index ({status.rebuild_reason})..."
     if not status.is_indexed:
         return "Index not found, indexing..."
     return f"Re-indexing {status.stale_files_count} stale files..."
