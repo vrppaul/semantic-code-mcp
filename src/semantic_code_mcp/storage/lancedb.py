@@ -57,6 +57,7 @@ import numpy
 import pyarrow
 import structlog
 from filelock import FileLock
+from lancedb.index import FTS
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -426,7 +427,7 @@ class LanceDBIndexStore(IndexStore):
                 .execute(rows)
             )
         if not has_full_text_index(table):
-            table.create_fts_index(SEARCH_TEXT_COLUMN, remove_stop_words=REMOVE_STOP_WORDS)
+            table.create_index(SEARCH_TEXT_COLUMN, config=FTS(remove_stop_words=REMOVE_STOP_WORDS))
 
     def _write_records(self, database: lancedb.DBConnection, update: IndexUpdate) -> None:
         """Record the files written and drop the records of the files removed, after their

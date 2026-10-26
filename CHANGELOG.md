@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
+- Requires LanceDB 0.40: 0.27's filtered keyword search could drop a matching chunk from a search narrowed by `chunk_kinds`, `languages` or a glob
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`

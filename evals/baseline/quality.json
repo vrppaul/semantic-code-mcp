@@ -7,14 +7,14 @@
           "kind": "code",
           "queries": 20,
           "file": {
-            "hits_at_1": 17,
-            "hits_at_3": 19,
-            "mean_reciprocal_rank": 0.89
+            "hits_at_1": 16,
+            "hits_at_3": 20,
+            "mean_reciprocal_rank": 0.875
           },
           "chunk": {
-            "hits_at_1": 14,
-            "hits_at_3": 19,
-            "mean_reciprocal_rank": 0.799
+            "hits_at_1": 13,
+            "hits_at_3": 20,
+            "mean_reciprocal_rank": 0.783
           }
         },
         {
@@ -38,9 +38,9 @@
           "shares_answer_words": true,
           "queries": 17,
           "chunk": {
-            "hits_at_1": 14,
-            "hits_at_3": 16,
-            "mean_reciprocal_rank": 0.871
+            "hits_at_1": 13,
+            "hits_at_3": 17,
+            "mean_reciprocal_rank": 0.853
           }
         },
         {
@@ -152,13 +152,13 @@
               "parent": "ProgressBar"
             },
             {
-              "path": "tests/test_termui.py",
-              "symbol": "test_progressbar_update_with_item_show_func",
+              "path": "src/click/termui.py",
+              "symbol": "progressbar",
               "parent": ""
             },
             {
-              "path": "src/click/termui.py",
-              "symbol": "progressbar",
+              "path": "tests/test_termui.py",
+              "symbol": "test_progressbar_update_with_item_show_func",
               "parent": ""
             },
             {
@@ -167,9 +167,9 @@
               "parent": ""
             },
             {
-              "path": "tests/test_termui.py",
-              "symbol": "test_progressbar_yields_all_items",
-              "parent": ""
+              "path": "src/click/_termui_impl.py",
+              "symbol": "__iter__",
+              "parent": "ProgressBar"
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -540,33 +540,23 @@
           "query": "invoke a command in a test and capture what it prints",
           "kind": "code",
           "shares_answer_words": true,
-          "file_rank": 7,
-          "chunk_rank": 7,
+          "file_rank": 3,
+          "chunk_rank": 3,
           "hits": [
-            {
-              "path": "tests/test_stream_lifecycle.py",
-              "symbol": "test_output_isolation_across_invokes",
-              "parent": ""
-            },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_fd_stderr_separation",
               "parent": ""
             },
             {
-              "path": "tests/test_testing.py",
-              "symbol": "test_capture_fd_faulthandler",
+              "path": "tests/test_stream_lifecycle.py",
+              "symbol": "test_output_isolation_across_invokes",
               "parent": ""
             },
             {
-              "path": "tests/test_testing.py",
-              "symbol": "test_capture_fd_os_write",
-              "parent": ""
-            },
-            {
-              "path": "tests/test_testing.py",
-              "symbol": "test_capture_pytest_matrix",
-              "parent": ""
+              "path": "docs/testing.md",
+              "symbol": "`capture=\"sys\"` (default)",
+              "parent": "Testing Click Applications > Capture modes"
             },
             {
               "path": "tests/test_testing.py",
@@ -574,9 +564,9 @@
               "parent": ""
             },
             {
-              "path": "docs/testing.md",
-              "symbol": "`capture=\"sys\"` (default)",
-              "parent": "Testing Click Applications > Capture modes"
+              "path": "tests/test_testing.py",
+              "symbol": "test_capture_pytest_matrix",
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
@@ -592,6 +582,16 @@
               "path": "tests/test_context.py",
               "symbol": "test_pass_obj",
               "parent": ""
+            },
+            {
+              "path": "tests/test_command_decorators.py",
+              "symbol": "test_command_no_parens",
+              "parent": ""
+            },
+            {
+              "path": "docs/exceptions.md",
+              "symbol": "Where are Errors Handled?",
+              "parent": "Exception Handling and Exit Codes"
             }
           ]
         },
@@ -717,17 +717,22 @@
           "query": "write a file atomically by renaming a temporary file into place",
           "kind": "code",
           "shares_answer_words": true,
-          "file_rank": 1,
-          "chunk_rank": 1,
+          "file_rank": 2,
+          "chunk_rank": 2,
           "hits": [
+            {
+              "path": "tests/test_arguments.py",
+              "symbol": "test_file_atomics",
+              "parent": ""
+            },
             {
               "path": "src/click/_compat.py",
               "symbol": "open_stream",
               "parent": ""
             },
             {
-              "path": "tests/test_arguments.py",
-              "symbol": "test_file_atomics",
+              "path": "src/click/testing.py",
+              "symbol": "_FDCapture",
               "parent": ""
             },
             {
@@ -736,9 +741,9 @@
               "parent": ""
             },
             {
-              "path": "src/click/testing.py",
-              "symbol": "_FDCapture",
-              "parent": ""
+              "path": "src/click/types.py",
+              "symbol": "convert",
+              "parent": "File"
             },
             {
               "path": "docs/handling-files.md",
@@ -764,11 +769,6 @@
               "path": "src/click/_termui_impl.py",
               "symbol": "edit",
               "parent": "Editor"
-            },
-            {
-              "path": "src/click/types.py",
-              "symbol": "File",
-              "parent": ""
             }
           ]
         },
@@ -844,19 +844,29 @@
               "parent": ""
             },
             {
-              "path": "examples/termui/termui.py",
-              "symbol": "colordemo",
+              "path": "examples/colors/colors.py",
+              "symbol": "cli",
               "parent": ""
             },
             {
-              "path": "examples/colors/colors.py",
-              "symbol": "cli",
+              "path": "examples/termui/termui.py",
+              "symbol": "colordemo",
               "parent": ""
             },
             {
               "path": "docs/utils.md",
               "symbol": "ANSI Colors",
               "parent": "Utilities"
+            },
+            {
+              "path": "tests/test_utils/test_echo.py",
+              "symbol": "test_echo_color_flag",
+              "parent": ""
+            },
+            {
+              "path": "tests/test_termui.py",
+              "symbol": "test_prompt_and_confirm_ansi_respects_color",
+              "parent": ""
             },
             {
               "path": "tests/test_utils/test_style.py",
@@ -1154,14 +1164,14 @@
               "parent": "_LazyFile"
             },
             {
-              "path": "src/click/_compat.py",
-              "symbol": "open_stream",
-              "parent": ""
-            },
-            {
               "path": "src/click/utils.py",
               "symbol": "__enter__",
               "parent": "_KeepOpenFile"
+            },
+            {
+              "path": "src/click/_compat.py",
+              "symbol": "open_stream",
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
@@ -1306,11 +1316,6 @@
               "parent": "Testing Click Applications"
             },
             {
-              "path": "tests/test_testing.py",
-              "symbol": "test_tempdir_replacement_pattern",
-              "parent": ""
-            },
-            {
               "path": "tests/test_basic.py",
               "symbol": "test_path_option",
               "parent": ""
@@ -1319,6 +1324,11 @@
               "path": "docs/testing.md",
               "symbol": "Running tests in parallel",
               "parent": "Testing Click Applications > File System Isolation"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_tempdir_replacement_pattern",
+              "parent": ""
             },
             {
               "path": "docs/faqs.md",
@@ -1341,13 +1351,13 @@
               "parent": ""
             },
             {
-              "path": "tests/test_termui.py",
-              "symbol": "test_get_pager_file_close_does_not_close_borrowed_stream",
+              "path": "tests/test_arguments.py",
+              "symbol": "test_file_atomics",
               "parent": ""
             },
             {
-              "path": "tests/test_arguments.py",
-              "symbol": "test_file_atomics",
+              "path": "tests/test_termui.py",
+              "symbol": "test_get_pager_file_close_does_not_close_borrowed_stream",
               "parent": ""
             }
           ]
@@ -1692,11 +1702,6 @@
               "parent": "_NumberParamTypeBase"
             },
             {
-              "path": "tests/test_basic.py",
-              "symbol": "test_datetime_argument_optional_metavar",
-              "parent": ""
-            },
-            {
               "path": "src/click/types.py",
               "symbol": "to_info_dict",
               "parent": "DateTime"
@@ -1705,6 +1710,11 @@
               "path": "src/click/types.py",
               "symbol": "DateTimeInfoDict",
               "parent": ""
+            },
+            {
+              "path": "docs/faqs.md",
+              "symbol": "Answer",
+              "parent": "Frequently Asked Questions > General > Calling a command as a regular function"
             }
           ]
         },
@@ -2776,8 +2786,8 @@
             },
             {
               "path": "src/click/parser.py",
-              "symbol": "__init__",
-              "parent": "_Option"
+              "symbol": "add_argument",
+              "parent": "_OptionParser"
             }
           ]
         },
@@ -2875,9 +2885,9 @@
               "parent": "_ApostropheReprType"
             },
             {
-              "path": "tests/test_termui.py",
+              "path": "tests/typing/typing_prompt.py",
               "symbol": "convert",
-              "parent": "_RejectAllRawType"
+              "parent": "DoublingType"
             },
             {
               "path": "tests/test_termui.py",
@@ -3796,12 +3806,12 @@
           "file": {
             "hits_at_1": 9,
             "hits_at_3": 12,
-            "mean_reciprocal_rank": 0.728
+            "mean_reciprocal_rank": 0.717
           },
           "chunk": {
             "hits_at_1": 7,
             "hits_at_3": 11,
-            "mean_reciprocal_rank": 0.607
+            "mean_reciprocal_rank": 0.596
           }
         },
         {
@@ -3827,7 +3837,7 @@
           "chunk": {
             "hits_at_1": 5,
             "hits_at_3": 9,
-            "mean_reciprocal_rank": 0.636
+            "mean_reciprocal_rank": 0.621
           }
         },
         {
@@ -3862,8 +3872,8 @@
           },
           "chunk": {
             "hits_at_1": 1,
-            "hits_at_3": 3,
-            "mean_reciprocal_rank": 0.429
+            "hits_at_3": 2,
+            "mean_reciprocal_rank": 0.369
           }
         },
         {
@@ -4549,17 +4559,12 @@
           "query": "turn a path into a file URL for terminal hyperlinks",
           "kind": "code",
           "shares_answer_words": true,
-          "file_rank": 2,
-          "chunk_rank": 2,
+          "file_rank": 3,
+          "chunk_rank": 3,
           "hits": [
             {
               "path": "tests/tests.rs",
               "symbol": "test_hyperlink",
-              "parent": ""
-            },
-            {
-              "path": "src/hyperlink.rs",
-              "symbol": "Display for PathUrl",
               "parent": ""
             },
             {
@@ -4569,12 +4574,7 @@
             },
             {
               "path": "src/hyperlink.rs",
-              "symbol": "PathUrl",
-              "parent": ""
-            },
-            {
-              "path": "src/hyperlink.rs",
-              "symbol": "PathUrl",
+              "symbol": "Display for PathUrl",
               "parent": ""
             },
             {
@@ -4583,8 +4583,8 @@
               "parent": "DirEntry"
             },
             {
-              "path": "src/output.rs",
-              "symbol": "print_entry",
+              "path": "src/hyperlink.rs",
+              "symbol": "encode",
               "parent": ""
             },
             {
@@ -4593,14 +4593,24 @@
               "parent": "TestEnv"
             },
             {
-              "path": "src/hyperlink.rs",
-              "symbol": "encode",
+              "path": "src/output.rs",
+              "symbol": "print_entry",
               "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
               "symbol": "path",
               "parent": "DirEntry"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_symlink_as_root",
+              "parent": ""
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changes",
+              "parent": "v5.0.0"
             }
           ]
         },
@@ -4989,16 +4999,11 @@
           "kind": "code",
           "shares_answer_words": true,
           "file_rank": 1,
-          "chunk_rank": 2,
+          "chunk_rank": 5,
           "hits": [
             {
               "path": "src/main.rs",
               "symbol": "build_regex",
-              "parent": ""
-            },
-            {
-              "path": "src/main.rs",
-              "symbol": "build_pattern_regex",
               "parent": ""
             },
             {
@@ -5017,19 +5022,24 @@
               "parent": "fd"
             },
             {
+              "path": "src/main.rs",
+              "symbol": "build_pattern_regex",
+              "parent": ""
+            },
+            {
               "path": "README.md",
               "symbol": "`fd` doesn't seem to interpret my regex pattern correctly",
               "parent": "fd > Troubleshooting"
             },
             {
-              "path": "src/cli.rs",
-              "symbol": "Opts",
-              "parent": ""
-            },
-            {
               "path": "README.md",
               "symbol": "Searching for a particular file name",
               "parent": "fd > How to use"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "Opts",
+              "parent": ""
             },
             {
               "path": "src/main.rs",
@@ -5135,11 +5145,6 @@
               "parent": "10.5.0"
             },
             {
-              "path": "src/main.rs",
-              "symbol": "run",
-              "parent": ""
-            },
-            {
               "path": "src/cli.rs",
               "symbol": "no_search_paths",
               "parent": "Opts"
@@ -5158,6 +5163,11 @@
               "path": "src/cli.rs",
               "symbol": "Opts",
               "parent": ""
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Bugfixes",
+              "parent": "v8.3.0"
             }
           ]
         },
@@ -5478,7 +5488,7 @@
             },
             {
               "path": "src/exec/mod.rs",
-              "symbol": "tokens_multiple",
+              "symbol": "tokens_with_parent",
               "parent": "tests"
             }
           ]
@@ -5515,13 +5525,13 @@
             },
             {
               "path": "src/error.rs",
-              "symbol": "SanitizeErr for Error",
-              "parent": ""
+              "symbol": "sanitize",
+              "parent": "SanitizeErr for Error"
             },
             {
               "path": "src/error.rs",
-              "symbol": "sanitize",
-              "parent": "SanitizeErr for Error"
+              "symbol": "SanitizeErr for Error",
+              "parent": ""
             }
           ]
         },
@@ -6019,8 +6029,8 @@
               "parent": ""
             },
             {
-              "path": "tests/tests.rs",
-              "symbol": "test_and_plus_extension",
+              "path": "src/filesystem.rs",
+              "symbol": "strip_current_dir",
               "parent": ""
             }
           ]
@@ -6207,12 +6217,12 @@
           "file": {
             "hits_at_1": 1,
             "hits_at_3": 1,
-            "mean_reciprocal_rank": 0.6
+            "mean_reciprocal_rank": 0.583
           },
           "chunk": {
             "hits_at_1": 1,
             "hits_at_3": 1,
-            "mean_reciprocal_rank": 0.6
+            "mean_reciprocal_rank": 0.583
           }
         }
       ],
@@ -6387,14 +6397,14 @@
               "parent": "TestHybridSearch"
             },
             {
-              "path": "src/semantic_code_mcp/services/search_service.py",
-              "symbol": "SearchService",
-              "parent": ""
-            },
-            {
               "path": "src/semantic_code_mcp/storage/lancedb.py",
               "symbol": "search_hybrid",
               "parent": "LanceDBVectorStore"
+            },
+            {
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "SearchService",
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/models/responses.py",
@@ -6402,9 +6412,9 @@
               "parent": ""
             },
             {
-              "path": "src/semantic_code_mcp/services/search_service.py",
-              "symbol": "search",
-              "parent": "SearchService"
+              "path": "src/semantic_code_mcp/protocols.py",
+              "symbol": "VectorStoreProtocol",
+              "parent": ""
             }
           ]
         },
@@ -6716,24 +6726,24 @@
               "parent": "PythonChunker"
             },
             {
-              "path": "tests/test_chunker.py",
-              "symbol": "test_file_with_only_docstring",
-              "parent": "TestPythonChunker"
-            },
-            {
               "path": "docs/decisions/003-module-docstring-chunking.md",
               "symbol": "Decision",
               "parent": "003: Module Docstring Chunking"
             },
             {
               "path": "tests/test_chunker.py",
-              "symbol": "test_docstring_after_import_not_extracted",
+              "symbol": "test_file_with_only_docstring",
               "parent": "TestPythonChunker"
             },
             {
               "path": "docs/decisions/003-module-docstring-chunking.md",
               "symbol": "Alternatives Considered",
               "parent": "003: Module Docstring Chunking"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_docstring_after_import_not_extracted",
+              "parent": "TestPythonChunker"
             },
             {
               "path": "tests/test_chunker.py",
@@ -6746,18 +6756,18 @@
               "parent": "003: Module Docstring Chunking"
             },
             {
-              "path": "tests/test_chunker.py",
-              "symbol": "test_module_docstring_multiline_line_numbers",
-              "parent": "TestPythonChunker"
-            },
-            {
               "path": "src/semantic_code_mcp/chunkers/python.py",
               "symbol": "_extract_chunks",
               "parent": "PythonChunker"
             },
             {
               "path": "tests/test_chunker.py",
-              "symbol": "test_no_module_docstring_starts_with_import",
+              "symbol": "test_module_docstring_multiline_line_numbers",
+              "parent": "TestPythonChunker"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_comments_before_docstring_still_extracted",
               "parent": "TestPythonChunker"
             }
           ]
@@ -7065,14 +7075,14 @@
               "parent": "004: Multi-Language Chunker Architecture > Consequences"
             },
             {
-              "path": "tests/test_rust_chunker.py",
-              "symbol": "test_trait_with_default_methods",
-              "parent": "TestRustChunker"
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Option B: Generic chunker with declarative config",
+              "parent": "004: Multi-Language Chunker Architecture > Alternatives Considered"
             },
             {
-              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
-              "symbol": "Why structural differences prevent a pure config approach",
-              "parent": "004: Multi-Language Chunker Architecture > Consequences"
+              "path": "tests/test_rust_chunker.py",
+              "symbol": "test_trait_definition",
+              "parent": "TestRustChunker"
             }
           ]
         },
@@ -7153,21 +7163,6 @@
               "parent": ""
             },
             {
-              "path": "src/semantic_code_mcp/container.py",
-              "symbol": "get_store",
-              "parent": "Container"
-            },
-            {
-              "path": "src/semantic_code_mcp/protocols.py",
-              "symbol": "VectorStoreProtocol",
-              "parent": ""
-            },
-            {
-              "path": "tests/test_storage.py",
-              "symbol": "test_store_and_retrieve_chunk",
-              "parent": "TestLanceDBVectorStore"
-            },
-            {
               "path": "src/semantic_code_mcp/storage/__init__.py",
               "symbol": "__init__",
               "parent": ""
@@ -7191,6 +7186,11 @@
               "path": "CHANGELOG.md",
               "symbol": "Fixed",
               "parent": "Changelog > [0.1.0] - 2026-01-31"
+            },
+            {
+              "path": "tests/test_storage.py",
+              "symbol": "test_empty_store_returns_empty_results",
+              "parent": "TestLanceDBVectorStore"
             }
           ]
         },
@@ -7340,11 +7340,6 @@
               "parent": "001: Initial Architecture > Decision"
             },
             {
-              "path": "README.md",
-              "symbol": "macOS / Windows",
-              "parent": "semantic-code-mcp > Installation"
-            },
-            {
               "path": "TODO.md",
               "symbol": "Reduce Install Size (CPU-only PyTorch)",
               "parent": "TODO > Done"
@@ -7433,24 +7428,19 @@
               "parent": "TestMarkdownChunker"
             },
             {
-              "path": "tests/test_chunker.py",
-              "symbol": "test_nested_function_is_included_in_parent",
-              "parent": "TestPythonChunker"
-            },
-            {
               "path": "src/semantic_code_mcp/chunkers/markdown.py",
               "symbol": "_heading_text",
               "parent": "MarkdownChunker"
             },
             {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_nested_function_is_included_in_parent",
+              "parent": "TestPythonChunker"
+            },
+            {
               "path": "src/semantic_code_mcp/protocols.py",
               "symbol": "get_indexed_files",
               "parent": "VectorStoreProtocol"
-            },
-            {
-              "path": "TODO.md",
-              "symbol": "Package Restructuring & Enum Standardization",
-              "parent": "TODO > Done"
             },
             {
               "path": "tests/test_index_service.py",
@@ -7465,6 +7455,11 @@
             {
               "path": "tests/test_markdown_chunker.py",
               "symbol": "test_heading_with_code_block",
+              "parent": "TestMarkdownChunker"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_no_headings_produces_module_chunk",
               "parent": "TestMarkdownChunker"
             }
           ]
@@ -7784,8 +7779,8 @@
           "query": "the libraries the project is built with",
           "kind": "documentation",
           "shares_answer_words": false,
-          "file_rank": 5,
-          "chunk_rank": 5,
+          "file_rank": 6,
+          "chunk_rank": 6,
           "hits": [
             {
               "path": "CLAUDE.md",
@@ -7796,6 +7791,11 @@
               "path": "docs/decisions/004-multi-language-chunker-architecture.md",
               "symbol": "Context",
               "parent": "004: Multi-Language Chunker Architecture"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "Context",
+              "parent": "005: Markdown Chunking"
             },
             {
               "path": "src/semantic_code_mcp/profiling.py",

@@ -316,6 +316,45 @@ def test_both_channels_find_within_the_scope_before_they_cut(
     ] == [["guide"], ["guide"]]
 
 
+# Code no word of the question matches but one chunk's "state", more than nine chunks
+UNMATCHED_CODE_CHUNKS = 8
+OBJECT_QUESTION = "the object that holds state while a command runs"
+
+
+def test_a_narrowed_keyword_channel_finds_a_chunk_of_the_scope_only_a_common_word_matches(
+    store: LanceDBIndexStore,
+):
+    """LanceDB 0.27 lost such a chunk from a filtered full-text search of ten chunks or more,
+    and so from every narrowed search (ADR 006, stage 6)."""
+    code = [
+        function_chunk(f"other_{number}", f"src/other_{number}.py", "pass")
+        for number in range(UNMATCHED_CODE_CHUNKS)
+    ]
+    holder = function_chunk("holder", "src/holder.py", "state")
+    guide = Chunk(
+        chunk_id="guide",
+        path=Path("docs/guide.md"),
+        language=Language.markdown,
+        kind=ChunkKind.section,
+        name="guide",
+        parent=None,
+        line_start=1,
+        line_end=1,
+        content="A guide.",
+    )
+    chunks = [*code, holder, guide]
+    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
+    scope = SearchScope(
+        kinds=[ChunkKind.section], languages=[], path_glob=None, exclude_glob=None, directory=None
+    )
+
+    candidates = store.search_candidates(
+        QUERY, SearchQuery(text=OBJECT_QUESTION, limit=LIMIT, scope=scope), LIMIT
+    )
+
+    assert [candidate.chunk.name for candidate in candidates.by_keyword] == ["guide"]
+
+
 # Paths whose characters a regex, SQL or a glob reads apart, each in a file of its own
 AWKWARD_PATHS = [
     "src/module.py",

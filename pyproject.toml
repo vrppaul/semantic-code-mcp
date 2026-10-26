@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Pavel Paranin" }]
 dependencies = [
     "filelock>=3.20.3",
-    "lancedb>=0.27.0",
+    "lancedb>=0.40.0,<0.41",
     "mcp>=2.3.0",
     "numpy>=2.4.1",
     "pyarrow>=23.0.0",
