@@ -3,7 +3,7 @@
 import hashlib
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from semantic_code_mcp.domain.models import HIGHEST_SIMILARITY, LOWEST_SIMILARITY
@@ -61,15 +61,23 @@ class Settings(BaseSettings):
     git_timeout_seconds: float = 10.0
 
     # How close in meaning to the query, a cosine similarity, a hit must be to stay: one no
-    # keyword matched, and one whose words match the query's. Set on the harness for the
-    # default model (ADR 006, stage 6): its right answers lie from 0.43 and 0.28 up, the
-    # off-topic questions' best hits up to 0.31 and 0.21, and a query of a chunk's bare name
-    # finds it by its words from 0.2 up for all but 2 of 352 names. Another model scores on
-    # a scale of its own
+    # keyword matched, and, never held to more, one whose words match the query's. Set on
+    # the harness for the default model; another model scores on a scale of its own (ADR
+    # 006, stage 6, holds the evidence)
     min_similarity: float = Field(default=0.35, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY)
     min_similarity_when_words_match: float = Field(
         default=0.2, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY
     )
+
+    @model_validator(mode="after")
+    def word_matches_held_to_no_more(self) -> Settings:
+        if self.min_similarity_when_words_match > self.min_similarity:
+            message = (
+                "min_similarity_when_words_match must not exceed min_similarity: a hit"
+                " whose words match the query's is never held to more than one whose do not"
+            )
+            raise ValueError(message)
+        return self
 
     @property
     def profiles_dir(self) -> Path:

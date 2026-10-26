@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 
@@ -57,3 +58,9 @@ def test_two_projects_have_different_indexes():
     settings = Settings(cache_dir=CACHE)
 
     assert get_index_path(settings, Path("/one")) != get_index_path(settings, Path("/two"))
+
+
+def test_a_floor_for_word_matches_above_the_floor_for_meaning_alone_is_refused():
+    """A hit whose words match the query's is never held to more than one whose do not."""
+    with pytest.raises(ValidationError):
+        Settings(min_similarity=0.1, min_similarity_when_words_match=0.2)

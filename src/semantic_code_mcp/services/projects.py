@@ -98,9 +98,14 @@ class ProjectRegistry:
                 store=store,
                 embedder=self._embedder,
                 indexing=indexing,
-                floors=SimilarityFloors(
-                    meaning_only=self._settings.min_similarity,
-                    words_match=self._settings.min_similarity_when_words_match,
-                ),
+                floors=similarity_floors(self._settings),
             ),
         )
+
+
+def similarity_floors(settings: Settings) -> SimilarityFloors:
+    """The floors a search holds its hits to, as the settings give them."""
+    return SimilarityFloors(
+        meaning_only=settings.min_similarity,
+        words_match=settings.min_similarity_when_words_match,
+    )

@@ -1,5 +1,6 @@
 """Tests for the words a chunk is found by in the full-text index."""
 
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -19,14 +20,18 @@ from semantic_code_mcp.storage.search_text import identifier_words, search_text
         pytest.param("naïveBayes", ["naïve", "Bayes"], id="a letter outside ASCII"),
         pytest.param("ÉcoleNormale", ["École", "Normale"], id="a capital outside ASCII"),
         pytest.param("read_file", ["read", "file"], id="snake case"),
+        pytest.param(
+            unicodedata.normalize("NFD", "naïveBayes"), ["naïve", "Bayes"], id="decomposed"
+        ),
     ],
 )
 def test_an_identifier_comes_apart_into_its_words(identifier: str, words: list[str]):
     assert identifier_words(identifier) == words
 
 
-def test_a_chunk_is_found_by_its_content_its_name_and_its_parent_with_their_words():
-    """The content stays as it is: splitting its identifiers moved no answer up."""
+def test_a_chunk_is_found_by_its_content_its_name_with_its_words_and_its_parent_s_words():
+    """The content stays as it is: splitting its identifiers moved no answer up. The parent
+    gives its words alone, or a class's methods would outrank it for its own name."""
     chunk = Chunk(
         chunk_id="stack-push",
         path=Path("src/stack.rs"),
@@ -43,7 +48,6 @@ def test_a_chunk_is_found_by_its_content_its_name_and_its_parent_with_their_word
         chunk.content,
         "pushItem",
         "push Item",
-        "BoundedStack",
         "Bounded Stack",
     ]
 

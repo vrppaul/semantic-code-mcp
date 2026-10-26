@@ -82,8 +82,9 @@ from semantic_code_mcp.storage.search_text import search_text
 
 log = structlog.get_logger()
 
-# Bumped by any change to the tables' columns; each version keeps an index of its own
-SCHEMA_VERSION = 3
+# Bumped by any change to the tables' columns or to what one is made from (4: the search
+# text splits only names and parents); each version keeps an index of its own
+SCHEMA_VERSION = 4
 
 # An index's directory, under the project's, named by its layout and its identity's digest;
 # its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX

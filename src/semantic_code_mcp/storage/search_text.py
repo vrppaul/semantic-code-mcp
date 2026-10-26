@@ -3,12 +3,16 @@
 The index's tokenizer splits text at every character that is not a letter or a digit,
 so `get_user_name` is found by `user`, but it keeps `getUserName` and `HTTPServerError`
 whole, and a method's text does not name its class. So the text the index holds of a
-chunk is its content, then its name and its parent, each followed by a line of the words
-of every identifier in it whose case changes inside. The content's own identifiers stay
-whole: splitting them moved no answer up on the harness, and cost a pass over every text.
+chunk is its content; its name, followed by a line of the words of every identifier in it
+whose case changes inside or that holds digits; and its parent's words alone, as the
+parent's whole name in every method would outrank the class itself for that name (a
+review's probe: no class of five or more methods came first by words for its own name).
+The content's own identifiers stay whole: splitting them moved no answer up on the
+harness, and cost a pass over every text.
 """
 
 import re
+import unicodedata
 
 from semantic_code_mcp.domain.models import Chunk
 
@@ -20,21 +24,31 @@ WORD_SEPARATOR = " "
 LINE_SEPARATOR = "\n"
 # A run of capitals ending in this lower-case letter is a plural acronym, as in `URLs`
 PLURAL_ENDING = "s"
+# Unicode's composed form: a letter and its accent as one character, as most text has them
+COMPOSED_FORM = "NFC"
 
 
 def search_text(chunk: Chunk) -> str:
-    """What the full-text index holds of a chunk: its content, then its name and its
-    parent, each followed by a line of words for every identifier in it whose case
-    changes inside."""
-    parts = [chunk.name]
+    """What the full-text index holds of a chunk: its content; its name, followed by a
+    line of words for every identifier in it that splits into more than its underscores
+    give; and the words of its parent."""
+    lines = [chunk.content, chunk.name, *case_change_lines(chunk.name)]
     if chunk.parent is not None:
-        parts.append(chunk.parent)
-    lines = [line for part in parts for line in [part, *case_change_lines(part)]]
-    return LINE_SEPARATOR.join([chunk.content, *lines])
+        lines.append(WORD_SEPARATOR.join(words_of(chunk.parent)))
+    return LINE_SEPARATOR.join(lines)
+
+
+def words_of(text: str) -> list[str]:
+    """The words of every identifier in a text, in order: `outer::BoundedStack` is outer,
+    Bounded and Stack."""
+    return [
+        word for identifier in IDENTIFIER.findall(text) for word in identifier_words(identifier)
+    ]
 
 
 def case_change_lines(text: str) -> list[str]:
-    """A line of words for each identifier in the text whose case changes inside it."""
+    """A line of words for each identifier in the text that splits into more words than
+    its underscores give: its case changes inside, or it holds digits."""
     return [
         WORD_SEPARATOR.join(words)
         for identifier in IDENTIFIER.findall(text)
@@ -50,17 +64,19 @@ def snake_case_words(identifier: str) -> list[str]:
 def identifier_words(identifier: str) -> list[str]:
     """The words an identifier is made of, in their case: `HTTPServer` is HTTP and Server,
     `URLs` is one word, `naïveBayes` naïve and Bayes, `utf8` utf and 8. One pass over its
-    characters, so a long identifier costs no more than its length."""
+    characters, so a long identifier costs no more than its length; a letter written with
+    a separate accent mark is joined to it first."""
+    composed = unicodedata.normalize(COMPOSED_FORM, identifier)
     words: list[str] = []
     word_start = 0
-    for index, character in enumerate(identifier):
+    for index, character in enumerate(composed):
         if not character.isalnum():
-            words.append(identifier[word_start:index])
+            words.append(composed[word_start:index])
             word_start = index + 1
-        elif starts_a_word(identifier, index):
-            words.append(identifier[word_start:index])
+        elif starts_a_word(composed, index):
+            words.append(composed[word_start:index])
             word_start = index
-    words.append(identifier[word_start:])
+    words.append(composed[word_start:])
     return [word for word in words if word]
 
 

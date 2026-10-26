@@ -35,9 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
 - A `search_code` result's `chunk_type` is now `kind`
 - `search_code` ranks by Reciprocal Rank Fusion of what the vector and the keyword searches found, in one version of the index, instead of a weighted sum of their scores: the right file's mean reciprocal rank went from 0.455 / 0.549 / 0.698 to 0.497 / 0.502 / 0.785 on click / fd / this repository
-- The keyword search finds a chunk by the words of its name (`getUserName` by "user name", `HTTPServer` by "server") and by what it is part of: a method by its class's name, a section by its headings above
-- A section of a document ranks below code that the search finds alike: prose no longer outranks the code it describes (#3)
-- A search drops a hit below a cosine similarity of 0.35 to the query, or of 0.2 when its words match the query's, instead of below a blended score of 0.3: a question no corpus answers now gets nothing, where it got about three results
+- The keyword search finds a chunk by the words of its name (`getUserName` by "user name", `HTTPServer` by "server") and by the words of what it is part of: a method by its class's, a section by its headings above
+- A section of a document ranks below code that the search finds alike, its fused score weighed by 0.9: on the harness the code questions' file MRR rose from 0.539 / 0.698 / 0.828 to 0.700 / 0.754 / 0.828 and the documentation questions' fell from 1.0 / 1.0 / 0.875 to 0.8 / 1.0 / 0.635 on click / fd / this repository (#3)
+- A search drops a hit below a cosine similarity of 0.35 to the query, or of 0.2 when its words match the query's, instead of below a blended score of 0.3: of eight questions far from any corpus, one result came back on one corpus
 - A `search_code` result's `score` is now `similarity`, the cosine similarity of its chunk to the query; results come in the fused order, no longer grouped by file: the right file's mean reciprocal rank went from 0.497 / 0.502 / 0.785 to 0.539 / 0.585 / 0.825
 - The index keeps each file by its path from the project root, so a project moved with its local index (`.semantic-code/`) keeps it
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included

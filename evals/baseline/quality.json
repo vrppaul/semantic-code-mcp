@@ -1180,7 +1180,7 @@
       "chunk": {
         "hits_at_1": 7,
         "hits_at_3": 12,
-        "mean_reciprocal_rank": 0.516
+        "mean_reciprocal_rank": 0.517
       },
       "ranks": [
         {
@@ -1346,12 +1346,12 @@
               "symbol": "Command execution"
             },
             {
-              "path": "src/exec/command.rs",
-              "symbol": "execute_commands"
-            },
-            {
               "path": "src/exec/mod.rs",
               "symbol": "new_batch"
+            },
+            {
+              "path": "src/exec/command.rs",
+              "symbol": "execute_commands"
             },
             {
               "path": "README.md",
@@ -1750,7 +1750,7 @@
         {
           "query": "escape control characters before printing a file name to the terminal",
           "file_rank": 1,
-          "chunk_rank": 6,
+          "chunk_rank": 5,
           "hits": [
             {
               "path": "src/sanitize.rs",
@@ -1769,16 +1769,16 @@
               "symbol": "print_entry_uncolorized"
             },
             {
-              "path": "src/output.rs",
-              "symbol": "print_entry_uncolorized_base"
-            },
-            {
               "path": "src/sanitize.rs",
               "symbol": "write_sanitized"
             },
             {
               "path": "src/sanitize.rs",
               "symbol": "sanitize_for_term"
+            },
+            {
+              "path": "src/output.rs",
+              "symbol": "print_entry_uncolorized_base"
             },
             {
               "path": "src/sanitize.rs",
@@ -1809,15 +1809,15 @@
             },
             {
               "path": "src/regex_helper.rs",
+              "symbol": "pattern_has_uppercase_char_simple"
+            },
+            {
+              "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char_advanced"
             },
             {
               "path": "src/main.rs",
               "symbol": "build_regex"
-            },
-            {
-              "path": "src/regex_helper.rs",
-              "symbol": "pattern_has_uppercase_char_simple"
             },
             {
               "path": "src/main.rs",
@@ -2347,8 +2347,8 @@
               "symbol": "get_tracked_files"
             },
             {
-              "path": "tests/test_index_service.py",
-              "symbol": "test_scan_respects_gitignore"
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "chunk_file"
             }
           ]
         },
@@ -2566,12 +2566,12 @@
               "symbol": "Performance Optimization"
             },
             {
-              "path": "tests/test_searcher.py",
-              "symbol": "TestSearch"
-            },
-            {
               "path": "CHANGELOG.md",
               "symbol": "Added"
+            },
+            {
+              "path": "tests/test_searcher.py",
+              "symbol": "TestSearch"
             },
             {
               "path": "tests/test_rust_chunker.py",
@@ -3036,11 +3036,11 @@
             },
             {
               "path": "tests/test_chunker.py",
-              "symbol": "test_module_docstring_name_from_file_stem"
+              "symbol": "test_file_with_only_docstring"
             },
             {
               "path": "tests/test_chunker.py",
-              "symbol": "test_file_with_only_docstring"
+              "symbol": "test_module_docstring_name_from_file_stem"
             },
             {
               "path": "tests/test_chunker.py",
