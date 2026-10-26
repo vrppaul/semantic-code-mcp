@@ -233,16 +233,20 @@ def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
 # More chunks near the query than a channel brings, all code under src/
 NEAR_CODE_CHUNKS = 20
 NARROW_CHANNEL = 5
-# Every code chunk holds its "shared" and "function", the guide only its "a"
-SHARED_QUESTION = "a shared function"
+# The guide holds GUIDE_QUESTION's "guide"; the code holds both its words, so the guide ranks
+# below every code chunk unfiltered, or only "shared", so the guide is the one chunk "guide"
+# matches, which LanceDB 0.27's filtered full-text search lost
+GUIDE_QUESTION = "shared guide"
+CODE_BELOW_THE_CUT = "def f(): return shared guide"
+CODE_SHARING_ONE_WORD = "def f(): return shared"
 
 
 @pytest.fixture
-def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
-    """Code chunks near the query, more than a channel brings, each holding the words of
-    SHARED_QUESTION, and one section of a guide far from it that holds only its "a"."""
+def code_and_a_guide(store: LanceDBIndexStore, request: pytest.FixtureRequest) -> LanceDBIndexStore:
+    """Code chunks near the query, more than a channel brings, each holding the code the test
+    asks for, and one section of a guide far from it."""
     code = [
-        function_chunk(f"function_{number}", f"src/module_{number}.py", "def f(): return shared")
+        function_chunk(f"function_{number}", f"src/module_{number}.py", request.param)
         for number in range(NEAR_CODE_CHUNKS)
     ]
     guide = Chunk(
@@ -263,6 +267,14 @@ def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
     return store
 
 
+@pytest.mark.parametrize(
+    "code_and_a_guide",
+    [
+        pytest.param(CODE_BELOW_THE_CUT, id="the guide below the cut"),
+        pytest.param(CODE_SHARING_ONE_WORD, id="the guide alone matching a word"),
+    ],
+    indirect=True,
+)
 @pytest.mark.parametrize(
     "scope",
     [
@@ -307,9 +319,8 @@ def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
 def test_both_channels_find_within_the_scope_before_they_cut(
     code_and_a_guide: LanceDBIndexStore, scope: SearchScope
 ):
-    """The guide is further than every chunk a narrow channel would bring unfiltered, and a
-    common word alone matches it, which LanceDB 0.27's filtered full-text search lost."""
-    query = SearchQuery(text=SHARED_QUESTION, limit=NARROW_CHANNEL, scope=scope)
+    """The guide is further than every chunk a narrow channel would bring unfiltered."""
+    query = SearchQuery(text=GUIDE_QUESTION, limit=NARROW_CHANNEL, scope=scope)
 
     candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
 
