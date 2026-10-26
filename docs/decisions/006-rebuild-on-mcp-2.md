@@ -366,6 +366,7 @@ Stage 6, as built so far (2026-10-26):
 - The threshold keeps the blend's line: a hit no keyword matched goes below a similarity of 0.2, where the floor of 0.3 dropped it. Its default from the harness, and its setting, come with off-topic questions.
 - The recency boost goes: RRF has no score to add it to, and the harness, whose checkouts give every file the same mtime, cannot show that it helps.
 - A result's `score` becomes `similarity`.
+- Results come in fused order, not grouped by file (Q8): file MRR went from 0.497 / 0.502 / 0.785 to 0.539 / 0.585 / 0.825 and chunk MRR from 0.435 / 0.296 / 0.619 to 0.453 / 0.297 / 0.629. Seven questions' right chunk moved down, as other files' hits now stand between it and the hits of its file above it.
 
 Open from stage 5:
 - An edit inside a method re-embeds its class's chunk too, which holds the method's text; the harness's edit appends a definition, which shows the reuse of vectors but not that cost.

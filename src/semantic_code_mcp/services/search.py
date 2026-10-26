@@ -1,13 +1,13 @@
 """Search: bring the index up to date, then find the chunks closest to a query.
 
 Each channel of the store brings its candidates, the vector channel by meaning and the
-keyword channel by words, and fusion ranks them as one list. A hit only the vector
-channel found, and far in meaning from the query, is noise and goes.
+keyword channel by words, and fusion ranks them as one list, which the search returns
+as it stands: hits of one file are not grouped. A hit only the vector channel found, and
+far in meaning from the query, is noise and goes.
 """
 
 import asyncio
 import time
-from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 
@@ -108,7 +108,7 @@ class SearchService:
 
         kept = [hit for hit in hits if is_relevant(hit)]
         return SearchReport(
-            results=group_by_file(kept[:limit]),
+            results=kept[:limit],
             filtered_count=len(hits) - len(kept),
             timings=SearchTimings(
                 embedding_ms=embedding_ms,
@@ -129,14 +129,3 @@ def indexing_message(status: IndexStatus) -> str:
 def is_relevant(hit: SearchHit) -> bool:
     """Whether a hit stays: its words match the query's, or its meaning is near enough."""
     return hit.keyword_rank is not None or hit.similarity >= MIN_SIMILARITY
-
-
-def group_by_file(hits: list[SearchHit]) -> list[SearchHit]:
-    """Hits grouped by file, the file with the best hit first, each file's hits in order."""
-    by_file: dict[Path, list[SearchHit]] = defaultdict(list)
-    for hit in hits:
-        by_file[hit.chunk.path].append(hit)
-    ordered_files = sorted(
-        by_file, key=lambda path: max(hit.fused_score for hit in by_file[path]), reverse=True
-    )
-    return [hit for path in ordered_files for hit in by_file[path]]

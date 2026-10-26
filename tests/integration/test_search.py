@@ -84,7 +84,7 @@ async def test_no_more_hits_than_the_limit(test_settings: Settings, sample_proje
     assert len(report.results) == 3
 
 
-async def test_hits_of_one_file_stand_together_best_file_first(
+async def test_hits_come_in_fused_order_whichever_file_they_are_in(
     test_settings: Settings, sample_project: Path
 ):
     store = FakeIndexStore(
@@ -98,7 +98,7 @@ async def test_hits_of_one_file_stand_together_best_file_first(
 
     report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
-    assert [hit.chunk.name for hit in report.results] == ["best", "third", "second"]
+    assert [hit.chunk.name for hit in report.results] == ["best", "second", "third"]
 
 
 async def test_a_project_never_indexed_is_indexed_before_the_search(
