@@ -27,9 +27,9 @@ CLASS_START = "["
 CLASS_END = "]"
 GLOB_CLASS_NEGATION = "!"
 REGEX_CLASS_NEGATION = "^"
-# What a regex reads inside a class unless escaped: an escape, a nested class, and the
-# start of Rust's set operations (`&&`, `~~`)
-CLASS_SPECIAL_CHARACTERS = frozenset("\\[&~")
+# What a regex reads inside a class unless escaped: an escape, a nested class, its end,
+# and the start of Rust's set operations (`&&`, `~~`)
+CLASS_SPECIAL_CHARACTERS = frozenset("\\[]&~")
 ESCAPE = "\\"
 # A path the glob names, and everything under it when that path is a directory
 WHOLE_PATH_START = "^"
@@ -38,10 +38,17 @@ WHOLE_PATH_END = "$"
 NOT_FOUND = -1
 
 
-def glob_pattern(glob: str) -> str:
-    """The regular expression that matches the whole of every path the glob names."""
+def glob_pattern(glob: str, base: Path | None) -> str:
+    """The regular expression that matches the whole of every path the glob names; a
+    rooted glob reads from `base`, the directory of the project a search was asked from,
+    when it is not the project's root."""
     rooted = glob.startswith(PATH_SEPARATOR) or PATH_SEPARATOR in glob.strip(PATH_SEPARATOR)
-    leading = "" if rooted else ANY_DIRECTORIES
+    if not rooted:
+        leading = ANY_DIRECTORIES
+    elif base is None:
+        leading = ""
+    else:
+        leading = re.escape(base.as_posix()) + PATH_SEPARATOR
     body = glob_body(glob.strip(PATH_SEPARATOR))
     return WHOLE_PATH_START + leading + body + AND_BELOW + WHOLE_PATH_END
 
@@ -73,24 +80,31 @@ def glob_body(glob: str) -> str:
 
 
 def class_end(glob: str, start: int) -> int:
-    """Where the class opened at `start` closes; NOT_FOUND when it never does, and the
-    bracket is then a character like any other."""
-    return glob.find(CLASS_END, start + len(CLASS_START))
+    """Where the class opened at `start` closes, a `]` first in it being a member, as in
+    `[]ab]`; NOT_FOUND when it never closes or reads as no class a regex takes (`[z-a]`),
+    and the bracket is then a character like any other."""
+    first_member = start + len(CLASS_START)
+    if glob.startswith(GLOB_CLASS_NEGATION, first_member):
+        first_member += len(GLOB_CLASS_NEGATION)
+    end = glob.find(CLASS_END, first_member + len(CLASS_END))
+    if end == NOT_FOUND:
+        return NOT_FOUND
+    try:
+        re.compile(character_class(glob[start + len(CLASS_START) : end]))
+    except re.error:
+        return NOT_FOUND
+    return end
 
 
 def character_class(inside: str) -> str:
-    """A glob's class as a regex's: `[!ab]` takes every character but a and b."""
+    """A glob's class as a regex's: `[!ab]` takes every character but a, b and `/`, which
+    no class of a glob matches."""
     negated = inside.startswith(GLOB_CLASS_NEGATION)
     members = inside.removeprefix(GLOB_CLASS_NEGATION) if negated else inside
     escaped = "".join(
         ESCAPE + character if character in CLASS_SPECIAL_CHARACTERS else character
         for character in members
     )
-    negation = REGEX_CLASS_NEGATION if negated else ""
-    return CLASS_START + negation + escaped + CLASS_END
-
-
-def directory_pattern(directory: Path) -> str:
-    """The regular expression that matches the paths a directory holds, its name taken
-    as it is written, wildcards and all."""
-    return WHOLE_PATH_START + re.escape(directory.as_posix()) + PATH_SEPARATOR
+    if negated:
+        return CLASS_START + REGEX_CLASS_NEGATION + escaped + PATH_SEPARATOR + CLASS_END
+    return CLASS_START + escaped + CLASS_END

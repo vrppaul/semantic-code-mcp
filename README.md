@@ -95,11 +95,11 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | `str` | required | Natural language description of what you're looking for |
-| `project_path` | `str` | required | Absolute path to the project root |
+| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory |
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `chunk_kinds` | `list[str]` | all | Only chunks of these kinds: `module`, `function`, `method`, `class`, `section` |
 | `languages` | `list[str]` | all | Only chunks of files in these languages: `python`, `rust`, `markdown` |
-| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth (`*.rs`), with one a path from the project root (`src/**/*.py`); a directory takes what it holds |
+| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth (`*.rs`), with one a path from the directory `project_path` names (`src/**/*.py`); a directory takes what it holds |
 | `exclude_glob` | `str` | none | No file this glob names, read as `path_glob` is |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 
@@ -111,7 +111,7 @@ Index a codebase for semantic search. Only processes new and changed files unles
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `project_path` | `str` | required | Absolute path to the project root |
+| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory |
 | `force` | `bool` | `False` | Re-index all files regardless of changes |
 
 ### `index_status`
@@ -120,7 +120,7 @@ Check indexing status for a project.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `project_path` | `str` | required | Absolute path to the project root |
+| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory |
 
 Returns `is_indexed`, `last_updated`, `files_count`, `chunks_count` and `stale_files_count`.
 
@@ -131,13 +131,13 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEMANTIC_CODE_MCP_CACHE_DIR` | `~/.cache/semantic-code-mcp` | Where indexes are stored |
-| `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` within each project; it holds a `.gitignore`, so git never shows it |
+| `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` at the root of each project's repository; it holds a `.gitignore`, so git never shows it |
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
 | `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS` | `10` | How long git may take to list the files before discovery walks the file system instead |
-| `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | How close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share |
+| `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | How close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share. Below 0.2, lower `MIN_SIMILARITY_WHEN_WORDS_MATCH` with it, or the server refuses to start |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.2` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY` |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 

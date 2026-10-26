@@ -305,6 +305,27 @@ def test_both_channels_find_within_the_scope_before_they_cut(
     ] == [["guide"], ["guide"]]
 
 
+@pytest.mark.parametrize(
+    "glob",
+    [
+        pytest.param("[]", id="an empty class"),
+        pytest.param("[!]", id="an empty class left out"),
+        pytest.param("[]ab].py", id="a bracket first in a class"),
+        pytest.param("[z-a].rs", id="a range backwards"),
+    ],
+)
+def test_a_glob_the_regex_could_not_read_is_taken_literally(
+    code_and_a_guide: LanceDBIndexStore, glob: str
+):
+    """No path of the store's holds such a name, so nothing comes back, and nothing fails."""
+    scope = SearchScope(kinds=[], languages=[], path_glob=glob, exclude_glob=None, directory=None)
+    query = SearchQuery(text="shared", limit=NARROW_CHANNEL, scope=scope)
+
+    candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
+
+    assert candidates == NO_CANDIDATES
+
+
 def test_a_search_warns_of_nothing(
     filled_store: LanceDBIndexStore, capfd: pytest.CaptureFixture[str]
 ):

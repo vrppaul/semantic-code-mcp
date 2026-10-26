@@ -77,7 +77,7 @@ from semantic_code_mcp.domain.models import (
     SearchScope,
     SourceFile,
 )
-from semantic_code_mcp.storage.globs import directory_pattern, glob_pattern
+from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.search_text import search_text
 
 log = structlog.get_logger()
@@ -159,6 +159,9 @@ SQL_ESCAPED_QUOTE = "''"
 SQL_AND = " AND "
 SQL_NOT = "NOT "
 REGEX_MATCH_FUNCTION = "regexp_like"
+PREFIX_MATCH_FUNCTION = "starts_with"
+# How a path names its directories, in both tables
+PATH_SEPARATOR = "/"
 
 FILES_SCHEMA = pyarrow.schema(
     [
@@ -688,11 +691,11 @@ def scope_filter(scope: SearchScope) -> str | None:
     if scope.languages:
         conditions.append(values_filter(LANGUAGE_COLUMN, scope.languages))
     if scope.path_glob is not None:
-        conditions.append(glob_filter(scope.path_glob))
+        conditions.append(glob_filter(scope.path_glob, scope.directory))
     if scope.exclude_glob is not None:
-        conditions.append(SQL_NOT + glob_filter(scope.exclude_glob))
+        conditions.append(SQL_NOT + glob_filter(scope.exclude_glob, scope.directory))
     if scope.directory is not None:
-        conditions.append(regex_filter(directory_pattern(scope.directory)))
+        conditions.append(directory_filter(scope.directory))
     return SQL_AND.join(conditions) or None
 
 
@@ -702,14 +705,19 @@ def values_filter(column: str, values: Sequence[str]) -> str:
     return f"{column} IN ({quoted})"
 
 
-def glob_filter(glob: str) -> str:
-    """A filter matching the rows whose path the glob names."""
-    return regex_filter(glob_pattern(glob))
-
-
-def regex_filter(pattern: str) -> str:
-    """A filter matching the rows whose path the regular expression matches."""
+def glob_filter(glob: str, base: Path | None) -> str:
+    """A filter matching the rows whose path the glob names, a rooted glob read from
+    `base` when there is one."""
+    pattern = glob_pattern(glob, base)
     return f"{REGEX_MATCH_FUNCTION}({PATH_COLUMN}, {quote_sql(pattern)})"
+
+
+def directory_filter(directory: Path) -> str:
+    """A filter matching the rows whose path lies in the directory: a prefix compared as
+    it is written, which costs less than a regex (29 against 40 ms at 100k rows, a
+    review's probe)."""
+    prefix = directory.as_posix() + PATH_SEPARATOR
+    return f"{PREFIX_MATCH_FUNCTION}({PATH_COLUMN}, {quote_sql(prefix)})"
 
 
 def candidates_of(rows: pyarrow.Table, query_vector: Vector) -> list[Candidate]:

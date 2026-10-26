@@ -41,9 +41,11 @@ KINDS_DESCRIPTION = (
 LANGUAGES_DESCRIPTION = "Only chunks of files in these languages."
 PATH_GLOB_DESCRIPTION = (
     "Only files this glob names, as in a .gitignore: without a slash a name at any depth"
-    " (`*.rs`), with one a path from the project root (`src/**/*.py`, `docs`); `*` stays"
+    " (`*.rs`), with one a path from the directory project_path names (`src/**/*.py`); `*` stays"
     " within a directory, `**` crosses any number, and a directory takes what it holds."
 )
+# What a glob may hold and still name no path: blanks and slashes alone
+GLOB_BLANKS = " /"
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
 
 
@@ -97,8 +99,8 @@ async def search_code(  # noqa: PLR0913
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
             languages=tuple(languages or ()),
-            path_glob=path_glob,
-            exclude_glob=exclude_glob,
+            path_glob=given_glob(path_glob),
+            exclude_glob=given_glob(exclude_glob),
             directory=location.directory,
         )
         report = await services.search.search(
@@ -191,6 +193,15 @@ def failures_as_tool_errors() -> Generator[None]:
         log.exception("tool_failed")
         message = f"{type(error).__name__}: {error}"
         raise ToolError(message) from error
+
+
+def given_glob(glob: str | None) -> str | None:
+    """A glob as a search reads it: None for one that names no path, as an empty string
+    an agent fills an optional argument with, or a slash alone, which would otherwise
+    narrow the search to nothing."""
+    if glob is None or not glob.strip(GLOB_BLANKS):
+        return None
+    return glob
 
 
 def existing_directory(project_path: str) -> Path:

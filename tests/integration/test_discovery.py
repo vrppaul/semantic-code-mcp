@@ -350,6 +350,13 @@ def directories(tmp_path: Path) -> Path:
     home = make_repository(tmp_path / "home")
     (home / ".gitignore").write_text("*\n!.gitignore\n")
     (home / "projects" / "app").mkdir(parents=True)
+    dotfiles = make_repository(tmp_path / "dotfiles")
+    run_git(dotfiles, "config", "status.showUntrackedFiles", "no")
+    (dotfiles / ".bashrc").write_text("export EDITOR=vi\n")
+    run_git(dotfiles, "add", ".bashrc")
+    run_git(dotfiles, "commit", "--quiet", "--message", "dotfiles")
+    (dotfiles / "projects" / "tool").mkdir(parents=True)
+    (dotfiles / "projects" / "tool" / "main.py").write_text("x = 1\n")
     return tmp_path
 
 
@@ -360,6 +367,9 @@ def directories(tmp_path: Path) -> Path:
         pytest.param("repo", "repo", id="a repository's root"),
         pytest.param("plain", "plain", id="a directory outside any repository"),
         pytest.param("home/projects/app", "home/projects/app", id="a project the repo ignores"),
+        pytest.param(
+            "dotfiles/projects/tool", "dotfiles/projects/tool", id="a project it tracks nothing of"
+        ),
     ],
 )
 def test_a_project_is_the_whole_repository_a_directory_lies_in(

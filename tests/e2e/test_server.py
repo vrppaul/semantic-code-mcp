@@ -32,6 +32,14 @@ def load_config(path: str) -> dict:
         return json.load(config_file)
 '''
 
+CONFIGURATION_GUIDE = """# Reading the configuration
+
+The application reads its configuration from a JSON file when it starts.
+"""
+# A question the function of config.py and the section of the guide both answer
+CONFIGURATION_QUESTION = "read the configuration file"
+GUIDE_SECTION = "Reading the configuration"
+
 # An mtime well after any the test wrote, so the change is seen on any file system
 LATER_MTIME_SECONDS = 4_000_000_000
 
@@ -73,26 +81,38 @@ async def test_search_returns_the_function_the_query_describes(project: Path, cl
     assert (Path(first_hit.file_path).name, first_hit.name) == ("greeting.py", "greet")
 
 
+@pytest.fixture
+def documented_project(project: Path) -> Path:
+    """The project, with a guide whose section answers what config.py's function does."""
+    (project / "docs").mkdir()
+    (project / "docs" / "configuration.md").write_text(CONFIGURATION_GUIDE)
+    return project
+
+
 @pytest.mark.parametrize(
-    "narrowing",
+    ("narrowing", "names"),
     [
-        pytest.param({"chunk_kinds": ["class"]}, id="to classes"),
-        pytest.param({"languages": ["rust"]}, id="to Rust"),
-        pytest.param({"path_glob": "config.py"}, id="to one file"),
-        pytest.param({"exclude_glob": "greeting.py"}, id="leaving a file out"),
+        pytest.param({"chunk_kinds": ["section"]}, [GUIDE_SECTION], id="to sections"),
+        pytest.param({"languages": ["python"]}, ["load_config"], id="to Python"),
+        pytest.param({"path_glob": "docs"}, [GUIDE_SECTION], id="to a directory"),
+        pytest.param({"exclude_glob": "docs"}, ["load_config"], id="leaving a directory out"),
     ],
 )
-async def test_a_search_narrowed_leaves_out_what_it_would_find_first(
-    project: Path, client: Client, narrowing: dict[str, object]
+async def test_a_narrowed_search_keeps_to_what_it_names(
+    documented_project: Path, client: Client, narrowing: dict[str, object], names: list[str]
 ):
     async with client:
         result = await client.call_tool(
             "search_code",
-            {"query": "say hello to someone", "project_path": str(project), **narrowing},
+            {
+                "query": CONFIGURATION_QUESTION,
+                "project_path": str(documented_project),
+                **narrowing,
+            },
         )
 
-    names = [hit.name for hit in SearchCodeResponse.model_validate(structured(result)).results]
-    assert "greet" not in names
+    hits = SearchCodeResponse.model_validate(structured(result)).results
+    assert [hit.name for hit in hits] == names
 
 
 async def test_search_sends_debug_details_only_when_asked(project: Path, client: Client):
@@ -206,9 +226,12 @@ async def test_two_spellings_of_one_project_share_its_local_index(
 
 @pytest.fixture
 def repository(tmp_path: Path) -> Path:
-    """A git repository with a module at its root and another in a package."""
+    """A git repository with a package of one module and, outside it, a guide that
+    answers the same question."""
     root = make_repository(tmp_path / "repository")
     (root / "greeting.py").write_text(GREETING_MODULE)
+    (root / "docs").mkdir()
+    (root / "docs" / "configuration.md").write_text(CONFIGURATION_GUIDE)
     (root / "package").mkdir()
     (root / "package" / "config.py").write_text(CONFIG_MODULE)
     return root
@@ -220,11 +243,13 @@ async def test_a_search_from_a_directory_of_a_repository_finds_only_what_lies_in
     async with client:
         result = await client.call_tool(
             "search_code",
-            {"query": "say hello to someone", "project_path": str(repository / "package")},
+            {"query": CONFIGURATION_QUESTION, "project_path": str(repository / "package")},
         )
 
-    names = [hit.name for hit in SearchCodeResponse.model_validate(structured(result)).results]
-    assert "greet" not in names
+    hits = SearchCodeResponse.model_validate(structured(result)).results
+    assert [(Path(hit.file_path), hit.name) for hit in hits] == [
+        (repository / "package" / "config.py", "load_config")
+    ]
 
 
 async def test_a_directory_of_a_repository_is_indexed_as_the_whole_repository(
@@ -234,4 +259,4 @@ async def test_a_directory_of_a_repository_is_indexed_as_the_whole_repository(
         await client.call_tool("index_codebase", {"project_path": str(repository / "package")})
         status = await client.call_tool("index_status", {"project_path": str(repository)})
 
-    assert IndexStatusResponse.model_validate(structured(status)).files_count == 2
+    assert IndexStatusResponse.model_validate(structured(status)).files_count == 3
