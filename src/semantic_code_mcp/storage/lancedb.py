@@ -140,6 +140,11 @@ NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
 COSINE_METRIC = "cosine"
+# What LanceDB adds to a hit, the distance of a vector hit and the score of a text hit:
+# named among the columns a search reads, or each search warns that a later LanceDB will
+# leave them out
+DISTANCE_COLUMN = "_distance"
+FULL_TEXT_SCORE_COLUMN = "_score"
 # What a search reads of each candidate: the chunk and its vector, not its search text
 CANDIDATE_COLUMNS = [
     CHUNK_ID_COLUMN,
@@ -365,7 +370,7 @@ class LanceDBIndexStore(IndexStore):
         # lancedb's stubs type search() as the base builder, which lacks metric()
         nearest = (
             query.metric(COSINE_METRIC)  # ty: ignore[unresolved-attribute]
-            .select(CANDIDATE_COLUMNS)
+            .select([*CANDIDATE_COLUMNS, DISTANCE_COLUMN])
             .limit(per_channel)
             .to_arrow()
         )
@@ -664,7 +669,7 @@ def keyword_candidates(
         return []
     rows = (
         table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE)
-        .select(CANDIDATE_COLUMNS)
+        .select([*CANDIDATE_COLUMNS, FULL_TEXT_SCORE_COLUMN])
         .limit(limit)
         .to_arrow()
     )

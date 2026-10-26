@@ -211,6 +211,17 @@ def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
     ] == pytest.approx([1.0, 0.0, -1.0, 0.0])
 
 
+def test_a_search_warns_of_nothing(
+    filled_store: LanceDBIndexStore, capfd: pytest.CaptureFixture[str]
+):
+    """LanceDB writes to the process's standard error, which an MCP client logs."""
+    capfd.readouterr()
+
+    filled_store.search_candidates(QUERY, "duration_ms", LIMIT)
+
+    assert capfd.readouterr().err == ""
+
+
 def test_an_empty_store_finds_nothing(store: LanceDBIndexStore):
     assert store.search_candidates(QUERY, "anything", LIMIT) == NO_CANDIDATES
 
