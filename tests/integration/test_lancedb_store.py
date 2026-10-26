@@ -233,12 +233,14 @@ def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
 # More chunks near the query than a channel brings, all code under src/
 NEAR_CODE_CHUNKS = 20
 NARROW_CHANNEL = 5
+# Every code chunk holds its "shared" and "function", the guide only its "a"
+SHARED_QUESTION = "a shared function"
 
 
 @pytest.fixture
 def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
-    """Code chunks near the query, more than a channel brings, and one section of a guide
-    far from it; every chunk holds the word "shared"."""
+    """Code chunks near the query, more than a channel brings, each holding the words of
+    SHARED_QUESTION, and one section of a guide far from it that holds only its "a"."""
     code = [
         function_chunk(f"function_{number}", f"src/module_{number}.py", "def f(): return shared")
         for number in range(NEAR_CODE_CHUNKS)
@@ -252,7 +254,7 @@ def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
         parent=None,
         line_start=1,
         line_end=3,
-        content="A shared guide.",
+        content="A guide.",
     )
     store.write(
         update_of([*code, guide], removed_paths=[]),
@@ -305,8 +307,9 @@ def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
 def test_both_channels_find_within_the_scope_before_they_cut(
     code_and_a_guide: LanceDBIndexStore, scope: SearchScope
 ):
-    """The guide is further than every chunk a narrow channel would bring unfiltered."""
-    query = SearchQuery(text="shared", limit=NARROW_CHANNEL, scope=scope)
+    """The guide is further than every chunk a narrow channel would bring unfiltered, and a
+    common word alone matches it, which LanceDB 0.27's filtered full-text search lost."""
+    query = SearchQuery(text=SHARED_QUESTION, limit=NARROW_CHANNEL, scope=scope)
 
     candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
 
@@ -314,45 +317,6 @@ def test_both_channels_find_within_the_scope_before_they_cut(
         [candidate.chunk.name for candidate in candidates.by_vector],
         [candidate.chunk.name for candidate in candidates.by_keyword],
     ] == [["guide"], ["guide"]]
-
-
-# Code no word of the question matches but one chunk's "state", more than nine chunks
-UNMATCHED_CODE_CHUNKS = 8
-OBJECT_QUESTION = "the object that holds state while a command runs"
-
-
-def test_a_narrowed_keyword_channel_finds_a_chunk_of_the_scope_only_a_common_word_matches(
-    store: LanceDBIndexStore,
-):
-    """LanceDB 0.27 lost such a chunk from a filtered full-text search of ten chunks or more,
-    and so from every narrowed search (ADR 006, stage 6)."""
-    code = [
-        function_chunk(f"other_{number}", f"src/other_{number}.py", "pass")
-        for number in range(UNMATCHED_CODE_CHUNKS)
-    ]
-    holder = function_chunk("holder", "src/holder.py", "state")
-    guide = Chunk(
-        chunk_id="guide",
-        path=Path("docs/guide.md"),
-        language=Language.markdown,
-        kind=ChunkKind.section,
-        name="guide",
-        parent=None,
-        line_start=1,
-        line_end=1,
-        content="A guide.",
-    )
-    chunks = [*code, holder, guide]
-    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
-    scope = SearchScope(
-        kinds=[ChunkKind.section], languages=[], path_glob=None, exclude_glob=None, directory=None
-    )
-
-    candidates = store.search_candidates(
-        QUERY, SearchQuery(text=OBJECT_QUESTION, limit=LIMIT, scope=scope), LIMIT
-    )
-
-    assert [candidate.chunk.name for candidate in candidates.by_keyword] == ["guide"]
 
 
 # Paths whose characters a regex, SQL or a glob reads apart, each in a file of its own

@@ -22,4 +22,4 @@ A search after a large change waits for the whole re-index. Answering from the o
 With the global cache (`~/.cache/semantic-code-mcp/`), a project moved or deleted, or one of the many worktrees Claude Code makes, keeps its whole index there for good: a store looks for unused indexes only inside its own project's directory. Sweep the sibling project directories by the same rule, an index nobody used for a week, under the same lock. A project directory keeps its lock files, which are never deleted while a writer may wait on one, so it needs a rule for when the directory itself may go.
 
 ### LanceDB index tuning
-A flat cosine scan answers in 23–36 ms at 11.5k chunks. IVF or PQ indexes pay off only on much larger corpora; revisit when one over 100k chunks shows the need.
+A flat cosine scan answers in 23–36 ms at 11.5k chunks and 50–90 ms at 100k on LanceDB 0.30. LanceDB 0.32 to 0.40 scan two to three times slower (150–190 ms at 100k), which holds the package at 0.30; a vector index (IVF or HNSW) past some row count would let it move on, and pays off on large corpora anyway.
