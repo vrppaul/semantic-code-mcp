@@ -22,12 +22,14 @@ CHANNEL_HITS = strategies.lists(strategies.sampled_from(CHUNK_IDS), unique=True,
 FOLLOWED = "followed"
 
 
-def candidate(chunk_id: str, similarity: float = SIMILARITY) -> Candidate:
+def candidate(
+    chunk_id: str, similarity: float = SIMILARITY, kind: ChunkKind = ChunkKind.function
+) -> Candidate:
     chunk = Chunk(
         chunk_id=chunk_id,
         path=Path("module.py"),
         language=Language.python,
-        kind=ChunkKind.function,
+        kind=kind,
         name=chunk_id,
         parent=None,
         line_start=1,
@@ -88,3 +90,12 @@ def test_chunks_ranked_alike_come_closest_in_meaning_first(
     )
 
     assert [hit.chunk.chunk_id for hit in fuse(candidates)] == order
+
+
+def test_a_section_of_prose_comes_after_code_ranked_alike_even_closer_in_meaning():
+    candidates = SearchCandidates(
+        by_vector=[candidate("section", similarity=0.6, kind=ChunkKind.section)],
+        by_keyword=[candidate("function", similarity=0.4)],
+    )
+
+    assert [hit.chunk.chunk_id for hit in fuse(candidates)] == ["function", "section"]
