@@ -213,8 +213,7 @@ def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
 
 
 def test_a_word_lancedb_drops_by_default_still_finds_a_chunk(store: LanceDBIndexStore):
-    """`is` of `is_empty`, `not` or `if` are words of code that an agent searches for, and
-    the harness found more when the index kept them."""
+    """The index keeps the words LanceDB drops by default, as `not` here."""
     chunk = function_chunk("is_empty", "check.py", "def is_empty(items): return not items")
     store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 

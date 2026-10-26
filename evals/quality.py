@@ -247,11 +247,12 @@ def scores_by_kind(ranks: Sequence[QueryRanks]) -> tuple[KindScores, ...]:
 def scores_by_wording(ranks: Sequence[QueryRanks]) -> tuple[WordingScores, ...]:
     """The chunk score of each kind's questions that hold an answer's words, then of those
     that do not, for each group the ranks hold."""
-    groups = {(query_ranks.kind, query_ranks.shares_answer_words) for query_ranks in ranks}
-    asked = [
-        (kind, shares) for kind in QuestionKind for shares in WORDINGS if (kind, shares) in groups
-    ]
-    return tuple(wording_scores(kind, ranks, shares=shares) for kind, shares in asked)
+    return tuple(
+        wording_scores(kind, ranks, shares=shares)
+        for kind in QuestionKind
+        for shares in WORDINGS
+        if any(is_in_group(query_ranks, kind, shares=shares) for query_ranks in ranks)
+    )
 
 
 def wording_scores(
@@ -261,11 +262,16 @@ def wording_scores(
     group = [
         query_ranks.chunk_rank
         for query_ranks in ranks
-        if query_ranks.kind == kind and query_ranks.shares_answer_words == shares
+        if is_in_group(query_ranks, kind, shares=shares)
     ]
     return WordingScores(
         kind=kind, shares_answer_words=shares, queries=len(group), chunk=score(group)
     )
+
+
+def is_in_group(query_ranks: QueryRanks, kind: QuestionKind, *, shares: bool) -> bool:
+    """Whether a question is of the kind, and holds an answer's words or not, as asked."""
+    return query_ranks.kind == kind and query_ranks.shares_answer_words == shares
 
 
 def shares_answer_words(question: str, answers: Sequence[Answer]) -> bool:

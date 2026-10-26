@@ -54,6 +54,8 @@ def read_glob(glob: str | None) -> str | None:
     what a search does not read."""
     if glob is None:
         return None
+    if len(glob) > LONGEST_GLOB:
+        raise UnreadableGlobError(TOO_LONG)
     refusal = refusal_of(glob)
     if refusal is not None:
         message = f"{refusal}: {glob}"

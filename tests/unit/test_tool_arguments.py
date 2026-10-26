@@ -70,6 +70,7 @@ def test_a_glob_the_search_cannot_read_is_refused_with_the_reason(glob: str, rea
     [
         pytest.param("?" * (LONGEST_GLOB + 1), id="as written"),
         pytest.param("a/" + "?" * (LONGEST_GLOB - len("a/")), id="once read, with its leading /"),
+        pytest.param("[" + "?" * LONGEST_GLOB, id="refused for another reason too"),
     ],
 )
 def test_a_glob_too_long_for_the_store_s_regex_is_refused_without_its_echo(glob: str):
@@ -77,9 +78,10 @@ def test_a_glob_too_long_for_the_store_s_regex_is_refused_without_its_echo(glob:
         given_glob(glob)
 
 
-# What a glob an agent writes is made of, but the characters a search refuses outright
-WRITTEN_GLOBS = strategies.text(alphabet="ab.*?/ !\t", max_size=40).filter(
-    lambda glob: PARENT_DIRECTORY not in parts_of(glob) and not glob.strip().startswith("!")
+# What a glob an agent writes is made of, but the characters a search refuses outright,
+# and no step out of the directory searched
+WRITTEN_GLOBS = strategies.text(alphabet="ab.*?/ \t", max_size=40).filter(
+    lambda glob: PARENT_DIRECTORY not in parts_of(glob)
 )
 
 
