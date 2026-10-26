@@ -4,7 +4,7 @@ from pathlib import Path
 
 from semantic_code_mcp.chunkers.markdown import MarkdownChunker
 from semantic_code_mcp.domain.models import ChunkKind
-from tests.helpers import ChunkOwner, owners_of
+from tests.helpers import ChunkOwner, owners_of, section_named, summarize
 
 
 class TestMarkdownChunker:
@@ -60,13 +60,13 @@ class TestMarkdownChunker:
     def test_deeply_nested_headings(self):
         """H1 > H2 > H3 all produce separate chunks."""
         markdown_text = "# H1\n\nH1 text.\n\n## H2\n\nH2 text.\n\n### H3\n\nH3 text.\n"
-        chunker = MarkdownChunker()
-        chunks = chunker.chunk_string(markdown_text, Path("doc.md"))
+        chunks = MarkdownChunker().chunk_string(markdown_text, Path("doc.md"))
 
-        assert len(chunks) == 3
-        names = [chunk.name for chunk in chunks]
-        assert names == ["H1", "H2", "H3"]
-        assert all(chunk.kind == ChunkKind.section for chunk in chunks)
+        assert summarize(chunks) == [
+            section_named("H1"),
+            section_named("H2"),
+            section_named("H3"),
+        ]
 
     def test_preamble_before_first_heading(self):
         """Content before first heading becomes a module chunk."""
@@ -243,28 +243,18 @@ class TestMarkdownChunker:
         assert "Last line" in chunks[0].content
 
     def test_heading_immediately_before_subheading(self):
-        """Heading immediately followed by sub-heading (no blank line)."""
+        """A heading followed at once by a sub-heading is a section of its own line."""
         markdown_text = "# Top\n## Sub\n\nSub content.\n"
-        chunker = MarkdownChunker()
-        chunks = chunker.chunk_string(markdown_text, Path("doc.md"))
+        chunks = MarkdownChunker().chunk_string(markdown_text, Path("doc.md"))
 
-        # Top has no own content, Sub has content
-        sub_chunks = [chunk for chunk in chunks if chunk.name == "Sub"]
-        assert len(sub_chunks) == 1
-        assert "Sub content" in sub_chunks[0].content
+        assert [chunk.content for chunk in chunks] == ["# Top", "## Sub\n\nSub content."]
 
     def test_frontmatter_excluded(self):
         """YAML frontmatter is not included in chunks."""
         markdown_text = "---\ntitle: Hello\n---\n\n# Content\n\nBody text.\n"
-        chunker = MarkdownChunker()
-        chunks = chunker.chunk_string(markdown_text, Path("doc.md"))
+        chunks = MarkdownChunker().chunk_string(markdown_text, Path("doc.md"))
 
-        # Should have the heading section, frontmatter should not appear
-        names = [chunk.name for chunk in chunks]
-        assert "Content" in names
-        # No chunk should contain the frontmatter YAML
-        for chunk in chunks:
-            assert "title: Hello" not in chunk.content
+        assert [chunk.content for chunk in chunks] == ["# Content\n\nBody text."]
 
     def test_exact_content_single_section(self):
         """Verify exact content capture (no off-by-one)."""

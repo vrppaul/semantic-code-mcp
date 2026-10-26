@@ -125,6 +125,27 @@ def summarize(chunks: list[Chunk]) -> list[ChunkSummary]:
     return [ChunkSummary(kind=chunk.kind, name=chunk.name) for chunk in chunks]
 
 
+def function_named(name: str) -> ChunkSummary:
+    return ChunkSummary(kind=ChunkKind.function, name=name)
+
+
+def method_named(name: str) -> ChunkSummary:
+    return ChunkSummary(kind=ChunkKind.method, name=name)
+
+
+def class_named(name: str) -> ChunkSummary:
+    """A class's summary, as Rust's structs, enums, traits and impls are classes too."""
+    return ChunkSummary(kind=ChunkKind.klass, name=name)
+
+
+def module_named(name: str) -> ChunkSummary:
+    return ChunkSummary(kind=ChunkKind.module, name=name)
+
+
+def section_named(name: str) -> ChunkSummary:
+    return ChunkSummary(kind=ChunkKind.section, name=name)
+
+
 def line_ranges(chunks: list[Chunk]) -> list[LineRange]:
     """Each chunk's line range, in order."""
     return [LineRange(line_start=chunk.line_start, line_end=chunk.line_end) for chunk in chunks]

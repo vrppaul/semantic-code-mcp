@@ -9,7 +9,11 @@ from tests.helpers import (
     ChunkOwner,
     ChunkSummary,
     LineRange,
+    class_named,
+    function_named,
     line_ranges,
+    method_named,
+    module_named,
     owners_of,
     summarize,
 )
@@ -58,32 +62,20 @@ class TestPythonChunker:
         assert "Greet someone by name" in chunks[0].content
         assert "Args:" in chunks[0].content
 
-    def test_extract_class(self, tmp_path: Path):
-        """Extracts a class definition."""
+    def test_extract_class(self):
+        """A class and each of its methods are chunks of their own."""
         code = '''class Person:
     """A person with a name."""
 
     def __init__(self, name: str):
         self.name = name
 '''
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("person.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
+        assert summarize(chunks) == [class_named("Person"), method_named("__init__")]
+        assert "A person with a name" in chunks[0].content
 
-        # Should get class and its method
-        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
-        method_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.method]
-
-        assert len(class_chunks) == 1
-        assert class_chunks[0].name == "Person"
-        assert "A person with a name" in class_chunks[0].content
-
-        assert len(method_chunks) == 1
-        assert method_chunks[0].name == "__init__"
-
-    def test_extract_method(self, tmp_path: Path):
+    def test_extract_method(self):
         """Extracts methods from a class."""
         code = '''class Calculator:
     def add(self, a: int, b: int) -> int:
@@ -94,21 +86,16 @@ class TestPythonChunker:
         """Subtract b from a."""
         return a - b
 '''
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("calculator.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
+        assert summarize(chunks) == [
+            class_named("Calculator"),
+            method_named("add"),
+            method_named("subtract"),
+        ]
 
-        method_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.method]
-        assert len(method_chunks) == 2
-
-        names = {chunk.name for chunk in method_chunks}
-        assert "add" in names
-        assert "subtract" in names
-
-    def test_line_numbers_are_correct(self, tmp_path: Path):
-        """Line numbers accurately reflect position in file."""
+    def test_line_numbers_are_correct(self):
+        """Line numbers count from one and cover each definition."""
         code = """# Comment at top
 
 def first():
@@ -118,20 +105,12 @@ def first():
 def second():
     pass
 """
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("numbered.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
-
-        first_fn = next(chunk for chunk in chunks if chunk.name == "first")
-        second_fn = next(chunk for chunk in chunks if chunk.name == "second")
-
-        # Line numbers are 1-indexed
-        assert first_fn.line_start == 3
-        assert first_fn.line_end == 4
-        assert second_fn.line_start == 7
-        assert second_fn.line_end == 8
+        assert line_ranges(chunks) == [
+            LineRange(line_start=3, line_end=4),
+            LineRange(line_start=7, line_end=8),
+        ]
 
     def test_chunks_carry_their_file_s_path_from_the_project_root(self, tmp_path: Path):
         (tmp_path / "package").mkdir()
@@ -164,7 +143,7 @@ def second():
 
         assert summarize(chunks) == [ChunkSummary(kind=ChunkKind.module, name="comments")]
 
-    def test_multiple_functions(self, tmp_path: Path):
+    def test_multiple_functions(self):
         """Extracts multiple functions from same file."""
         code = """def one():
     pass
@@ -175,15 +154,13 @@ def two():
 def three():
     pass
 """
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("several.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
-
-        assert len(chunks) == 3
-        names = {chunk.name for chunk in chunks}
-        assert names == {"one", "two", "three"}
+        assert summarize(chunks) == [
+            function_named("one"),
+            function_named("two"),
+            function_named("three"),
+        ]
 
     def test_nested_function_is_included_in_parent(self, tmp_path: Path):
         """Nested functions are part of parent function content."""
@@ -240,38 +217,28 @@ def get_users():
         assert "@app.route" in chunks[0].content
         assert "@require_auth" in chunks[0].content
 
-    def test_decorated_class(self, tmp_path: Path):
-        """Extracts classes with decorators."""
+    def test_decorated_class(self):
+        """A class's chunk holds its decorators."""
         code = """@dataclass
 class User:
     name: str
     age: int
 """
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("user.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
+        assert summarize(chunks) == [class_named("User")]
+        assert chunks[0].content.startswith("@dataclass")
 
-        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
-        assert len(class_chunks) == 1
-        assert "@dataclass" in class_chunks[0].content
-
-    def test_handles_syntax_error_gracefully(self, tmp_path: Path):
-        """Returns empty list for files with syntax errors."""
+    def test_handles_syntax_error_gracefully(self):
+        """A file that does not parse is still indexed, whole."""
         code = """def broken(
     # missing closing paren and colon
 """
-        file_path = tmp_path / "broken.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("broken.py"))
 
-        chunker = PythonChunker()
-        # Should not raise, returns empty or partial results
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
-        # We accept either empty list or best-effort extraction
-        assert isinstance(chunks, list)
+        assert summarize(chunks) == [module_named("broken")]
 
-    def test_class_with_class_variables(self, tmp_path: Path):
+    def test_class_with_class_variables(self):
         """Class extraction includes class variables."""
         code = '''class Config:
     """Application configuration."""
@@ -282,18 +249,12 @@ class User:
     def __init__(self):
         pass
 '''
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("config.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
+        assert summarize(chunks) == [class_named("Config"), method_named("__init__")]
+        assert 'DEBUG = True\n    VERSION = "1.0.0"' in chunks[0].content
 
-        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
-        assert len(class_chunks) == 1
-        assert "DEBUG = True" in class_chunks[0].content
-        assert "VERSION" in class_chunks[0].content
-
-    def test_staticmethod_and_classmethod(self, tmp_path: Path):
+    def test_staticmethod_and_classmethod(self):
         """Extracts static and class methods."""
         code = """class Factory:
     @staticmethod
@@ -304,18 +265,13 @@ class User:
     def from_dict(cls, data):
         pass
 """
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("factory.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
-
-        method_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.method]
-        assert len(method_chunks) == 2
-
-        names = {chunk.name for chunk in method_chunks}
-        assert "create" in names
-        assert "from_dict" in names
+        assert summarize(chunks) == [
+            class_named("Factory"),
+            method_named("create"),
+            method_named("from_dict"),
+        ]
 
     def test_chunk_from_string(self):
         """Can chunk code from string without file."""
@@ -338,16 +294,10 @@ class User:
 def hello():
     pass
 '''
-        chunker = PythonChunker()
-        chunks = chunker.chunk_string(code, Path("important.py"))
+        chunks = PythonChunker().chunk_string(code, Path("important.py"))
 
-        module_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.module]
-        func_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.function]
-
-        assert len(module_chunks) == 1
-        assert len(func_chunks) == 1
-        assert module_chunks[0].name == "important"
-        assert "This module does important things" in module_chunks[0].content
+        assert summarize(chunks) == [module_named("important"), function_named("hello")]
+        assert chunks[0].content == '"""This module does important things."""'
 
     def test_module_docstring_multiline_line_numbers(self):
         """Multi-line module docstring has correct line numbers."""
@@ -360,12 +310,12 @@ Third line.
 def foo():
     pass
 '''
-        chunker = PythonChunker()
-        chunks = chunker.chunk_string(code, Path("multi.py"))
+        chunks = PythonChunker().chunk_string(code, Path("multi.py"))
 
-        module_chunk = next(chunk for chunk in chunks if chunk.kind == ChunkKind.module)
-        assert module_chunk.line_start == 1
-        assert module_chunk.line_end == 5
+        assert line_ranges(chunks) == [
+            LineRange(line_start=1, line_end=5),
+            LineRange(line_start=7, line_end=8),
+        ]
 
     def test_no_module_docstring_starts_with_import(self):
         """File starting with import produces zero MODULE chunks."""
@@ -374,11 +324,9 @@ def foo():
 def hello():
     pass
 """
-        chunker = PythonChunker()
-        chunks = chunker.chunk_string(code, Path("no_doc.py"))
+        chunks = PythonChunker().chunk_string(code, Path("no_doc.py"))
 
-        module_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.module]
-        assert len(module_chunks) == 0
+        assert summarize(chunks) == [function_named("hello")]
 
     def test_docstring_after_import_not_extracted(self):
         """Docstring after import is not a module docstring (PEP 257)."""
@@ -389,11 +337,9 @@ def hello():
 def hello():
     pass
 '''
-        chunker = PythonChunker()
-        chunks = chunker.chunk_string(code, Path("after_import.py"))
+        chunks = PythonChunker().chunk_string(code, Path("after_import.py"))
 
-        module_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.module]
-        assert len(module_chunks) == 0
+        assert summarize(chunks) == [function_named("hello")]
 
     def test_file_with_only_docstring(self):
         """File with only a module docstring produces one MODULE chunk."""
@@ -410,11 +356,9 @@ def hello():
         """Module chunk name is derived from file stem."""
         code = '''"""Docstring."""
 '''
-        chunker = PythonChunker()
-        chunks = chunker.chunk_string(code, Path("some/path/my_module.py"))
+        chunks = PythonChunker().chunk_string(code, Path("some/path/my_module.py"))
 
-        module_chunk = next(chunk for chunk in chunks if chunk.kind == ChunkKind.module)
-        assert module_chunk.name == "my_module"
+        assert summarize(chunks) == [module_named("my_module")]
 
     def test_comments_before_docstring_still_extracted(self):
         """Comments before docstring don't prevent extraction."""
@@ -426,15 +370,13 @@ def hello():
 def foo():
     pass
 '''
-        chunker = PythonChunker()
-        chunks = chunker.chunk_string(code, Path("commented.py"))
+        chunks = PythonChunker().chunk_string(code, Path("commented.py"))
 
-        module_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.module]
-        assert len(module_chunks) == 1
-        assert "Module docstring after comments" in module_chunks[0].content
+        assert summarize(chunks) == [module_named("commented"), function_named("foo")]
+        assert chunks[0].content == '"""Module docstring after comments."""'
 
-    def test_property_decorator(self, tmp_path: Path):
-        """Extracts property methods."""
+    def test_property_decorator(self):
+        """A property's getter and setter are methods of one name."""
         code = '''class User:
     @property
     def full_name(self) -> str:
@@ -445,16 +387,13 @@ def foo():
     def full_name(self, value: str):
         self.first, self.last = value.split()
 '''
-        file_path = tmp_path / "test.py"
-        file_path.write_text(code)
+        chunks = PythonChunker().chunk_string(code, Path("user.py"))
 
-        chunker = PythonChunker()
-        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
-
-        method_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.method]
-        # Both getter and setter are methods named "full_name"
-        assert len(method_chunks) == 2
-        assert all(chunk.name == "full_name" for chunk in method_chunks)
+        assert summarize(chunks) == [
+            class_named("User"),
+            method_named("full_name"),
+            method_named("full_name"),
+        ]
 
 
 class TestPythonChunkerSilentDrops:

@@ -23,6 +23,3 @@ With the global cache (`~/.cache/semantic-code-mcp/`), a project moved or delete
 
 ### LanceDB index tuning
 A flat cosine scan answers in 23–36 ms at 11.5k chunks. IVF or PQ indexes pay off only on much larger corpora; revisit when one over 100k chunks shows the need.
-
-### Debt: the chunker tests filter in comprehensions
-`tests/unit/test_python_chunker.py`, `tests/unit/test_rust_chunker.py` and `tests/unit/test_markdown_chunker.py` predate the rule that a test holds no branch; about 27 of their assertions pick chunks with `[chunk for chunk in chunks if ...]`. Rewrite them on `summarize()` from `tests/helpers.py`, as the newer tests in those files do.
