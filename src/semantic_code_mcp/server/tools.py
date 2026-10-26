@@ -83,8 +83,8 @@ async def search_code(  # noqa: PLR0913
         limit: Maximum number of results to return (default 10, at most 50).
         chunk_kinds: Only chunks of these kinds.
         languages: Only chunks of files in these languages.
-        path_glob: Only files this glob names, from the project root.
-        exclude_glob: No file this glob names.
+        path_glob: Only files this glob names, a path from the directory project_path names.
+        exclude_glob: No file this glob names, read as path_glob is.
         include_debug: Also return timings and counts of the search.
 
     Returns:

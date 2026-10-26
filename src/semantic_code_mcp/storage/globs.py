@@ -5,7 +5,7 @@ Python's. A SQL `LIKE` would not do: its `%` crosses every `/` that a `*` stops 
 `%` or `_` in a path would match what it stands for in `LIKE`.
 
 A glob reads as in a `.gitignore`: one without a slash names a file or a directory at any
-depth, one with a slash a path from the project root; `*` and `?` stay within a
+depth, one with a slash a path from the directory a search was asked from; `*` and `?` stay within a
 directory, `**` crosses any number of them, and a directory named takes everything under it.
 """
 

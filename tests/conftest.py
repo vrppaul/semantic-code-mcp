@@ -1,5 +1,6 @@
 """Fixtures shared by the tests."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,13 @@ class Helper:
         """Provide assistance."""
         pass
 '''
+
+
+@pytest.fixture(autouse=True)
+def git_without_the_machine_s_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Git as a fresh install has it: no user or system setting changes what it answers."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 
 @pytest.fixture(scope="session")

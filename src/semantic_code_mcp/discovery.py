@@ -128,13 +128,13 @@ class SourceDiscovery:
         """The root of the project a directory belongs to: of the git work tree it lies
         in, so a repository has one index whichever of its directories a search names; the
         directory itself outside a work tree, where the repository around it ignores it, or
-        where that repository hides untracked files and tracks none under it, as a home
-        directory under git for its dotfiles does a project inside it. Asked of git whether
-        or not it lists the files."""
+        where that repository's own setting hides untracked files, as a home directory under
+        git for its dotfiles is set up: its owner says what it does not track is not its.
+        Asked of git whether or not it lists the files."""
         repository_root = self._repository_of(directory)
         if repository_root is None or repository_root == directory:
             return directory
-        if self._hides_untracked_files(directory) and not self._tracks_files_under(directory):
+        if self._hides_untracked_files(directory):
             return directory
         return repository_root
 
@@ -177,16 +177,11 @@ class SourceDiscovery:
 
     def _hides_untracked_files(self, directory: Path) -> bool:
         """Whether the repository around the directory keeps untracked files out of its
-        status, as a home directory under git for its dotfiles is set up to."""
-        setting = self._run_git(["config", "--get", UNTRACKED_FILES_SETTING], directory)
+        status by a setting of its own, as a home directory under git for its dotfiles is
+        set up to; a user's global setting, kept for speed in large repositories, is not
+        read."""
+        setting = self._run_git(["config", "--local", "--get", UNTRACKED_FILES_SETTING], directory)
         return setting is not None and setting.stdout.strip() == UNTRACKED_FILES_HIDDEN
-
-    def _tracks_files_under(self, directory: Path) -> bool:
-        """Whether git tracks a file under the directory; False when it cannot say."""
-        listing = self._run_git(["ls-files", "--cached", "-z", "--", "."], directory)
-        return (
-            listing is not None and listing.returncode == SUCCESS_EXIT_CODE and bool(listing.stdout)
-        )
 
     def _is_ignored_by_git(self, root: Path) -> bool:
         """Whether the repository around root ignores root itself."""

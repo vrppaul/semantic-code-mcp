@@ -357,6 +357,10 @@ def directories(tmp_path: Path) -> Path:
     run_git(dotfiles, "commit", "--quiet", "--message", "dotfiles")
     (dotfiles / "projects" / "tool").mkdir(parents=True)
     (dotfiles / "projects" / "tool" / "main.py").write_text("x = 1\n")
+    (dotfiles / "projects" / "kept").mkdir(parents=True)
+    (dotfiles / "projects" / "kept" / ".editorconfig").write_text("root = true\n")
+    run_git(dotfiles, "add", "projects/kept/.editorconfig")
+    run_git(dotfiles, "commit", "--quiet", "--message", "editor settings")
     return tmp_path
 
 
@@ -370,6 +374,9 @@ def directories(tmp_path: Path) -> Path:
         pytest.param(
             "dotfiles/projects/tool", "dotfiles/projects/tool", id="a project it tracks nothing of"
         ),
+        pytest.param(
+            "dotfiles/projects/kept", "dotfiles/projects/kept", id="a project it tracks a file of"
+        ),
     ],
 )
 def test_a_project_is_the_whole_repository_a_directory_lies_in(
@@ -379,3 +386,16 @@ def test_a_project_is_the_whole_repository_a_directory_lies_in(
     found = make_discovery().project_root_of((directories / asked).resolve())
 
     assert found == (directories / root).resolve()
+
+
+def test_a_user_s_setting_that_hides_untracked_files_keeps_a_repository_whole(
+    directories: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Set for speed in large repositories, it says nothing of who owns a directory."""
+    user_configuration = tmp_path / "gitconfig"
+    user_configuration.write_text("[status]\n\tshowUntrackedFiles = no\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(user_configuration))
+
+    found = make_discovery().project_root_of((directories / "repo" / "pkg" / "sub").resolve())
+
+    assert found == (directories / "repo").resolve()

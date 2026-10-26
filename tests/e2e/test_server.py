@@ -224,6 +224,22 @@ async def test_two_spellings_of_one_project_share_its_local_index(
     assert IndexStatusResponse.model_validate(structured(result)).chunks_count == 2
 
 
+async def test_a_blank_glob_narrows_nothing(documented_project: Path, client: Client):
+    """Agents fill an optional string with an empty one."""
+    async with client:
+        result = await client.call_tool(
+            "search_code",
+            {
+                "query": CONFIGURATION_QUESTION,
+                "project_path": str(documented_project),
+                "path_glob": "",
+            },
+        )
+
+    hits = SearchCodeResponse.model_validate(structured(result)).results
+    assert sorted(hit.name for hit in hits) == sorted([GUIDE_SECTION, "load_config"])
+
+
 @pytest.fixture
 def repository(tmp_path: Path) -> Path:
     """A git repository with a package of one module and, outside it, a guide that
