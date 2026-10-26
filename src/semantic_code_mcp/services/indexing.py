@@ -256,7 +256,7 @@ class IndexingService:
     ) -> dict[str, Vector]:
         """The vectors of the chunks, embedded, by chunk id."""
         embedded = await self._embed(chunks, progress, position)
-        return dict(zip([chunk.chunk_id for chunk in chunks], embedded, strict=True))
+        return dict(zip([chunk.chunk_id for chunk in chunks], numpy.unstack(embedded), strict=True))
 
     async def _embed(
         self, chunks: list[Chunk], progress: ProgressReporter, position: EmbeddingProgress

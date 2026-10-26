@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
-- Every direct dependency is bounded below its next breaking release, so none reaches a fresh `uvx` install untested, as mcp 2.x reached 0.4.0; what they pull in follows their own bounds
+- Every direct dependency is bounded below its next breaking release, so none reaches a fresh `uvx` install untested, as mcp 2.x reached 0.4.0; what they pull in follows their own bounds. Tested on what a fresh install takes: sentence-transformers 5.7, transformers 5, huggingface-hub 2, torch 2.14 and numpy 2.5, under which the default model's vectors are the same as under transformers 4
 - Requires LanceDB 0.30.2 exactly, and pylance 4.0, the Lance library it is built on, for that upkeep: another LanceDB may bundle another Lance
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper

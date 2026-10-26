@@ -345,7 +345,8 @@ class LanceDBIndexStore(IndexStore):
             .to_arrow()
         )
         matrix = vector_matrix(rows)
-        return dict(zip(rows.column(CHUNK_ID_COLUMN).to_pylist(), matrix, strict=True))
+        chunk_ids = rows.column(CHUNK_ID_COLUMN).to_pylist()
+        return dict(zip(chunk_ids, numpy.unstack(matrix), strict=True))
 
     @override
     def keep_up(self) -> None:

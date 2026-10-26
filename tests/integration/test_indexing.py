@@ -287,7 +287,7 @@ async def test_a_project_moved_with_its_local_index_keeps_it(sample_project: Pat
     settings = Settings(cache_dir=tmp_path / "cache", local_index=True)
     first = build_registry(settings, FakeEmbedder()).services_for(sample_project).indexing
     await first.index(sample_project, force=False, progress=NO_PROGRESS)
-    moved = sample_project.rename(tmp_path / "moved")
+    moved = await asyncio.to_thread(sample_project.rename, tmp_path / "moved")
 
     status = (
         await build_registry(settings, FakeEmbedder()).services_for(moved).indexing.status(moved)
