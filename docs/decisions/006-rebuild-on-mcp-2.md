@@ -34,7 +34,7 @@ Fix what blocks users now, on the current code. Then rebuild the server on mcp 2
 
 ### D1. Hotfix the published package
 
-Release 0.4.1 with `mcp>=1.26.0,<2` and the correctness fixes from D5 and D6 on the current structure, each with a test that fails before the fix. (The plan was a 0.4.1 with the pin alone and a 0.4.2 after; both were ready before either shipped, so they ship as one.) The chunkers keep their files through the rebuild, so these fixes carry over. The scanner fix moves into `discovery/` in stage 4.
+Release 0.4.1 with `mcp>=1.26.0,<2` and the correctness fixes from D5 and D6 on the current structure, each with a test that fails before the fix. (The plan was a 0.4.1 with the pin alone and a 0.4.2 after; both were ready before either shipped, so they ship as one.) The chunkers keep their files through the rebuild, so these fixes carry over. The scanner fix moves into `discovery/` in stage 4. Not released: the owner releases nothing until every stage is done (2026-10-26), so these fixes ship with the rebuild.
 
 ### D2. Layers and composition root
 
@@ -313,16 +313,16 @@ CI and release:
 The project rules say to ask before changing the storage schema, the tool signatures or the dependencies. The owner delegated these on 2026-10-25 ("тебе лучше знать"):
 
 1. **Storage schema changes** (D4), with one automatic rebuild through the manifest. A migration path would cost more than one re-index.
-2. **Tool signatures change** (D10): new filters, `include_debug`, `ToolError`, no `ErrorResponse`, no grouping. This breaks anyone parsing the old output; we ship it as 0.x minor bumps and say so in CHANGELOG.
+2. **Tool signatures change** (D10): new filters, `include_debug`, `ToolError`, no `ErrorResponse`, no grouping. This breaks anyone parsing the old output; CHANGELOG says so.
 3. **Dependencies:**
    - added: `filelock` and `numpy` (runtime; numpy was already installed through sentence-transformers and LanceDB, and is declared once the domain names the vector's type); `import-linter` and `hypothesis` (dev); vulture, deptry and typos as pre-commit hooks;
    - removed: `pandas`;
    - decided on measurements in stage 7: ONNX runtime as default or extra, and torch as optional.
-4. **Hotfix 0.4.1 before the rebuild.** The tag push itself waits for the owner's word, like every release.
+4. **Nothing is released until every stage is done** (the owner, 2026-10-26), the hotfix 0.4.1 included: one release ships the whole rebuild, and its version is settled then.
 
-### Stages and releases
+### Stages
 
-Progress: stages 0–4 are done on branch `rebuild-on-mcp-2` (2026-10-25). 0.4.1 is not tagged yet: it is to be cut on a release branch from `aec3288` (stages 0–2 and their fixes) or `84d678b` (the same and `evals/`), as the owner decides, with a CHANGELOG section of its own, since `[Unreleased]` here describes mcp 2.x. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
+Progress: stages 0–4 are done on branch `rebuild-on-mcp-2` (2026-10-25). Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
 
 As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - `cli.py` builds `Settings` and configures logging; `app.py` builds the server, and its lifespan yields the `ProjectRegistry` itself rather than an `AppContext` around it.
@@ -332,7 +332,7 @@ As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - Property tests (hypothesis) move to stage 6, with the fusion they are most needed for. The old chunker tests still filter in comprehensions; TODO.md records it.
 - One index per repository (D10, O6) is not built: the tools resolve the path and nothing more. It moves to stage 6, with the path prefilter it needs to keep a subdirectory's results to that subdirectory.
 
-Stage 5 is done (2026-10-26), not released. As built, it differs from D2, D3, D4, D6, D7, D8 and D11 in these points:
+Stage 5 is done (2026-10-26). As built, it differs from D2, D3, D4, D6, D7, D8 and D11 in these points:
 - `embed_documents` takes no progress callback: the indexing service embeds in slices of `EMBEDDING_SLICE_SIZE` chunks and reports before each, so the embedder stays a plain call in a worker thread and progress stays on the event loop.
 - The domain imports numpy for one thing, the type of a vector (`Vector`, `VectorMatrix` in `domain/interfaces.py`); numpy is a declared dependency.
 - The manifest holds an `IndexIdentity` (model name, chunker version), the store's schema version and the time of the last write, not the vectors' dimension: the model's name fixes it and the vector column records it, so reading a manifest never needs the model. The store writes it on every write. The chunks table is made by the first write that has vectors, as wide as they are.
@@ -375,18 +375,18 @@ Open for stages 6 and 7 (the same review):
 - A file that could not be read is recorded as indexed with no chunks and not tried again until it changes; the chunker should report a read failure apart from an empty file.
 
 
-| Stage | Content | Release |
-|---|---|---|
-| 0 | `mcp<2` pin | 0.4.1, with stage 1 |
-| 1 | Correctness on current code: R1–R7, O5, O7 and `ignore_patterns` in git mode, with failing-first tests and real git repos in tests | 0.4.1 |
-| 2 | Gates the current code passes, CI, release gated on CI, LICENSE/metadata, CONTRIBUTING, SECURITY, AGENTS.md + symlink + instruction gate, rules cleanup | — |
-| 3 | Safety net: e2e tests through the in-memory client, `evals/` (quality and speed) with baselines | — |
-| 4 | Rebuild on mcp 2.x: layers, lifespan, ABCs, errors, `ToolError`, single return types, presenters, settings cleanup, middleware, code-rule gates, import-linter | — |
-| 5 | Storage and pipeline: tables, manifest, batched writes, `optimize`, locks, scan-time mtimes, Arrow, no pandas, cheap status, model loaded off the loop, embedding progress, D5/D6 remainder (skeletons, span helper, `CHUNKER_VERSION`) | 0.5.0 |
-| 6 | Search: RRF, prefilters, `search_text`, similarity threshold, prose prior, no grouping, recency decision — each on the harness; one index per repository (O6) | 0.6.0 |
-| 7 | Speed and model: threads, ONNX, model candidates, new targets in rules | 0.7.0 (if the default model changes, the manifest rebuilds) |
-| 8 | Server `instructions`, docstrings, skill, plugin, skill gate, README, reviewer agent, MCP roots spike | 1.0.0 |
-| 9 | Replies on GitHub. Issue #3: what changed, with numbers from `evals`; take up the author's offer of their harness and compare it with ours; ask about their hardware (O4). PR #2: thank the author, explain D5 and the alternative rejected above, and close. | — |
+| Stage | Content |
+|---|---|
+| 0 | `mcp<2` pin |
+| 1 | Correctness on current code: R1–R7, O5, O7 and `ignore_patterns` in git mode, with failing-first tests and real git repos in tests |
+| 2 | Gates the current code passes, CI, release gated on CI, LICENSE/metadata, CONTRIBUTING, SECURITY, AGENTS.md + symlink + instruction gate, rules cleanup |
+| 3 | Safety net: e2e tests through the in-memory client, `evals/` (quality and speed) with baselines |
+| 4 | Rebuild on mcp 2.x: layers, lifespan, ABCs, errors, `ToolError`, single return types, presenters, settings cleanup, middleware, code-rule gates, import-linter |
+| 5 | Storage and pipeline: tables, manifest, batched writes, `optimize`, locks, scan-time mtimes, Arrow, no pandas, cheap status, model loaded off the loop, embedding progress, D5/D6 remainder (skeletons, span helper, `CHUNKER_VERSION`) |
+| 6 | Search: RRF, prefilters, `search_text`, similarity threshold, prose prior, no grouping, recency decision — each on the harness; one index per repository (O6) |
+| 7 | Speed and model: threads, ONNX, model candidates, new targets in rules |
+| 8 | Server `instructions`, docstrings, skill, plugin, skill gate, README, reviewer agent, MCP roots spike |
+| 9 | After the release, replies on GitHub. Issue #3: what changed, with numbers from `evals`; take up the author's offer of their harness and compare it with ours; ask about their hardware (O4). PR #2: thank the author, explain D5 and the alternative rejected above, and close. |
 
 ## Alternatives Considered
 
@@ -405,13 +405,13 @@ Open for stages 6 and 7 (the same review):
 
 ## Consequences
 
-- Users upgrading to 0.5.0 get one automatic full re-index. Later model or chunker changes do the same; the old index stays until no session has used it for a week, so switching back costs nothing.
-- Tool output changes shape in 0.5.0 and 0.6.0. CHANGELOG states each break.
-- The 0.4.x line stays pinned to `mcp<2`. From 0.5.0 we require `mcp>=2`.
+- Users upgrading from 0.4 get one automatic full re-index. Later model or chunker changes do the same; the old index stays until no session has used it for a week, so switching back costs nothing.
+- Tool output changes shape. CHANGELOG states each break.
+- The rebuild requires `mcp>=2`.
 - New dependencies: `filelock` (runtime); `import-linter` and `hypothesis` (dev). `pandas` leaves; torch may become optional after stage 7.
 - Commits get slower: more hooks, test collection, the skill gate. CI adds minutes and a model download, which the cache softens.
 - Search quality and speed become numbers we track (`evals/baseline/`), not impressions. TODO's search epic is re-ranked by them.
-- Owner actions: approve each release tag; add the required reviewer on the `pypi` environment; read and approve the GitHub replies in stage 9.
+- Owner actions: approve the release tag; add the required reviewer on the `pypi` environment; read and approve the GitHub replies in stage 9.
 
 ## Appendix A. Findings inventory
 
