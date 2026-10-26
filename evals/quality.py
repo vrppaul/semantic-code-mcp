@@ -1,7 +1,8 @@
 """Search quality: where the answer to each question lands in what `search_code` returns.
 
 Two scores per corpus, as issue #3 measured them: whether the right file comes back, and
-whether the right chunk does. Each as hits@1, hits@3 and mean reciprocal rank.
+whether the right chunk does. Each as hits@1, hits@3 and mean reciprocal rank. And how
+many results questions no corpus answers get, which a good search keeps at none.
 """
 
 from collections.abc import Sequence
@@ -53,12 +54,16 @@ class CorpusQuality(BaseModel):
     file: RankScores
     chunk: RankScores
     ranks: tuple[QueryRanks, ...]
+    off_topic_questions: int
+    # What the off-topic questions got, all of them together
+    off_topic_results: int
 
 
 async def measure_quality(
-    corpus: Corpus, working_tree: Path, connection: ServerConnection
+    corpus: Corpus, working_tree: Path, off_topic: tuple[str, ...], connection: ServerConnection
 ) -> CorpusQuality:
-    """Index a corpus, ask every question, and score where the answers landed."""
+    """Index a corpus, ask every question, and score where the answers landed; then ask
+    the off-topic questions and count what came back."""
     missing_files = missing_answer_paths(corpus, working_tree)
     if missing_files:
         message = f"{corpus.corpus.name}: answers name files the checkout lacks: {missing_files}"
@@ -69,12 +74,17 @@ async def measure_quality(
         raise CorpusMistakeError(message)
     await connection.index(working_tree)
     ranks = [await rank_query(query, working_tree, connection) for query in corpus.queries]
+    off_topic_answers = [
+        await connection.search(working_tree, question, RESULTS_PER_QUERY) for question in off_topic
+    ]
     return CorpusQuality(
         corpus=corpus.corpus.name,
         queries=len(ranks),
         file=score([query_ranks.file_rank for query_ranks in ranks]),
         chunk=score([query_ranks.chunk_rank for query_ranks in ranks]),
         ranks=tuple(ranks),
+        off_topic_questions=len(off_topic),
+        off_topic_results=sum(len(answer.results) for answer in off_topic_answers),
     )
 
 

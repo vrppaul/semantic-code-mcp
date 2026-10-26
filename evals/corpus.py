@@ -13,6 +13,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 CORPORA_DIRECTORY = Path(__file__).parent / "corpora"
+# Questions no corpus answers, asked of every corpus
+OFF_TOPIC_FILE = Path(__file__).parent / "off_topic.toml"
 CORPUS_FILE_SUFFIX = ".toml"
 # A checkout's directory is named after the corpus and this many characters of its commit
 COMMIT_PREFIX_LENGTH = 12
@@ -55,6 +57,19 @@ class Corpus(BaseModel):
 
     corpus: CorpusSource
     queries: tuple[Query, ...]
+
+
+class OffTopicQuestions(BaseModel):
+    """Questions no corpus answers, as the file holds them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    questions: tuple[str, ...]
+
+
+def load_off_topic_questions() -> tuple[str, ...]:
+    """The questions no corpus answers, which a good search answers with nothing."""
+    return OffTopicQuestions.model_validate(tomllib.loads(OFF_TOPIC_FILE.read_text())).questions
 
 
 def available_corpus_names() -> list[str]:

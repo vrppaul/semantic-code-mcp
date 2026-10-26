@@ -1,0 +1,12 @@
+# Questions no corpus answers: a search for one of them should come back empty. The last
+# is gibberish, which a small model still finds a little like code.
+questions = [
+  "a chocolate cake recipe with fresh strawberries",
+  "the weather in Paris tomorrow",
+  "who won the football world cup in 1998",
+  "how to knit a wool scarf for winter",
+  "symptoms of the common cold in children",
+  "the best time of year to plant tomatoes",
+  "a train timetable from Berlin to Prague",
+  "asdkjh qwpoeiru zxmcnv",
+]

@@ -22,7 +22,13 @@ from pathlib import Path
 from mcp.shared.exceptions import MCPError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from evals.corpus import Corpus, available_corpus_names, checkout, load_corpora
+from evals.corpus import (
+    Corpus,
+    available_corpus_names,
+    checkout,
+    load_corpora,
+    load_off_topic_questions,
+)
 from evals.quality import CorpusMistakeError, CorpusQuality, RankScores, measure_quality
 from evals.server import ToolCallFailedError, connect
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
@@ -133,6 +139,7 @@ def run_speed(corpora: list[Corpus], *, edits: int, save_baseline: bool) -> None
 
 async def collect_quality(corpora: list[Corpus]) -> list[CorpusQuality]:
     measured: list[CorpusQuality] = []
+    off_topic = load_off_topic_questions()
     for corpus in corpora:
         working_tree = checkout(corpus.corpus, CHECKOUTS_ROOT)
         with (
@@ -141,7 +148,7 @@ async def collect_quality(corpora: list[Corpus]) -> list[CorpusQuality]:
         ):
             server_log.write(log_header("quality", corpus))
             async with connect(Path(index_directory), server_log) as connection:
-                measured.append(await measure_quality(corpus, working_tree, connection))
+                measured.append(await measure_quality(corpus, working_tree, off_topic, connection))
     return measured
 
 
@@ -176,7 +183,8 @@ def describe_quality(entry: CorpusQuality, baseline: CorpusQuality | None) -> st
 def quality_summary(entry: CorpusQuality) -> str:
     return (
         f"file {rank_summary(entry.file, entry.queries)} | "
-        f"chunk {rank_summary(entry.chunk, entry.queries)}"
+        f"chunk {rank_summary(entry.chunk, entry.queries)} | "
+        f"off-topic {entry.off_topic_results} results for {entry.off_topic_questions} questions"
     )
 
 
