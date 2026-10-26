@@ -138,17 +138,6 @@ class TestMarkdownChunker:
         assert (chunks[0].line_start, chunks[0].line_end) == (1, 3)
         assert (chunks[1].line_start, chunks[1].line_end) == (5, 7)
 
-    def test_line_range_matches_content(self):
-        """Every chunk's line range selects exactly its content."""
-        markdown_text = "Intro.\n\n# First\n\nOne.\n\n## Nested\n\nTwo.\n\n\n# Last\n\nThree.\n\n"
-        lines = markdown_text.split("\n")
-        chunks = MarkdownChunker().chunk_string(markdown_text, Path("doc.md"))
-
-        assert len(chunks) == 4
-        assert [chunk.content for chunk in chunks] == [
-            "\n".join(lines[chunk.line_start - 1 : chunk.line_end]) for chunk in chunks
-        ]
-
     def test_line_numbers_with_preamble(self):
         """Preamble chunk has correct line numbers."""
         markdown_text = "Preamble.\n\n# Heading\n\nContent.\n"

@@ -1,9 +1,11 @@
 """Tests for source file discovery."""
 
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
+from hypothesis import example, given, settings, strategies
 
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.models import SourceFile
@@ -60,17 +62,6 @@ class TestGitDiscovery:
         files = make_discovery().discover(repository)
 
         assert relative_names(files) == {"code.py"}
-
-    def test_skips_tracked_file_deleted_from_disk(self, tmp_path: Path):
-        repository = make_repository(tmp_path / "repo")
-        (repository / "kept.py").write_text("x = 1\n")
-        (repository / "removed.py").write_text("x = 1\n")
-        commit_all(repository)
-        (repository / "removed.py").unlink()
-
-        files = make_discovery().discover(repository)
-
-        assert relative_names(files) == {"kept.py"}
 
     def test_returns_non_ascii_file_names_as_existing_paths(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -129,18 +120,6 @@ class TestGitDiscovery:
         files = make_discovery(use_gitignore=False).discover(repository)
 
         assert relative_names(files) == {"listed.py", "unlisted.py"}
-
-    def test_tracked_symlink_to_a_file_outside_the_project_is_skipped(self, tmp_path: Path):
-        outside = tmp_path / "outside.py"
-        outside.write_text("secret = 1\n")
-        repository = make_repository(tmp_path / "repo")
-        (repository / "code.py").write_text("x = 1\n")
-        (repository / "link.py").symlink_to(outside)
-        commit_all(repository)
-
-        files = make_discovery().discover(repository)
-
-        assert relative_names(files) == {"code.py"}
 
     def test_project_ignored_by_an_enclosing_repository_is_walked(self, tmp_path: Path):
         """A home directory under git for dotfiles must not hide the projects inside it."""
@@ -348,6 +327,70 @@ def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: 
     files = make_discovery(use_gitignore=use_gitignore).discover(repository)
 
     assert relative_names(files) == {"kept.py"}
+
+
+# What a project in the discovery property holds: files at a few depths, one in a directory
+# its .gitignore names, and links to a file inside, to one outside, to nothing and to a
+# directory; any of them tracked, and files deleted after the commit
+PROJECT_FILES = ("a.py", "src/b.py", "src/deep/c.py", "ignored/d.py", "notes.txt")
+LINK_TARGETS = {
+    "inside.py": "a.py",
+    "outside.py": "../outside.py",
+    "nowhere.py": "missing.py",
+    "linked_src": "src",
+}
+GITIGNORE = ".gitignore"
+IGNORED_DIRECTORY = "ignored/\n"
+OUTSIDE_FILE = "outside.py"
+DISCOVERY_EXAMPLES = 30
+
+
+def write_source(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x = 1\n")
+
+
+@pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
+@settings(max_examples=DISCOVERY_EXAMPLES, deadline=None)
+@given(
+    written=strategies.sets(strategies.sampled_from(PROJECT_FILES)),
+    linked=strategies.sets(strategies.sampled_from(sorted(LINK_TARGETS))),
+    tracked=strategies.sets(strategies.sampled_from((*PROJECT_FILES, *LINK_TARGETS))),
+    deleted=strategies.sets(strategies.sampled_from(PROJECT_FILES)),
+)
+@example(
+    written={"a.py", "src/b.py"}, linked=set(), tracked={"a.py", "src/b.py"}, deleted={"src/b.py"}
+).via("a tracked file deleted from disk")
+@example(
+    written={"a.py"}, linked={"outside.py"}, tracked={"a.py", "outside.py"}, deleted=set()
+).via("a tracked link to a file outside the project")
+def test_every_path_discovery_returns_is_a_file_inside_the_project(
+    use_gitignore: bool,
+    written: set[str],
+    linked: set[str],
+    tracked: set[str],
+    deleted: set[str],
+):
+    """A path that is gone, or that leads outside, would be read, chunked or indexed."""
+    with tempfile.TemporaryDirectory() as directory:
+        write_source(Path(directory) / OUTSIDE_FILE)
+        project = make_repository(Path(directory) / "project")
+        (project / GITIGNORE).write_text(IGNORED_DIRECTORY)
+        for name in written:
+            write_source(project / name)
+        for name in linked:
+            (project / name).symlink_to(LINK_TARGETS[name])
+        run_git(project, "add", "--force", "--", GITIGNORE, *sorted(tracked & (written | linked)))
+        run_git(project, "commit", "--quiet", "--message", "snapshot")
+        for name in deleted & written:
+            (project / name).unlink()
+
+        files = make_discovery(use_gitignore=use_gitignore).discover(project)
+
+        returned = [project / file.path for file in files]
+        every_one = [True] * len(returned)
+        assert [path.is_file() for path in returned] == every_one
+        assert [path.resolve().is_relative_to(project.resolve()) for path in returned] == every_one
 
 
 @pytest.fixture
