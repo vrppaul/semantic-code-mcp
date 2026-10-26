@@ -15,8 +15,9 @@ from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry
 from semantic_code_mcp.storage.lancedb import CHUNKS_TABLE, LanceDBIndexStore
 
-# Where LanceDB keeps each version of a table's indexes, a directory each
-FULL_TEXT_INDEX_VERSIONS = "_indices"
+# Where LanceDB keeps each version of every index of a table, a directory each: while the
+# chunks table has no index but the full-text one, the newest is the full-text index's
+TABLE_INDEX_VERSIONS = "_indices"
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -59,7 +60,7 @@ def chunks_outside_the_full_text_index(store: LanceDBIndexStore) -> int:
 def newest_full_text_index_files(store: LanceDBIndexStore) -> int:
     """How many files the newest version of a store's full-text index holds: each part an
     upkeep folds in adds some, and a rebuild starts again from one part."""
-    versions = store.directory / f"{CHUNKS_TABLE}.lance" / FULL_TEXT_INDEX_VERSIONS
+    versions = store.directory / f"{CHUNKS_TABLE}.lance" / TABLE_INDEX_VERSIONS
     newest = max(versions.iterdir(), key=lambda version: version.stat().st_mtime_ns)
     return len(list(newest.rglob("*")))
 

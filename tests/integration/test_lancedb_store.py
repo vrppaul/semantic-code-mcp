@@ -753,3 +753,22 @@ def test_upkeep_rebuilds_the_full_text_index_before_its_parts_pile_up(
         filled_store.keep_up()
 
     assert newest_full_text_index_files(filled_store) == rebuilt
+
+
+def test_a_store_rebuilds_the_full_text_index_at_its_first_upkeep(
+    filled_store: LanceDBIndexStore, tmp_path: Path
+):
+    """Else the parts an earlier session left would pile up, session after session."""
+    filled_store.keep_up()
+    rebuilt = newest_full_text_index_files(filled_store)
+    near = function_chunk("near", "near.py", "def near(): return 1")
+    filled_store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    filled_store.keep_up()
+    next_session = LanceDBIndexStore(
+        tmp_path / "index", IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+    )
+
+    next_session.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    next_session.keep_up()
+
+    assert newest_full_text_index_files(next_session) == rebuilt
