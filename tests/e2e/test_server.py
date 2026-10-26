@@ -10,6 +10,7 @@ from mcp.types import CallToolResult
 
 from semantic_code_mcp.app import create_app
 from semantic_code_mcp.config import Settings
+from semantic_code_mcp.domain.globs import REFUSED_CHARACTERS
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
@@ -175,6 +176,24 @@ async def test_search_in_a_missing_project_is_an_error_naming_the_path(
 
     assert result.is_error
     assert str(missing) in str(result.content)
+
+
+async def test_a_glob_the_search_cannot_read_is_refused_before_the_project_is_looked_for(
+    tmp_path: Path, client: Client
+):
+    """A refusal costs no call to git, and its reason is what the agent must change."""
+    async with client:
+        result = await client.call_tool(
+            "search_code",
+            {
+                "query": "anything",
+                "project_path": str(tmp_path / "missing"),
+                "path_glob": "[ab].py",
+            },
+        )
+
+    assert result.is_error
+    assert REFUSED_CHARACTERS["["] in str(result.content)
 
 
 async def test_a_limit_over_the_maximum_is_refused(project: Path, client: Client):

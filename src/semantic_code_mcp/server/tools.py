@@ -42,10 +42,11 @@ KINDS_DESCRIPTION = (
 LANGUAGES_DESCRIPTION = "Only chunks of files in these languages."
 PATH_GLOB_DESCRIPTION = (
     "Only files this glob names, as in a .gitignore: without a slash a name at any depth"
-    " below the directory project_path names (`*.rs`), with one a path from that directory"
-    " (`src/**/*.py`); `*` stays within a directory, `**` crosses any number, `?` is one"
-    " character, and a directory takes what it holds. No character classes (`[ab]`), braces,"
-    " leading `!` or `..`: each is refused."
+    " below the directory project_path names (`*.rs`, and `tests/`, as a trailing slash"
+    " does not count), with one before a name a path from that directory (`src/**/*.py`,"
+    " `/tests`); `*` stays within a directory, `**` crosses any number, `?` is one"
+    " character, and a directory takes what it holds. No character classes (`[ab]`),"
+    " braces, escapes, a leading `!` or `..`: each is refused with the reason."
 )
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
 

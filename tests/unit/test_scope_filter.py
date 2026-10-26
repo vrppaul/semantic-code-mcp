@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from semantic_code_mcp.domain.globs import read_glob
 from semantic_code_mcp.domain.models import ChunkKind, Language, SearchScope
 from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.lancedb import scope_filter
@@ -27,14 +28,12 @@ from semantic_code_mcp.storage.lancedb import scope_filter
         pytest.param("file?.py", "file1.py", True, id="a question mark, one character"),
         pytest.param("file?.py", "file10.py", False, id="a question mark, not two"),
         pytest.param("a?b", "a/b", False, id="a question mark, never a slash"),
-        pytest.param("[ab].rs", "[ab].rs", True, id="a bracket, itself"),
-        pytest.param("[ab].rs", "b.rs", False, id="a bracket, no class"),
         pytest.param("lib(1)/*.py", "lib(1)/module.py", True, id="what a regex would read"),
         pytest.param("100%_done.md", "100%_done.md", True, id="what SQL's LIKE would read"),
     ],
 )
 def test_a_glob_takes_the_paths_it_names(glob: str, path: str, matches: bool):
-    assert bool(re.fullmatch(glob_pattern(glob, base=None), path)) is matches
+    assert bool(re.fullmatch(glob_pattern(read_glob(glob), base=None), path)) is matches
 
 
 @pytest.mark.parametrize(
@@ -52,7 +51,7 @@ def test_a_glob_reads_from_the_directory_a_search_was_asked_from(
     glob: str, path: str, matches: bool
 ):
     """An agent that names a directory of a repository names paths from that directory."""
-    assert bool(re.fullmatch(glob_pattern(glob, base=Path("package")), path)) is matches
+    assert bool(re.fullmatch(glob_pattern(read_glob(glob), base=Path("package")), path)) is matches
 
 
 def test_a_scope_that_takes_every_chunk_needs_no_filter():

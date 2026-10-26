@@ -1,27 +1,42 @@
 """What a search's path glob may hold, and the glob as a search reads it.
 
 A glob reads as in a `.gitignore`, from the directory a search was asked from: one with a
-slash before its last character names a path from there, one without a name at any depth
-below it; `*` and `?` stay within a directory, `**` crosses any number of them, and a
-directory named takes everything under it. Reading gives each glob one spelling, a path
-from that directory with a leading `/`, and refuses what a search would otherwise answer
-with nothing and no word why. The store turns the glob it is given into its own filter.
+slash before a part it names is a path from there, one without (a trailing slash aside) a
+name at any depth below it; `*` and `?` stay within a directory, `**` crosses any number
+of them, and a directory named takes everything under it. Reading gives each glob one
+spelling, which reads the same again: a name, or a path with a leading `/`, its parts
+without blanks around them. It refuses what a search would otherwise answer with nothing
+and no word why. A `SearchScope` holds its globs read, and the store turns them into its
+own filter.
+
+These are not the grammar of the ignore patterns a user sets, which discovery reads as
+`fnmatch` does.
 """
 
 PATH_SEPARATOR = "/"
 CURRENT_DIRECTORY = "."
 PARENT_DIRECTORY = ".."
-# A component a path spells the directory it is in with, or that two slashes leave
-NAMELESS_COMPONENTS = frozenset({"", CURRENT_DIRECTORY})
+# A part a path spells the directory it is in with, or that two slashes leave
+NAMELESS_PARTS = frozenset({"", CURRENT_DIRECTORY})
+# The longest glob a search reads: thousands of wildcards overflow the store's regex
+LONGEST_GLOB = 1000
+TOO_LONG = f"A glob of more than {LONGEST_GLOB} characters is not read"
 # What a glob of a .gitignore or a shell may start with or hold that a search does not
 # read, and what an agent can do instead
 NEGATION = "!"
 NEGATION_INSTEAD = "A leading ! is not read; name what to leave out in exclude_glob"
 REFUSED_CHARACTERS = {
     "[": "A class of characters is not read; ? stands for one character",
-    "{": "Braces are not read; search once for each name, or narrow by languages",
+    "{": (
+        "Braces are not read; search once for each name or narrow by languages, and let ?"
+        " stand for a brace a path holds"
+    ),
+    "\\": "Escapes are not read; ? stands for the character an escape would keep",
 }
-PARENT_DIRECTORY_INSTEAD = "A glob reads from the directory searched and cannot step out of it"
+PARENT_DIRECTORY_INSTEAD = (
+    "A glob reads from the directory searched and cannot step out of it; name a directory"
+    " above it in project_path instead"
+)
 
 
 class UnreadableGlobError(ValueError):
@@ -29,33 +44,39 @@ class UnreadableGlobError(ValueError):
 
 
 def read_glob(glob: str | None) -> str | None:
-    """The glob as a search reads it: blanks around it, `.` components and doubled slashes
-    dropped, a path from the directory searched spelled with a leading `/`; None for one
-    that names nothing past that directory, as the empty string an agent fills an optional
-    argument with. Raises UnreadableGlobError for a glob that steps out of the directory,
-    or holds what a search does not read."""
+    """The glob as a search reads it, in its one spelling; None for one that names nothing
+    past the directory searched, as the empty string an agent fills an optional argument
+    with. Raises UnreadableGlobError for a glob that steps out of the directory, or holds
+    what a search does not read."""
     if glob is None:
         return None
-    stripped = glob.strip()
-    refusal = refusal_of(stripped)
+    refusal = refusal_of(glob)
     if refusal is not None:
         message = f"{refusal}: {glob}"
         raise UnreadableGlobError(message)
-    components = stripped.split(PATH_SEPARATOR)
-    named = [component for component in components if component not in NAMELESS_COMPONENTS]
+    parts = parts_of(glob)
+    named = [part for part in parts if part not in NAMELESS_PARTS]
     if not named:
         return None
+    # A slash makes a path when a named part follows it, or when it leads the glob
+    is_path = parts[0] in NAMELESS_PARTS or any(part not in NAMELESS_PARTS for part in parts[1:])
     joined = PATH_SEPARATOR.join(named)
-    is_path = PATH_SEPARATOR in stripped.rstrip(PATH_SEPARATOR)
     return PATH_SEPARATOR + joined if is_path else joined
 
 
 def refusal_of(glob: str) -> str | None:
     """Why a search cannot read a glob as its writer meant; None when it can."""
-    if glob.startswith(NEGATION):
+    if len(glob) > LONGEST_GLOB:
+        return TOO_LONG
+    if glob.strip().startswith(NEGATION):
         return NEGATION_INSTEAD
-    if PARENT_DIRECTORY in glob.split(PATH_SEPARATOR):
+    if PARENT_DIRECTORY in parts_of(glob):
         return PARENT_DIRECTORY_INSTEAD
     return next(
         (reason for character, reason in REFUSED_CHARACTERS.items() if character in glob), None
     )
+
+
+def parts_of(glob: str) -> list[str]:
+    """The parts of a glob between its slashes, without blanks around them."""
+    return [part.strip() for part in glob.split(PATH_SEPARATOR)]

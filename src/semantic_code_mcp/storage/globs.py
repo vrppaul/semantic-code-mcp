@@ -5,10 +5,10 @@ The store's `regexp_like` reads Rust's regex syntax; what is written here, the e
 a property test). A SQL `LIKE` would not do: its `%` crosses every `/` that a `*` stops at,
 and a `%` or `_` in a path would match what it stands for in `LIKE`.
 
-A glob reads as `semantic_code_mcp.domain.globs` says. Every character but its wildcards
-is itself, a bracket too: a class of characters is not read, as Rust's regex reads one
-apart from a glob (`--`, `[:alpha:]`) and a class of a glob never matches a `/`, which a
-regex's does.
+It takes a glob as `semantic_code_mcp.domain.globs` reads it: a name, or a path with a
+leading `/`. Every character but the wildcards is itself; a class of characters is not
+read, as Rust's regex reads one apart from a glob (`--`, `[:alpha:]`) and a class of a
+glob never matches a `/`, which a regex's does.
 """
 
 import re
@@ -38,13 +38,13 @@ WHOLE_PATH_END = "$"
 
 
 def glob_pattern(glob: str, base: Path | None) -> str:
-    """The regular expression that matches the whole of every path the glob names, read
+    """The regular expression that matches the whole of every path a read glob names,
     from `base`, the directory of the project a search was asked from, when it is not the
     project's root."""
-    rooted = glob.startswith(PATH_SEPARATOR) or PATH_SEPARATOR in glob.strip(PATH_SEPARATOR)
+    is_path = glob.startswith(PATH_SEPARATOR)
     below_base = "" if base is None else re.escape(base.as_posix()) + PATH_SEPARATOR
-    at_any_depth = "" if rooted else ANY_DIRECTORIES
-    body = glob_body(glob.strip(PATH_SEPARATOR))
+    at_any_depth = "" if is_path else ANY_DIRECTORIES
+    body = glob_body(glob.removeprefix(PATH_SEPARATOR))
     return WHOLE_PATH_START + below_base + at_any_depth + body + AND_BELOW + WHOLE_PATH_END
 
 

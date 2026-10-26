@@ -64,7 +64,9 @@ def parse_ignore_patterns(raw_patterns: Sequence[str]) -> IgnorePatterns:
     """Sort patterns by how they match, after the spellings .gitignore allows.
 
     A trailing `/` is dropped; a leading `/` or `./` anchors the pattern at the project
-    root; a leading `**/` also matches at the root itself.
+    root; a leading `**/` also matches at the root itself. These are the user's settings,
+    read as `fnmatch` reads them, classes and all; a search's globs, which agents write,
+    are another grammar on purpose (`domain/globs.py`).
     """
     component: list[str] = []
     path: list[str] = []

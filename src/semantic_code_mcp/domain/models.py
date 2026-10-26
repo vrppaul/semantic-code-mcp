@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from semantic_code_mcp.domain.globs import read_glob
+
 FIRST_LINE = 1
 # The range of a cosine similarity: opposite meanings to the same
 LOWEST_SIMILARITY = -1.0
@@ -114,9 +116,9 @@ class SearchCandidates(BaseModel):
 
 class SearchScope(BaseModel):
     """Which chunks a search looks among: of these kinds and languages, under the paths
-    one glob names and outside those another names (as `storage/globs.py` reads them), in
-    the directory of the repository a search was asked from; an empty list or None leaves
-    that part of the project in."""
+    one glob names and outside those another names, held as `domain/globs.py` reads them,
+    in the directory of the repository a search was asked from; an empty list or None
+    leaves that part of the project in."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -126,6 +128,11 @@ class SearchScope(BaseModel):
     exclude_glob: str | None
     # From the project root
     directory: Path | None
+
+    @field_validator("path_glob", "exclude_glob")
+    @classmethod
+    def globs_must_be_read(cls, glob: str | None) -> str | None:
+        return read_glob(glob)
 
     @field_validator("directory")
     @classmethod

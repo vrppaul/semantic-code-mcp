@@ -60,6 +60,7 @@ from filelock import FileLock
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from semantic_code_mcp.domain.globs import PATH_SEPARATOR
 from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
     HIGHEST_SIMILARITY,
@@ -161,7 +162,6 @@ SQL_NOT = "NOT "
 REGEX_MATCH_FUNCTION = "regexp_like"
 PREFIX_MATCH_FUNCTION = "starts_with"
 # How a path names its directories, in both tables
-PATH_SEPARATOR = "/"
 
 FILES_SCHEMA = pyarrow.schema(
     [

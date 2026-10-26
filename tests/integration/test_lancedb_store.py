@@ -320,8 +320,18 @@ AWKWARD_PATHS = [
     "with space/100%_done.md",
     "ünïcode/x.md",
 ]
-# What a glob is written from: wildcards, slashes, a class's brackets and whatever a regex reads
-GLOB_CHARACTERS = "ab.*?/[]!^-\\&~(){}|+$#' %_ü"
+# What a part of a glob between slashes is written from: wildcards and whatever a regex or
+# SQL reads apart, but no character a glob is refused for
+GLOB_PART_CHARACTERS = "ab.*?]}^-&~()|+$#' %_ü"
+# A part of a glob as it is read: no blanks around it, not a step to this directory or the
+# one above it
+READ_PARTS = strategies.text(alphabet=GLOB_PART_CHARACTERS, min_size=1, max_size=6).filter(
+    lambda part: part == part.strip() and part not in {".", ".."}
+)
+# A glob as it is read: a name at any depth, or a path from the directory searched
+READ_GLOBS = READ_PARTS | strategies.lists(READ_PARTS, min_size=1, max_size=3).map(
+    lambda parts: "/" + "/".join(parts)
+)
 # More than every chunk of AWKWARD_PATHS, so a channel brings all it matches
 EVERY_CHUNK = 20
 
@@ -338,7 +348,7 @@ def awkward_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
 
 # The store is only read, so one for every example does
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(glob=strategies.text(alphabet=GLOB_CHARACTERS, max_size=12))
+@given(glob=READ_GLOBS)
 def test_the_store_reads_a_glob_as_its_pattern_says(awkward_store: LanceDBIndexStore, glob: str):
     """LanceDB's regex is Rust's, which refuses or reads apart what Python's would read."""
     scope = SearchScope(kinds=[], languages=[], path_glob=glob, exclude_glob=None, directory=None)
@@ -351,9 +361,10 @@ def test_the_store_reads_a_glob_as_its_pattern_says(awkward_store: LanceDBIndexS
     found = {candidate.chunk.path.as_posix() for candidate in candidates.by_vector}
     found_by_words = {candidate.chunk.path.as_posix() for candidate in candidates.by_keyword}
     assert [
+        scope.path_glob,
         {path: path in found for path in AWKWARD_PATHS},
         {path: path in found_by_words for path in AWKWARD_PATHS},
-    ] == [named, named]
+    ] == [glob, named, named]
 
 
 def test_a_search_warns_of_nothing(
