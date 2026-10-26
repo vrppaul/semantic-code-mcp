@@ -1,5 +1,10 @@
 """Tests that every chunker's chunks cover exactly their lines of the file: an agent reads a
-result's range to quote it, so the range must hold the chunk's content and nothing else."""
+result's range to quote it, so the range must hold the chunk's content and nothing else.
+
+Every chunker builds its chunks through `ChunkCollector`, which takes the content from the
+range, so this holds the collector's arithmetic and that no file, however odd, breaks it.
+Where a chunk starts and ends (a decorator, a doc comment, a heading) the example tests of
+each chunker hold."""
 
 from pathlib import Path
 

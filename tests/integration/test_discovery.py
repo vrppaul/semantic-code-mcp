@@ -331,13 +331,17 @@ def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: 
 
 # What a project in the discovery property holds: files at a few depths, one in a directory
 # its .gitignore names, and links to a file inside, to one outside, to nothing and to a
-# directory; any of them tracked, and files deleted after the commit
+# directory, one of them named as a source; any of them tracked, and files deleted after the
+# commit
 PROJECT_FILES = ("a.py", "src/b.py", "src/deep/c.py", "ignored/d.py", "notes.txt")
+# The sources every way of discovery finds while they are on disk
+PLAIN_SOURCES = frozenset({"a.py", "src/b.py", "src/deep/c.py"})
 LINK_TARGETS = {
     "inside.py": "a.py",
     "outside.py": "../outside.py",
     "nowhere.py": "missing.py",
     "linked_src": "src",
+    "linked_dir.py": "src",
 }
 GITIGNORE = ".gitignore"
 IGNORED_DIRECTORY = "ignored/\n"
@@ -364,14 +368,15 @@ def write_source(path: Path) -> None:
 @example(
     written={"a.py"}, linked={"outside.py"}, tracked={"a.py", "outside.py"}, deleted=set()
 ).via("a tracked link to a file outside the project")
-def test_every_path_discovery_returns_is_a_file_inside_the_project(
+def test_discovery_returns_every_source_on_disk_and_only_files_inside_the_project(
     use_gitignore: bool,
     written: set[str],
     linked: set[str],
     tracked: set[str],
     deleted: set[str],
 ):
-    """A path that is gone, or that leads outside, would be read, chunked or indexed."""
+    """A path that is gone, or that leads outside, would be read, chunked or indexed; a
+    source on disk left out would never be found."""
     with tempfile.TemporaryDirectory() as directory:
         write_source(Path(directory) / OUTSIDE_FILE)
         project = make_repository(Path(directory) / "project")
@@ -391,6 +396,7 @@ def test_every_path_discovery_returns_is_a_file_inside_the_project(
         every_one = [True] * len(returned)
         assert [path.is_file() for path in returned] == every_one
         assert [path.resolve().is_relative_to(project.resolve()) for path in returned] == every_one
+        assert PLAIN_SOURCES & (written - deleted) <= {file.path.as_posix() for file in files}
 
 
 @pytest.fixture
