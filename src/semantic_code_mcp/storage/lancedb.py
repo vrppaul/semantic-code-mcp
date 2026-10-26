@@ -706,8 +706,8 @@ def values_filter(column: str, values: Sequence[str]) -> str:
 
 
 def glob_filter(glob: str, base: Path | None) -> str:
-    """A filter matching the rows whose path the glob names, a rooted glob read from
-    `base` when there is one."""
+    """A filter matching the rows whose path the glob names, read from `base`, the
+    directory a search was asked from, when there is one."""
     pattern = glob_pattern(glob, base)
     return f"{REGEX_MATCH_FUNCTION}({PATH_COLUMN}, {quote_sql(pattern)})"
 

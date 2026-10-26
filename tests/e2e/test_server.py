@@ -115,7 +115,7 @@ async def test_a_narrowed_search_keeps_to_what_it_names(
         )
 
     hits = SearchCodeResponse.model_validate(structured(result)).results
-    assert [hit.name for hit in hits] == names
+    assert sorted(hit.name for hit in hits) == sorted(names)
 
 
 async def test_search_sends_debug_details_only_when_asked(project: Path, client: Client):

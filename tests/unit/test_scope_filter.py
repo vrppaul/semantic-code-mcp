@@ -26,6 +26,7 @@ from semantic_code_mcp.storage.lancedb import scope_filter
         pytest.param("docs/", "docs/index.md", True, id="a trailing slash, a directory"),
         pytest.param("file?.py", "file1.py", True, id="a question mark, one character"),
         pytest.param("file?.py", "file10.py", False, id="a question mark, not two"),
+        pytest.param("a?b", "a/b", False, id="a question mark, never a slash"),
         pytest.param("[ab].rs", "[ab].rs", True, id="a bracket, itself"),
         pytest.param("[ab].rs", "b.rs", False, id="a bracket, no class"),
         pytest.param("lib(1)/*.py", "lib(1)/module.py", True, id="what a regex would read"),

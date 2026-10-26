@@ -99,7 +99,7 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `chunk_kinds` | `list[str]` | all | Only chunks of these kinds: `module`, `function`, `method`, `class`, `section` |
 | `languages` | `list[str]` | all | Only chunks of files in these languages: `python`, `rust`, `markdown` |
-| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth below the directory `project_path` names (`*.rs`), with one a path from that directory (`src/**/*.py`); `*` stays within a directory, `**` crosses any number, `?` is one character, a directory takes what it holds; a character class (`[ab]`) or `..` is refused |
+| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth below the directory `project_path` names (`*.rs`), with one a path from that directory (`src/**/*.py`); `*` stays within a directory, `**` crosses any number, `?` is one character, a directory takes what it holds; a character class (`[ab]`), braces, a leading `!` or `..` is refused |
 | `exclude_glob` | `str` | none | No file this glob names, read as `path_glob` is |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 

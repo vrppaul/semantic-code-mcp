@@ -16,6 +16,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
+from semantic_code_mcp.domain.globs import UnreadableGlobError, read_glob
 from semantic_code_mcp.domain.models import ChunkKind, Language, SearchQuery, SearchScope
 from semantic_code_mcp.server.presenters import present_index, present_search, present_status
 from semantic_code_mcp.server.responses import (
@@ -43,20 +44,10 @@ PATH_GLOB_DESCRIPTION = (
     "Only files this glob names, as in a .gitignore: without a slash a name at any depth"
     " below the directory project_path names (`*.rs`), with one a path from that directory"
     " (`src/**/*.py`); `*` stays within a directory, `**` crosses any number, `?` is one"
-    " character, and a directory takes what it holds. No character classes (`[ab]`) and no"
-    " `..`: both are refused."
+    " character, and a directory takes what it holds. No character classes (`[ab]`), braces,"
+    " leading `!` or `..`: each is refused."
 )
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
-# What a glob may hold and still name nothing past the directory searched: blanks and
-# slashes alone, or that directory
-GLOB_BLANKS = " /"
-CURRENT_DIRECTORY = "."
-CURRENT_DIRECTORY_PREFIX = "./"
-# What a glob may not hold: a step out of the directory searched, and the bracket that
-# opens a class of characters, which a search does not read
-PARENT_DIRECTORY = ".."
-CLASS_START = "["
-PATH_SEPARATOR = "/"
 
 
 # A tool's parameters are its input schema, which an agent fills in flat (ADR 006, D10)
@@ -104,13 +95,16 @@ async def search_code(  # noqa: PLR0913
         alone, which a hit its words found can show low.
     """
     with failures_as_tool_errors():
+        # Read before git is asked anything, so a glob refused costs nothing
+        included = given_glob(path_glob)
+        excluded = given_glob(exclude_glob)
         location = await located_project(ctx, project_path)
         services = project_services(ctx, location.root)
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
             languages=tuple(languages or ()),
-            path_glob=given_glob(path_glob),
-            exclude_glob=given_glob(exclude_glob),
+            path_glob=included,
+            exclude_glob=excluded,
             directory=location.directory,
         )
         report = await services.search.search(
@@ -208,23 +202,12 @@ def failures_as_tool_errors() -> Generator[None]:
 
 
 def given_glob(glob: str | None) -> str | None:
-    """A glob as a search reads it, from the directory searched, a leading `./` dropped:
-    None for one that names nothing past that directory, as the empty string an agent
-    fills an optional argument with, which would otherwise narrow the search to nothing;
-    a tool error for one that steps out of it or holds a class of characters, which
-    would otherwise answer with nothing and no word why."""
-    if glob is None:
-        return None
-    trimmed_glob = glob.removeprefix(CURRENT_DIRECTORY_PREFIX)
-    if not trimmed_glob.strip(GLOB_BLANKS) or trimmed_glob == CURRENT_DIRECTORY:
-        return None
-    if PARENT_DIRECTORY in trimmed_glob.split(PATH_SEPARATOR):
-        message = f"A glob reads from the directory searched and cannot step out of it: {glob}"
-        raise ToolError(message)
-    if CLASS_START in trimmed_glob:
-        message = f"A glob cannot hold a class of characters; use * or ? instead: {glob}"
-        raise ToolError(message)
-    return trimmed_glob
+    """A glob as a search reads it, or a tool error that tells the agent why a search
+    cannot read it."""
+    try:
+        return read_glob(glob)
+    except UnreadableGlobError as error:
+        raise ToolError(str(error)) from error
 
 
 def existing_directory(project_path: str) -> Path:

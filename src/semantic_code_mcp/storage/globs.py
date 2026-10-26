@@ -5,18 +5,17 @@ The store's `regexp_like` reads Rust's regex syntax; what is written here, the e
 a property test). A SQL `LIKE` would not do: its `%` crosses every `/` that a `*` stops at,
 and a `%` or `_` in a path would match what it stands for in `LIKE`.
 
-A glob reads as in a `.gitignore`, from the directory a search was asked from: one without
-a slash names a file or a directory at any depth below it, one with a slash a path from
-it; `*` and `?` stay within a directory, `**` crosses any number of them, and a directory
-named takes everything under it. Every other character is itself, a bracket too: a class
-of characters is not read, as Rust's regex reads one apart from a glob (`--`, `[:alpha:]`)
-and a class of a glob never matches a `/`, which a regex's does.
+A glob reads as `semantic_code_mcp.domain.globs` says. Every character but its wildcards
+is itself, a bracket too: a class of characters is not read, as Rust's regex reads one
+apart from a glob (`--`, `[:alpha:]`) and a class of a glob never matches a `/`, which a
+regex's does.
 """
 
 import re
 from pathlib import Path
 
-PATH_SEPARATOR = "/"
+from semantic_code_mcp.domain.globs import PATH_SEPARATOR
+
 # The glob's wildcards, longest first, and what each reads as
 ANY_DIRECTORIES_GLOB = "**/"
 ANY_DIRECTORIES = "(?:.*/)?"

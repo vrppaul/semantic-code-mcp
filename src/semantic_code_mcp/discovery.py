@@ -63,13 +63,15 @@ class FoundFile(BaseModel):
 def parse_ignore_patterns(raw_patterns: Sequence[str]) -> IgnorePatterns:
     """Sort patterns by how they match, after the spellings .gitignore allows.
 
-    A leading `./` and a trailing `/` are dropped; a leading `/` anchors the pattern at
-    the project root; a leading `**/` also matches at the root itself.
+    A trailing `/` is dropped; a leading `/` or `./` anchors the pattern at the project
+    root; a leading `**/` also matches at the root itself.
     """
     component: list[str] = []
     path: list[str] = []
     for raw_pattern in raw_patterns:
-        pattern = raw_pattern.removeprefix(CURRENT_DIRECTORY_PREFIX).rstrip(PATH_SEPARATOR)
+        pattern = raw_pattern.rstrip(PATH_SEPARATOR)
+        if pattern.startswith(CURRENT_DIRECTORY_PREFIX):
+            pattern = PATH_SEPARATOR + pattern.removeprefix(CURRENT_DIRECTORY_PREFIX)
         if pattern.startswith(PATH_SEPARATOR):
             path.append(pattern.removeprefix(PATH_SEPARATOR))
         elif PATH_SEPARATOR not in pattern:

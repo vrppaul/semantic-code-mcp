@@ -312,13 +312,14 @@ class TestWalkDiscovery:
         assert relative_names(files) == {"code.py"}
 
     def test_pattern_spellings_follow_gitignore(self, tmp_path: Path):
-        """A leading `/` anchors at the root, `./` and a trailing `/` are dropped, and a
+        """A leading `/` or `./` anchors at the root, a trailing `/` is dropped, and a
         leading `**/` matches at the root too."""
         project = tmp_path / "project"
         for directory in (
             "build",
             "tools/build",
             "dist",
+            "lib/dist",
             "docs",
             "node_modules",
             "web/node_modules",
@@ -326,11 +327,15 @@ class TestWalkDiscovery:
             (project / directory).mkdir(parents=True)
             (project / directory / "module.py").write_text("x = 1\n")
         (project / "keep.py").write_text("x = 1\n")
-        patterns = ("/build", "./dist/**", "docs/", "**/node_modules/**")
+        patterns = ("/build", "./dist", "docs/", "**/node_modules/**")
 
         files = make_discovery(ignore_patterns=patterns, use_gitignore=False).discover(project)
 
-        assert relative_names(files) == {"keep.py", "tools/build/module.py"}
+        assert relative_names(files) == {
+            "keep.py",
+            "tools/build/module.py",
+            "lib/dist/module.py",
+        }
 
 
 @pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
