@@ -41,12 +41,22 @@ KINDS_DESCRIPTION = (
 LANGUAGES_DESCRIPTION = "Only chunks of files in these languages."
 PATH_GLOB_DESCRIPTION = (
     "Only files this glob names, as in a .gitignore: without a slash a name at any depth"
-    " (`*.rs`), with one a path from the directory project_path names (`src/**/*.py`); `*` stays"
-    " within a directory, `**` crosses any number, and a directory takes what it holds."
+    " below the directory project_path names (`*.rs`), with one a path from that directory"
+    " (`src/**/*.py`); `*` stays within a directory, `**` crosses any number, `?` is one"
+    " character, and a directory takes what it holds. No character classes (`[ab]`) and no"
+    " `..`: both are refused."
 )
-# What a glob may hold and still name no path: blanks and slashes alone
-GLOB_BLANKS = " /"
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
+# What a glob may hold and still name nothing past the directory searched: blanks and
+# slashes alone, or that directory
+GLOB_BLANKS = " /"
+CURRENT_DIRECTORY = "."
+CURRENT_DIRECTORY_PREFIX = "./"
+# What a glob may not hold: a step out of the directory searched, and the bracket that
+# opens a class of characters, which a search does not read
+PARENT_DIRECTORY = ".."
+CLASS_START = "["
+PATH_SEPARATOR = "/"
 
 
 # A tool's parameters are its input schema, which an agent fills in flat (ADR 006, D10)
@@ -196,12 +206,23 @@ def failures_as_tool_errors() -> Generator[None]:
 
 
 def given_glob(glob: str | None) -> str | None:
-    """A glob as a search reads it: None for one that names no path, as an empty string
-    an agent fills an optional argument with, or a slash alone, which would otherwise
-    narrow the search to nothing."""
-    if glob is None or not glob.strip(GLOB_BLANKS):
+    """A glob as a search reads it, from the directory searched, a leading `./` dropped:
+    None for one that names nothing past that directory, as the empty string an agent
+    fills an optional argument with, which would otherwise narrow the search to nothing;
+    a tool error for one that steps out of it or holds a class of characters, which
+    would otherwise answer with nothing and no word why."""
+    if glob is None:
         return None
-    return glob
+    trimmed_glob = glob.removeprefix(CURRENT_DIRECTORY_PREFIX)
+    if not trimmed_glob.strip(GLOB_BLANKS) or trimmed_glob == CURRENT_DIRECTORY:
+        return None
+    if PARENT_DIRECTORY in trimmed_glob.split(PATH_SEPARATOR):
+        message = f"A glob reads from the directory searched and cannot step out of it: {glob}"
+        raise ToolError(message)
+    if CLASS_START in trimmed_glob:
+        message = f"A glob cannot hold a class of characters; use * or ? instead: {glob}"
+        raise ToolError(message)
+    return trimmed_glob
 
 
 def existing_directory(project_path: str) -> Path:

@@ -1,6 +1,7 @@
 """Tests for the LanceDB store: what is written comes back, by vector and by words."""
 
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import numpy
 import pyarrow
 import pytest
 from filelock import FileLock, Timeout
+from hypothesis import HealthCheck, given, settings, strategies
 
 from semantic_code_mcp.domain.models import (
     WHOLE_PROJECT,
@@ -23,6 +25,7 @@ from semantic_code_mcp.domain.models import (
     SearchScope,
     SourceFile,
 )
+from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.lancedb import (
     CHUNKS_TABLE,
     MANIFEST_FILE,
@@ -305,25 +308,52 @@ def test_both_channels_find_within_the_scope_before_they_cut(
     ] == [["guide"], ["guide"]]
 
 
-@pytest.mark.parametrize(
-    "glob",
-    [
-        pytest.param("[]", id="an empty class"),
-        pytest.param("[!]", id="an empty class left out"),
-        pytest.param("[]ab].py", id="a bracket first in a class"),
-        pytest.param("[z-a].rs", id="a range backwards"),
-    ],
-)
-def test_a_glob_the_regex_could_not_read_is_taken_literally(
-    code_and_a_guide: LanceDBIndexStore, glob: str
-):
-    """No path of the store's holds such a name, so nothing comes back, and nothing fails."""
+# Paths whose characters a regex, SQL or a glob reads apart, each in a file of its own
+AWKWARD_PATHS = [
+    "src/module.py",
+    "src/deep/er/module.py",
+    "src/[ab].py",
+    "src/a-b.py",
+    "src/a^b&&c~~d.py",
+    "src/a\\b.py",
+    "lib(1)/it's.rs",
+    "with space/100%_done.md",
+    "ünïcode/x.md",
+]
+# What a glob is written from: wildcards, slashes, a class's brackets and whatever a regex reads
+GLOB_CHARACTERS = "ab.*?/[]!^-\\&~(){}|+$#' %_ü"
+# More than every chunk of AWKWARD_PATHS, so a channel brings all it matches
+EVERY_CHUNK = 20
+
+
+@pytest.fixture
+def awkward_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
+    chunks = [
+        function_chunk(f"function_{number}", path, "def f(): return shared")
+        for number, path in enumerate(AWKWARD_PATHS)
+    ]
+    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
+    return store
+
+
+# The store is only read, so one for every example does
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(glob=strategies.text(alphabet=GLOB_CHARACTERS, max_size=12))
+def test_the_store_reads_a_glob_as_its_pattern_says(awkward_store: LanceDBIndexStore, glob: str):
+    """LanceDB's regex is Rust's, which refuses or reads apart what Python's would read."""
     scope = SearchScope(kinds=[], languages=[], path_glob=glob, exclude_glob=None, directory=None)
-    query = SearchQuery(text="shared", limit=NARROW_CHANNEL, scope=scope)
+    query = SearchQuery(text="shared", limit=EVERY_CHUNK, scope=scope)
 
-    candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
+    candidates = awkward_store.search_candidates(QUERY, query, EVERY_CHUNK)
 
-    assert candidates == NO_CANDIDATES
+    pattern = re.compile(glob_pattern(glob, base=None))
+    named = {path: bool(pattern.fullmatch(path)) for path in AWKWARD_PATHS}
+    found = {candidate.chunk.path.as_posix() for candidate in candidates.by_vector}
+    found_by_words = {candidate.chunk.path.as_posix() for candidate in candidates.by_keyword}
+    assert [
+        {path: path in found for path in AWKWARD_PATHS},
+        {path: path in found_by_words for path in AWKWARD_PATHS},
+    ] == [named, named]
 
 
 def test_a_search_warns_of_nothing(

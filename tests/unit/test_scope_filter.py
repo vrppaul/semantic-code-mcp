@@ -26,9 +26,8 @@ from semantic_code_mcp.storage.lancedb import scope_filter
         pytest.param("docs/", "docs/index.md", True, id="a trailing slash, a directory"),
         pytest.param("file?.py", "file1.py", True, id="a question mark, one character"),
         pytest.param("file?.py", "file10.py", False, id="a question mark, not two"),
-        pytest.param("[ab].rs", "b.rs", True, id="a class of characters"),
-        pytest.param("[!ab].rs", "b.rs", False, id="a class left out"),
-        pytest.param("a[!x]b", "a/b", False, id="a class left out, never a slash"),
+        pytest.param("[ab].rs", "[ab].rs", True, id="a bracket, itself"),
+        pytest.param("[ab].rs", "b.rs", False, id="a bracket, no class"),
         pytest.param("lib(1)/*.py", "lib(1)/module.py", True, id="what a regex would read"),
         pytest.param("100%_done.md", "100%_done.md", True, id="what SQL's LIKE would read"),
     ],
@@ -44,9 +43,11 @@ def test_a_glob_takes_the_paths_it_names(glob: str, path: str, matches: bool):
         pytest.param("/config.py", "config.py", False, id="rooted, not the repository's"),
         pytest.param("src/*.py", "package/src/module.py", True, id="a path from the directory"),
         pytest.param("*.py", "package/deep/module.py", True, id="a name, at any depth"),
+        pytest.param("package", "package/config.py", False, id="a name, not the directory's"),
+        pytest.param("package", "package/package/x.py", True, id="a name, below the directory"),
     ],
 )
-def test_a_rooted_glob_reads_from_the_directory_a_search_was_asked_from(
+def test_a_glob_reads_from_the_directory_a_search_was_asked_from(
     glob: str, path: str, matches: bool
 ):
     """An agent that names a directory of a repository names paths from that directory."""
@@ -71,6 +72,6 @@ def test_a_scope_becomes_one_condition_for_each_thing_it_names():
     assert scope_filter(scope) == (
         "kind IN ('class', 'method') AND language IN ('rust')"
         r" AND regexp_like(path, '^crates/core\.d/src/[^/]*\.rs(?:/.*)?$')"
-        r" AND NOT regexp_like(path, '^(?:.*/)?it''s\.rs(?:/.*)?$')"
+        r" AND NOT regexp_like(path, '^crates/core\.d/(?:.*/)?it''s\.rs(?:/.*)?$')"
         " AND starts_with(path, 'crates/core.d/')"
     )
