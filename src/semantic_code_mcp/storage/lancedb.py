@@ -47,6 +47,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import override
@@ -72,8 +73,11 @@ from semantic_code_mcp.domain.models import (
     IndexUpdate,
     Language,
     SearchCandidates,
+    SearchQuery,
+    SearchScope,
     SourceFile,
 )
+from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.search_text import search_text
 
 log = structlog.get_logger()
@@ -150,6 +154,10 @@ NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 # How a single quote is written inside a quoted SQL string
 SQL_QUOTE = "'"
 SQL_ESCAPED_QUOTE = "''"
+# How a filter's conditions are joined, one negated, and a column matched by a regex
+SQL_AND = " AND "
+SQL_NOT = "NOT "
+REGEX_MATCH_FUNCTION = "regexp_like"
 
 FILES_SCHEMA = pyarrow.schema(
     [
@@ -352,23 +360,22 @@ class LanceDBIndexStore(IndexStore):
 
     @override
     def search_candidates(
-        self, query_vector: Vector, query_text: str, per_channel: int
+        self, query_vector: Vector, query: SearchQuery, per_channel: int
     ) -> SearchCandidates:
         table = self._open(CHUNKS_TABLE)
         if table is None:
             return NO_CANDIDATES
         # An open table reads the version it was opened at, so both channels see one index
-        query = table.search(query_vector)
+        scope = scope_filter(query.scope)
         # lancedb's stubs type search() as the base builder, which lacks distance_type()
-        nearest = (
-            query.distance_type(COSINE_METRIC)  # ty: ignore[unresolved-attribute]
-            .select([*CANDIDATE_COLUMNS, DISTANCE_COLUMN])
-            .limit(per_channel)
-            .to_arrow()
-        )
+        by_vector = table.search(query_vector).distance_type(COSINE_METRIC)  # ty: ignore[unresolved-attribute]
+        if scope is not None:
+            # Filtered before the nearest are taken, so a narrow scope still fills them
+            by_vector = by_vector.where(scope, prefilter=True)
+        nearest = by_vector.select([*CANDIDATE_COLUMNS, DISTANCE_COLUMN]).limit(per_channel)
         return SearchCandidates(
-            by_vector=candidates_of(nearest, query_vector),
-            by_keyword=keyword_candidates(table, query_text, query_vector, per_channel),
+            by_vector=candidates_of(nearest.to_arrow(), query_vector),
+            by_keyword=keyword_candidates(table, query.text, scope, query_vector, per_channel),
         )
 
     def _fit_layout(self, database: lancedb.DBConnection, width: int) -> None:
@@ -653,19 +660,48 @@ def write_atomically(path: Path, text: str) -> None:
 
 
 def keyword_candidates(
-    table: lancedb.table.Table, query_text: str, query_vector: Vector, limit: int
+    table: lancedb.table.Table,
+    query_text: str,
+    scope: str | None,
+    query_vector: Vector,
+    limit: int,
 ) -> list[Candidate]:
-    """The chunks whose words best match the query's, best first; none while the table
-    has no full-text index, as after a write stopped between the table and its index."""
+    """The chunks of the scope whose words best match the query's, best first; none while
+    the table has no full-text index, as after a write stopped between the table and its
+    index."""
     if not has_full_text_index(table):
         return []
-    rows = (
-        table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE)
-        .select([*CANDIDATE_COLUMNS, FULL_TEXT_SCORE_COLUMN])
-        .limit(limit)
-        .to_arrow()
-    )
-    return candidates_of(rows, query_vector)
+    by_keyword = table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE)
+    if scope is not None:
+        by_keyword = by_keyword.where(scope)
+    rows = by_keyword.select([*CANDIDATE_COLUMNS, FULL_TEXT_SCORE_COLUMN]).limit(limit)
+    return candidates_of(rows.to_arrow(), query_vector)
+
+
+def scope_filter(scope: SearchScope) -> str | None:
+    """The filter that keeps a search's channels to its scope; None for a scope that
+    leaves nothing out."""
+    conditions = []
+    if scope.kinds:
+        conditions.append(values_filter(KIND_COLUMN, scope.kinds))
+    if scope.languages:
+        conditions.append(values_filter(LANGUAGE_COLUMN, scope.languages))
+    if scope.path_glob is not None:
+        conditions.append(glob_filter(scope.path_glob))
+    if scope.exclude_glob is not None:
+        conditions.append(SQL_NOT + glob_filter(scope.exclude_glob))
+    return SQL_AND.join(conditions) or None
+
+
+def values_filter(column: str, values: Sequence[str]) -> str:
+    """A filter matching the rows whose column holds one of the values."""
+    quoted = ", ".join(quote_sql(value) for value in values)
+    return f"{column} IN ({quoted})"
+
+
+def glob_filter(glob: str) -> str:
+    """A filter matching the rows whose path the glob names."""
+    return f"{REGEX_MATCH_FUNCTION}({PATH_COLUMN}, {quote_sql(glob_pattern(glob))})"
 
 
 def candidates_of(rows: pyarrow.Table, query_vector: Vector) -> list[Candidate]:

@@ -15,6 +15,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
+from semantic_code_mcp.domain.models import ChunkKind, Language, SearchQuery, SearchScope
 from semantic_code_mcp.server.presenters import present_index, present_search, present_status
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
@@ -28,14 +29,30 @@ log = structlog.get_logger()
 
 DEFAULT_RESULTS = 10
 MAX_RESULTS = 50
+# What an agent reads of the search's narrowing parameters in the tool's input schema
+KINDS_DESCRIPTION = (
+    "Only chunks of these kinds; Rust's structs, enums, traits and impls are classes."
+)
+LANGUAGES_DESCRIPTION = "Only chunks of files in these languages."
+PATH_GLOB_DESCRIPTION = (
+    "Only files this glob names, as in a .gitignore: without a slash a name at any depth"
+    " (`*.rs`), with one a path from the project root (`src/**/*.py`, `docs`); `*` stays"
+    " within a directory, `**` crosses any number, and a directory takes what it holds."
+)
+EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
 
 
-async def search_code(
+# A tool's parameters are its input schema, which an agent fills in flat (ADR 006, D10)
+async def search_code(  # noqa: PLR0913
     *,
     query: str,
     project_path: str,
     ctx: Context[ProjectRegistry],
     limit: Annotated[int, Field(ge=1, le=MAX_RESULTS)] = DEFAULT_RESULTS,
+    chunk_kinds: Annotated[list[ChunkKind] | None, Field(description=KINDS_DESCRIPTION)] = None,
+    languages: Annotated[list[Language] | None, Field(description=LANGUAGES_DESCRIPTION)] = None,
+    path_glob: Annotated[str | None, Field(description=PATH_GLOB_DESCRIPTION)] = None,
+    exclude_glob: Annotated[str | None, Field(description=EXCLUDE_GLOB_DESCRIPTION)] = None,
     include_debug: bool = False,
 ) -> SearchCodeResponse:
     """Search for code semantically similar to the query.
@@ -56,6 +73,10 @@ async def search_code(
         query: Natural language description of what you're looking for.
         project_path: Absolute path to the project's root directory (the repository root).
         limit: Maximum number of results to return (default 10, at most 50).
+        chunk_kinds: Only chunks of these kinds.
+        languages: Only chunks of files in these languages.
+        path_glob: Only files this glob names, from the project root.
+        exclude_glob: No file this glob names.
         include_debug: Also return timings and counts of the search.
 
     Returns:
@@ -67,8 +88,16 @@ async def search_code(
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)
         services = project_services(ctx, project_root)
+        scope = SearchScope(
+            kinds=tuple(chunk_kinds or ()),
+            languages=tuple(languages or ()),
+            path_glob=path_glob,
+            exclude_glob=exclude_glob,
+        )
         report = await services.search.search(
-            query, project_root, limit=limit, progress=ProgressReporter(ctx.report_progress)
+            SearchQuery(text=query, limit=limit, scope=scope),
+            project_root,
+            progress=ProgressReporter(ctx.report_progress),
         )
         return present_search(report, project_root, include_debug=include_debug)
 

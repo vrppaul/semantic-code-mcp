@@ -8,11 +8,14 @@ from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.models import (
     LOWEST_SIMILARITY,
+    WHOLE_PROJECT,
     Candidate,
     Chunk,
     ChunkKind,
     Language,
     SearchCandidates,
+    SearchQuery,
+    SearchScope,
 )
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
@@ -46,6 +49,11 @@ def candidate(name: str, similarity: float, path: str = ELSEWHERE) -> Candidate:
     return Candidate(chunk=chunk, similarity=similarity)
 
 
+def query_of(text: str) -> SearchQuery:
+    """A query of the whole project."""
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
+
+
 def found_by_vector(*candidates: Candidate) -> SearchCandidates:
     return SearchCandidates(by_vector=list(candidates), by_keyword=[])
 
@@ -69,7 +77,7 @@ async def test_a_hit_far_in_meaning_is_dropped_and_one_whose_words_match_further
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    report = await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
 
     assert ([hit.chunk.name for hit in report.results], report.filtered_count) == (
         ["named", "close"],
@@ -83,7 +91,11 @@ async def test_no_more_hits_than_the_limit(test_settings: Settings, sample_proje
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search("anything", sample_project, limit=3, progress=NO_PROGRESS)
+    report = await service.search(
+        SearchQuery(text="anything", limit=3, scope=WHOLE_PROJECT),
+        sample_project,
+        progress=NO_PROGRESS,
+    )
 
     assert len(report.results) == 3
 
@@ -100,7 +112,7 @@ async def test_hits_come_in_fused_order_whichever_file_they_are_in(
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    report = await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
 
     assert [hit.chunk.name for hit in report.results] == ["best", "second", "third"]
 
@@ -111,7 +123,7 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
     store = FakeIndexStore(NO_CANDIDATES)
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    report = await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
 
     assert report.index_report is not None
     assert report.index_report.files_indexed == 2
@@ -120,9 +132,9 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
 async def test_an_index_up_to_date_is_not_touched(test_settings: Settings, sample_project: Path):
     store = FakeIndexStore(NO_CANDIDATES)
     service = search_service(store, test_settings, FakeEmbedder())
-    await service.search("first", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    await service.search(query_of("first"), sample_project, progress=NO_PROGRESS)
 
-    report = await service.search("second", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    report = await service.search(query_of("second"), sample_project, progress=NO_PROGRESS)
 
     assert report.index_report is None
 
@@ -133,9 +145,7 @@ async def test_progress_of_a_search_that_indexes_only_moves_forward(
     recorder = ProgressRecorder()
     service = search_service(FakeIndexStore(NO_CANDIDATES), test_settings, FakeEmbedder())
 
-    await service.search(
-        "anything", sample_project, limit=LIMIT, progress=ProgressReporter(recorder)
-    )
+    await service.search(query_of("anything"), sample_project, progress=ProgressReporter(recorder))
 
     assert recorder.progress_values == sorted(recorder.progress_values)
 
@@ -148,7 +158,7 @@ async def test_a_project_with_nothing_indexed_is_answered_without_the_model(
     embedder = FakeEmbedder(loaded=False)
     service = search_service(FakeIndexStore(NO_CANDIDATES), test_settings, embedder)
 
-    report = await service.search("anything", empty_project, limit=LIMIT, progress=NO_PROGRESS)
+    report = await service.search(query_of("anything"), empty_project, progress=NO_PROGRESS)
 
     assert (report.results, embedder.is_loaded) == ([], False)
 
@@ -164,7 +174,7 @@ async def test_a_fresh_server_loads_the_model_for_the_query_off_the_event_loop(
     fresh_embedder = FakeEmbedder(loaded=False)
     service = search_service(store, test_settings, fresh_embedder)
 
-    await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
 
     assert fresh_embedder.calling_threads
     assert threading.main_thread() not in fresh_embedder.calling_threads
@@ -178,8 +188,8 @@ async def test_two_first_searches_at_once_both_find_the_code(
     service = search_service(store, test_settings, FakeEmbedder())
 
     reports = await asyncio.gather(
-        service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS),
-        service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS),
+        service.search(query_of("anything"), sample_project, progress=NO_PROGRESS),
+        service.search(query_of("anything"), sample_project, progress=NO_PROGRESS),
     )
 
     assert [[hit.chunk.name for hit in report.results] for report in reports] == [
@@ -200,6 +210,20 @@ async def test_a_search_keeps_what_the_floors_of_the_settings_let_through(
     )
     search = registry_of(settings, FakeEmbedder(), build_chunker()).services_for(sample_project)
 
-    report = await search.search.search("greet", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+    report = await search.search.search(query_of("greet"), sample_project, progress=NO_PROGRESS)
 
     assert len(report.results) == 6
+
+
+async def test_a_search_hands_its_scope_to_the_store(test_settings: Settings, sample_project: Path):
+    store = FakeIndexStore(NO_CANDIDATES)
+    scope = SearchScope(
+        kinds=[ChunkKind.klass], languages=[], path_glob="src/**", exclude_glob=None
+    )
+    service = search_service(store, test_settings, FakeEmbedder())
+
+    await service.search(
+        SearchQuery(text="anything", limit=LIMIT, scope=scope), sample_project, progress=NO_PROGRESS
+    )
+
+    assert [query.scope for query in store.searched] == [scope]

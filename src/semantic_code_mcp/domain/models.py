@@ -112,6 +112,33 @@ class SearchCandidates(BaseModel):
     by_keyword: list[Candidate]
 
 
+class SearchScope(BaseModel):
+    """Which chunks a search looks among: of these kinds and languages, under the paths
+    one glob names and outside those another names (as `storage/globs.py` reads them); an
+    empty list or None leaves that part of the project in."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kinds: tuple[ChunkKind, ...]
+    languages: tuple[Language, ...]
+    path_glob: str | None
+    exclude_glob: str | None
+
+
+# A scope that leaves nothing of the project out
+WHOLE_PROJECT = SearchScope(kinds=(), languages=(), path_glob=None, exclude_glob=None)
+
+
+class SearchQuery(BaseModel):
+    """What a search is asked: its words, how many hits at most, and where to look."""
+
+    model_config = ConfigDict(frozen=True)
+
+    text: str
+    limit: int
+    scope: SearchScope
+
+
 class SearchHit(BaseModel):
     """A chunk a search returns: where each channel ranked it, and the score fusing those
     ranks, which orders the hits."""

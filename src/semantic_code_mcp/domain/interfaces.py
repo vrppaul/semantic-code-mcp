@@ -16,6 +16,7 @@ from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexUpdate,
     SearchCandidates,
+    SearchQuery,
     SourceFile,
 )
 
@@ -103,11 +104,11 @@ class IndexStore(ABC):
 
     @abstractmethod
     def search_candidates(
-        self, query_vector: Vector, query_text: str, per_channel: int
+        self, query_vector: Vector, query: SearchQuery, per_channel: int
     ) -> SearchCandidates:
-        """The `per_channel` chunks nearest the query's vector and the `per_channel` whose
-        words best match its text, each with the cosine similarity of its vector to the
-        query's, both read from one version of the index."""
+        """The `per_channel` chunks of the query's scope nearest its vector and the
+        `per_channel` whose words best match its text, each with the cosine similarity of
+        its vector to the query's, both read from one version of the index."""
 
 
 class Chunker(ABC):

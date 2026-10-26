@@ -72,6 +72,28 @@ async def test_search_returns_the_function_the_query_describes(project: Path, cl
     assert (Path(first_hit.file_path).name, first_hit.name) == ("greeting.py", "greet")
 
 
+@pytest.mark.parametrize(
+    "narrowing",
+    [
+        pytest.param({"chunk_kinds": ["class"]}, id="to classes"),
+        pytest.param({"languages": ["rust"]}, id="to Rust"),
+        pytest.param({"path_glob": "config.py"}, id="to one file"),
+        pytest.param({"exclude_glob": "greeting.py"}, id="leaving a file out"),
+    ],
+)
+async def test_a_search_narrowed_leaves_out_what_it_would_find_first(
+    project: Path, client: Client, narrowing: dict[str, object]
+):
+    async with client:
+        result = await client.call_tool(
+            "search_code",
+            {"query": "say hello to someone", "project_path": str(project), **narrowing},
+        )
+
+    names = [hit.name for hit in SearchCodeResponse.model_validate(structured(result)).results]
+    assert "greet" not in names
+
+
 async def test_search_sends_debug_details_only_when_asked(project: Path, client: Client):
     async with client:
         plain = await client.call_tool(

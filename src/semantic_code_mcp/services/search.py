@@ -18,6 +18,7 @@ from semantic_code_mcp.domain.models import (
     IndexReport,
     IndexStatus,
     SearchHit,
+    SearchQuery,
     SearchReport,
     SearchTimings,
 )
@@ -76,9 +77,9 @@ class SearchService:
         self._floors = floors
 
     async def search(
-        self, query: str, project_root: Path, *, limit: int, progress: ProgressReporter
+        self, query: SearchQuery, project_root: Path, *, progress: ProgressReporter
     ) -> SearchReport:
-        """Index stale files, then return the best hits for a query."""
+        """Index stale files, then return the best hits for a query within its scope."""
         await progress.report(SearchPhase.checking_index.value, "Checking index...")
         status = await self._indexing.status(project_root)
 
@@ -105,27 +106,27 @@ class SearchService:
             await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
             await asyncio.to_thread(self._embedder.load)
         await progress.report(SearchPhase.searching.value, "Searching...")
-        report = await asyncio.to_thread(self._run_search, query, limit, index_report)
+        report = await asyncio.to_thread(self._run_search, query, index_report)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 
-    def _run_search(self, query: str, limit: int, index_report: IndexReport | None) -> SearchReport:
+    def _run_search(self, query: SearchQuery, index_report: IndexReport | None) -> SearchReport:
         started = time.perf_counter()
 
         embedding_started = time.perf_counter()
-        query_vector = self._embedder.embed_query(query)
+        query_vector = self._embedder.embed_query(query.text)
         embedding_ms = elapsed_milliseconds(embedding_started)
 
         search_started = time.perf_counter()
         candidates = self._store.search_candidates(
-            query_vector, query, limit * CANDIDATES_PER_RESULT
+            query_vector, query, query.limit * CANDIDATES_PER_RESULT
         )
         hits = fuse(candidates)
         search_ms = elapsed_milliseconds(search_started)
 
         kept = [hit for hit in hits if is_relevant(hit, self._floors)]
         return SearchReport(
-            results=kept[:limit],
+            results=kept[: query.limit],
             filtered_count=len(hits) - len(kept),
             timings=SearchTimings(
                 embedding_ms=embedding_ms,

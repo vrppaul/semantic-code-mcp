@@ -20,6 +20,7 @@ from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexUpdate,
     SearchCandidates,
+    SearchQuery,
     SourceFile,
 )
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
@@ -99,6 +100,7 @@ class FakeIndexStore(IndexStore):
 
     def __init__(self, candidates: SearchCandidates) -> None:
         self.candidates = candidates
+        self.searched: list[SearchQuery] = []
         self.chunks_by_file: dict[Path, list[Chunk]] = defaultdict(list)
         self.vectors_by_file: dict[Path, list[Vector]] = defaultdict(list)
         self.files_by_path: dict[Path, SourceFile] = {}
@@ -159,8 +161,9 @@ class FakeIndexStore(IndexStore):
 
     @override
     def search_candidates(
-        self, query_vector: Vector, query_text: str, per_channel: int
+        self, query_vector: Vector, query: SearchQuery, per_channel: int
     ) -> SearchCandidates:
+        self.searched.append(query)
         return SearchCandidates(
             by_vector=self.candidates.by_vector[:per_channel],
             by_keyword=self.candidates.by_keyword[:per_channel],

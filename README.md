@@ -97,6 +97,10 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | `query` | `str` | required | Natural language description of what you're looking for |
 | `project_path` | `str` | required | Absolute path to the project root |
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
+| `chunk_kinds` | `list[str]` | all | Only chunks of these kinds: `module`, `function`, `method`, `class`, `section` |
+| `languages` | `list[str]` | all | Only chunks of files in these languages: `python`, `rust`, `markdown` |
+| `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth (`*.rs`), with one a path from the project root (`src/**/*.py`); a directory takes what it holds |
+| `exclude_glob` | `str` | none | No file this glob names, read as `path_glob` is |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 
 Returns ranked results with `file_path` (absolute), `line_start`, `line_end`, `name`, `kind` (`module`, `function`, `method`, `class`, `section`; Rust's structs, enums, traits and impls are classes), `parent` (the class, impl, module or heading the chunk sits in, as `Stack` for `Stack.push`), `content` (cut to 50 lines, `truncated` says so) and `similarity`, how close the chunk's meaning is to the query's; results come best first by meaning and words together. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.

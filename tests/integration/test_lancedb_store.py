@@ -11,6 +11,7 @@ import pytest
 from filelock import FileLock, Timeout
 
 from semantic_code_mcp.domain.models import (
+    WHOLE_PROJECT,
     Candidate,
     Chunk,
     ChunkKind,
@@ -18,6 +19,8 @@ from semantic_code_mcp.domain.models import (
     IndexIdentity,
     IndexUpdate,
     Language,
+    SearchQuery,
+    SearchScope,
     SourceFile,
 )
 from semantic_code_mcp.storage.lancedb import (
@@ -94,14 +97,19 @@ def vectors_of(*rows: list[float]) -> numpy.ndarray:
     return numpy.array(rows, dtype=numpy.float32)
 
 
+def query_of(text: str) -> SearchQuery:
+    """A query of the whole project."""
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
+
+
 def nearest(store: LanceDBIndexStore, query: numpy.ndarray = QUERY) -> list[Candidate]:
     """What the vector channel of a search finds."""
-    return store.search_candidates(query, NO_WORDS_MATCH, LIMIT).by_vector
+    return store.search_candidates(query, query_of(NO_WORDS_MATCH), LIMIT).by_vector
 
 
 def matching(store: LanceDBIndexStore, text: str) -> list[Candidate]:
     """What the keyword channel of a search for the text finds."""
-    return store.search_candidates(QUERY, text, LIMIT).by_keyword
+    return store.search_candidates(QUERY, query_of(text), LIMIT).by_keyword
 
 
 @pytest.fixture
@@ -204,11 +212,77 @@ def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
 def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
     filled_store: LanceDBIndexStore,
 ):
-    candidates = filled_store.search_candidates(QUERY, "duration_ms", LIMIT)
+    candidates = filled_store.search_candidates(QUERY, query_of("duration_ms"), LIMIT)
 
     assert [
         candidate.similarity for candidate in [*candidates.by_vector, *candidates.by_keyword]
     ] == pytest.approx([1.0, 0.0, -1.0, 0.0])
+
+
+# More chunks near the query than a channel brings, all code under src/
+NEAR_CODE_CHUNKS = 20
+NARROW_CHANNEL = 5
+
+
+@pytest.fixture
+def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
+    """Code chunks near the query, more than a channel brings, and one section of a guide
+    far from it; every chunk holds the word "shared"."""
+    code = [
+        function_chunk(f"function_{number}", f"src/module_{number}.py", "def f(): return shared")
+        for number in range(NEAR_CODE_CHUNKS)
+    ]
+    guide = Chunk(
+        chunk_id="guide",
+        path=Path("docs/guide.md"),
+        language=Language.markdown,
+        kind=ChunkKind.section,
+        name="guide",
+        parent=None,
+        line_start=1,
+        line_end=3,
+        content="A shared guide.",
+    )
+    store.write(
+        update_of([*code, guide], removed_paths=[]),
+        vectors_of(*([TOWARD_QUERY] * NEAR_CODE_CHUNKS), AWAY_FROM_QUERY),
+    )
+    return store
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        pytest.param(
+            SearchScope(kinds=[ChunkKind.section], languages=[], path_glob=None, exclude_glob=None),
+            id="by kind",
+        ),
+        pytest.param(
+            SearchScope(kinds=[], languages=[Language.markdown], path_glob=None, exclude_glob=None),
+            id="by language",
+        ),
+        pytest.param(
+            SearchScope(kinds=[], languages=[], path_glob="docs/**", exclude_glob=None),
+            id="by a glob",
+        ),
+        pytest.param(
+            SearchScope(kinds=[], languages=[], path_glob=None, exclude_glob="src"),
+            id="by a glob left out",
+        ),
+    ],
+)
+def test_both_channels_find_within_the_scope_before_they_cut(
+    code_and_a_guide: LanceDBIndexStore, scope: SearchScope
+):
+    """The guide is further than every chunk a narrow channel would bring unfiltered."""
+    query = SearchQuery(text="shared", limit=NARROW_CHANNEL, scope=scope)
+
+    candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
+
+    assert [
+        [candidate.chunk.name for candidate in candidates.by_vector],
+        [candidate.chunk.name for candidate in candidates.by_keyword],
+    ] == [["guide"], ["guide"]]
 
 
 def test_a_search_warns_of_nothing(
@@ -217,13 +291,13 @@ def test_a_search_warns_of_nothing(
     """LanceDB writes to the process's standard error, which an MCP client logs."""
     capfd.readouterr()
 
-    filled_store.search_candidates(QUERY, "duration_ms", LIMIT)
+    filled_store.search_candidates(QUERY, query_of("duration_ms"), LIMIT)
 
     assert capfd.readouterr().err == ""
 
 
 def test_an_empty_store_finds_nothing(store: LanceDBIndexStore):
-    assert store.search_candidates(QUERY, "anything", LIMIT) == NO_CANDIDATES
+    assert store.search_candidates(QUERY, query_of("anything"), LIMIT) == NO_CANDIDATES
 
 
 def test_removing_files_takes_only_their_chunks_and_records(filled_store: LanceDBIndexStore):
