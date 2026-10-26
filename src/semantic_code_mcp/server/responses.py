@@ -91,6 +91,8 @@ class IndexManifestView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model_name: str
+    # None where nothing pins the model's weights, as for a local path
+    model_revision: str | None
     chunker_version: int
     schema_version: int
 

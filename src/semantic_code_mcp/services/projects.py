@@ -61,7 +61,9 @@ class ProjectRegistry:
 
     def _build(self, index_path: Path) -> ProjectServices:
         identity = IndexIdentity(
-            model_name=self._embedder.model_name, chunker_version=self._chunker.version
+            model_name=self._embedder.model_name,
+            model_revision=self._embedder.revision,
+            chunker_version=self._chunker.version,
         )
         store = self._open_store(index_path, identity)
         indexing = IndexingService(

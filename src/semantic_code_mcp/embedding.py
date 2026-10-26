@@ -9,6 +9,8 @@ on the event loop. A lock keeps two first calls from loading the model twice.
 from __future__ import annotations
 
 import threading
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 import numpy
@@ -21,12 +23,24 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger()
 
+# The default model's weights as the harness measured them (`evals/baseline/`)
+ALL_MINILM_L6_V2_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+# The revision each model the server knows loads, under every name it goes by: a hub
+# model's name follows its newest revision, which can change its vectors under an index
+PINNED_REVISIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "all-MiniLM-L6-v2": ALL_MINILM_L6_V2_REVISION,
+        "sentence-transformers/all-MiniLM-L6-v2": ALL_MINILM_L6_V2_REVISION,
+    }
+)
+
 
 class SentenceTransformerEmbedder(Embedder):
     """An embedder over a sentence-transformers model, loaded when first needed."""
 
     def __init__(self, model_name: str) -> None:
         self._model_name = model_name
+        self._revision = PINNED_REVISIONS.get(model_name)
         self._model: SentenceTransformer | None = None
         self._loading = threading.Lock()
 
@@ -37,20 +51,17 @@ class SentenceTransformerEmbedder(Embedder):
 
     @property
     @override
+    def revision(self) -> str | None:
+        return self._revision
+
+    @property
+    @override
     def is_loaded(self) -> bool:
         return self._model is not None
 
     @override
     def load(self) -> None:
         self._loaded_model()
-
-    @override
-    def dimension(self) -> int:
-        width = self._loaded_model().get_sentence_embedding_dimension()
-        if width is None:
-            message = f"{self._model_name} gives vectors of no fixed width"
-            raise ValueError(message)
-        return width
 
     @override
     def embed_query(self, text: str) -> Vector:
@@ -68,16 +79,17 @@ class SentenceTransformerEmbedder(Embedder):
         """The model, loading it on the first call."""
         with self._loading:
             if self._model is None:
-                self._model = load_model(self._model_name)
+                self._model = load_model(self._model_name, self._revision)
             return self._model
 
 
-def load_model(model_name: str) -> SentenceTransformer:
-    """Load a sentence-transformers model by name; imports torch on first call."""
+def load_model(model_name: str, revision: str | None) -> SentenceTransformer:
+    """Load a sentence-transformers model by name, at a revision if one is given, else as
+    the hub or the path has it; imports torch on first call."""
     # Deferred: importing sentence-transformers pulls in torch, seconds of start-up
     from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-    log.info("loading_embedding_model", model=model_name)
-    model = SentenceTransformer(model_name)
+    log.info("loading_embedding_model", model=model_name, revision=revision)
+    model = SentenceTransformer(model_name, revision=revision)
     log.info("embedding_model_loaded", model=model_name)
     return model

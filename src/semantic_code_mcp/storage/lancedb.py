@@ -290,17 +290,6 @@ class LanceDBIndexStore(IndexStore):
         return {Path(path) for path in paths.to_pylist()}
 
     @override
-    def vector_width(self) -> int | None:
-        table = self._open(CHUNKS_TABLE)
-        if table is None:
-            return None
-        vector_type = table.schema.field(VECTOR_COLUMN).type
-        if not isinstance(vector_type, pyarrow.FixedSizeListType):
-            message = f"the {VECTOR_COLUMN} column holds {vector_type}, not vectors of one width"
-            raise TypeError(message)
-        return vector_type.list_size
-
-    @override
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
         table = self._open(CHUNKS_TABLE)
         if table is None or not chunk_ids:

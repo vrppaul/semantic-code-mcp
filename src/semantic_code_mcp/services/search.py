@@ -43,7 +43,6 @@ class SearchPhase(Enum):
     checking_index = 5.0
     indexing = 10.0
     loading_model = 80.0
-    rebuilding = 82.0
     searching = 85.0
     done = 100.0
 
@@ -89,18 +88,6 @@ class SearchService:
         if not self._embedder.is_loaded:
             await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
             await asyncio.to_thread(self._embedder.load)
-        stored_width = await asyncio.to_thread(self._store.vector_width)
-        if stored_width != await asyncio.to_thread(self._embedder.dimension):
-            # A model of another width took the name: no file changed, so only the query's
-            # width tells, and every stored vector is of the old model
-            await progress.report(
-                SearchPhase.rebuilding.value, "The model's vectors changed width, re-indexing..."
-            )
-            index_report = await self._indexing.index(
-                project_root,
-                force=True,
-                progress=progress.within(SearchPhase.rebuilding.value, SearchPhase.searching.value),
-            )
         await progress.report(SearchPhase.searching.value, "Searching...")
         report = await asyncio.to_thread(self._run_search, query, project_root, limit, index_report)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")

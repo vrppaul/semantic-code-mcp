@@ -47,18 +47,25 @@ class FakeEmbedder(Embedder):
         *,
         loaded: bool = True,
         model_name: str = FAKE_MODEL_NAME,
+        revision: str | None = None,
         dimension: int = EMBEDDING_DIMENSION,
     ) -> None:
         self.embedded_texts: list[str] = []
         self.calling_threads: list[threading.Thread] = []
         self._loaded = loaded
         self._model_name = model_name
+        self._revision = revision
         self._dimension = dimension
 
     @property
     @override
     def model_name(self) -> str:
         return self._model_name
+
+    @property
+    @override
+    def revision(self) -> str | None:
+        return self._revision
 
     @property
     @override
@@ -69,11 +76,6 @@ class FakeEmbedder(Embedder):
     def load(self) -> None:
         self.calling_threads.append(threading.current_thread())
         self._loaded = True
-
-    @override
-    def dimension(self) -> int:
-        self.load()
-        return self._dimension
 
     @override
     def embed_query(self, text: str) -> Vector:
@@ -122,11 +124,6 @@ class FakeIndexStore(IndexStore):
         return set(self.chunks_by_file)
 
     @override
-    def vector_width(self) -> int | None:
-        widths = {len(vector) for vectors in self.vectors_by_file.values() for vector in vectors}
-        return max(widths, default=None)
-
-    @override
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
         stored = {
             chunk.chunk_id: vector
@@ -152,7 +149,9 @@ class FakeIndexStore(IndexStore):
         self.files_by_path.update({file.path: file for file in update.files})
         self.written_manifest = IndexManifest(
             identity=IndexIdentity(
-                model_name=FAKE_MODEL_NAME, chunker_version=FAKE_CHUNKER_VERSION
+                model_name=FAKE_MODEL_NAME,
+                model_revision=None,
+                chunker_version=FAKE_CHUNKER_VERSION,
             ),
             schema_version=FAKE_SCHEMA_VERSION,
             indexed_at=datetime.now(UTC),

@@ -47,8 +47,6 @@ DURATION_DECIMALS = 3
 EMBEDDING_SLICE_SIZE = 256
 # The vectors of no chunks: no rows, and with no vector seen, no columns
 NO_VECTORS_SHAPE = (0, 0)
-# The axis of a vector matrix along one vector: rows are chunks, columns components
-VECTOR_LENGTH_AXIS = 1
 # A run of more writes than this asks the store to fold them into its indexes at its end
 WRITES_KEPT_UP_AS_THEY_COME = 1
 
@@ -238,10 +236,9 @@ class IndexingService:
     ) -> VectorMatrix:
         """The vectors of a slice's chunks, row by row: the stored one of each chunk the
         index holds already, when reused, and the rest embedded. Stored vectors of another
-        width than those embedded now (a model swapped under the same name) are not
-        reused: the slice is embedded whole, and its write starts the index again. A slice
-        with nothing to embed keeps its stored vectors; the search, which loads the model,
-        finds their width wrong and builds the index again."""
+        width than those embedded now (a model replaced under a name nothing pins, as a
+        local path's) are embedded again, after the rest, and the slice's write starts the
+        index again."""
         if not chunks:
             return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
         stored: dict[str, Vector] = {}
@@ -249,14 +246,20 @@ class IndexingService:
             chunk_ids = [chunk.chunk_id for chunk in chunks]
             stored = await asyncio.to_thread(self._store.stored_vectors, chunk_ids)
         missing = [chunk for chunk in chunks if chunk.chunk_id not in stored]
-        embedded = await self._embed(missing, progress, position)
-        if stored and missing and stored_width(stored) != embedded.shape[VECTOR_LENGTH_AXIS]:
-            return await self._embed(chunks, progress, position)
-        vectors_by_id = {
-            **stored,
-            **dict(zip([chunk.chunk_id for chunk in missing], embedded, strict=True)),
-        }
+        vectors_by_id = await self._embedded_by_id(missing, progress, position)
+        if stored and missing and width_of(stored) != width_of(vectors_by_id):
+            unusable = [chunk for chunk in chunks if chunk.chunk_id in stored]
+            behind = EmbeddingProgress(done=position.done + len(missing), total=position.total)
+            stored = await self._embedded_by_id(unusable, progress, behind)
+        vectors_by_id.update(stored)
         return numpy.stack([vectors_by_id[chunk.chunk_id] for chunk in chunks])
+
+    async def _embedded_by_id(
+        self, chunks: list[Chunk], progress: ProgressReporter, position: EmbeddingProgress
+    ) -> dict[str, Vector]:
+        """The vectors of the chunks, embedded, by chunk id."""
+        embedded = await self._embed(chunks, progress, position)
+        return dict(zip([chunk.chunk_id for chunk in chunks], embedded, strict=True))
 
     async def _embed(
         self, chunks: list[Chunk], progress: ProgressReporter, position: EmbeddingProgress
@@ -312,9 +315,9 @@ def write_slices(chunked: list[ChunkedFile], size: int) -> list[WriteSlice]:
     return slices
 
 
-def stored_width(stored: dict[str, Vector]) -> int:
-    """How wide stored vectors are; one table holds them, all of one width."""
-    return len(next(iter(stored.values())))
+def width_of(vectors_by_id: dict[str, Vector]) -> int:
+    """How wide vectors of one source are: one table's or one model's, all of one width."""
+    return len(next(iter(vectors_by_id.values())))
 
 
 def plan_delta(

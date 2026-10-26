@@ -65,7 +65,9 @@ ADDED_FUNCTION = "\n\ndef added():\n    return 1\n"
 FILES_OF_FUNCTIONS = 3
 FUNCTIONS_PER_FILE = EMBEDDING_SLICE_SIZE * 3 // 4
 # What the fakes and the chunkers in these tests build an index from
-IDENTITY = IndexIdentity(model_name=FAKE_MODEL_NAME, chunker_version=CHUNKER_VERSION)
+IDENTITY = IndexIdentity(
+    model_name=FAKE_MODEL_NAME, model_revision=None, chunker_version=CHUNKER_VERSION
+)
 
 
 def touch_later(path: Path) -> None:
@@ -193,6 +195,11 @@ async def test_a_deleted_file_leaves_the_index(indexing: IndexingService, sample
             FakeEmbedder(model_name="second-model", dimension=WIDE),
             build_chunker(),
             id="another model, of another width",
+        ),
+        pytest.param(
+            FakeEmbedder(revision="another-revision"),
+            build_chunker(),
+            id="the same model at another revision",
         ),
         pytest.param(
             FakeEmbedder(),
@@ -503,19 +510,51 @@ def add_a_function(path: Path) -> None:
 async def test_an_edit_after_a_model_of_another_width_took_its_name_is_embedded_anew(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
-    """The file's unchanged chunks hold vectors of the old width: none is reused, and the
-    index starts again from the file, the other one unrecorded."""
+    """A name nothing pins, as a local path's: the file's unchanged chunks hold vectors of
+    the old width, so none is reused, each chunk is embedded once, and the index starts
+    again from the file, the other one unrecorded."""
     store = open_index_store(tmp_path / "index", IDENTITY)
     await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
         sample_project, force=False, progress=NO_PROGRESS
     )
     add_a_function(sample_project / "main.py")
-    wider = indexing_service(store, FakeEmbedder(dimension=WIDE), test_settings, build_chunker())
+    wider_embedder = FakeEmbedder(dimension=WIDE)
+    wider = indexing_service(store, wider_embedder, test_settings, build_chunker())
 
     await wider.index(sample_project, force=False, progress=NO_PROGRESS)
     status = await wider.status(sample_project)
 
-    assert (store.counts(), status.stale_files_count) == (IndexCounts(files=1, chunks=4), 1)
+    assert (store.counts(), status.stale_files_count, len(wider_embedder.embedded_texts)) == (
+        IndexCounts(files=1, chunks=4),
+        1,
+        4,
+    )
+
+
+async def test_progress_of_a_run_that_cannot_reuse_a_slice_s_vectors_only_moves_forward(
+    test_settings: Settings, tmp_path: Path
+):
+    """The chunks new to a file fill more than one batch, and its old chunks' vectors are
+    of another width than the model's now: they are embedded after the new ones."""
+    project = functions_in_files(tmp_path, files=1, functions=EMBEDDING_SLICE_SIZE)
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
+        project, force=False, progress=NO_PROGRESS
+    )
+    module = next(project.iterdir())
+    module.write_text(module.read_text() + "".join(added_functions(TWO_AND_A_PART_SLICES)))
+    touch_later(module)
+    recorder = ProgressRecorder()
+    wider = indexing_service(store, FakeEmbedder(dimension=WIDE), test_settings, build_chunker())
+
+    await wider.index(project, force=False, progress=ProgressReporter(recorder))
+
+    assert recorder.progress_values == sorted(recorder.progress_values)
+
+
+def added_functions(count: int) -> list[str]:
+    """Functions of names no module of `functions_in_files` holds."""
+    return [f"def added_{number}():\n    return {number}\n\n\n" for number in range(count)]
 
 
 async def test_a_cancelled_first_index_keeps_the_files_it_wrote(

@@ -113,6 +113,7 @@ def present_manifest(manifest: IndexManifest) -> IndexManifestView:
     """What built an index, as `index_status` tells it."""
     return IndexManifestView(
         model_name=manifest.identity.model_name,
+        model_revision=manifest.identity.model_revision,
         chunker_version=manifest.identity.chunker_version,
         schema_version=manifest.schema_version,
     )

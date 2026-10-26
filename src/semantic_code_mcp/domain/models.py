@@ -135,17 +135,21 @@ class IndexDelta(BaseModel):
 
 
 class IndexIdentity(BaseModel):
-    """What an index is built from: the model that embeds and the version of the chunker
-    that splits. A project keeps an index for each, so a session of another model or
-    version never builds the index of this one again.
+    """What an index is built from: the model that embeds, by its name and the revision of
+    its weights, and the version of the chunker that splits. A project keeps an index for
+    each, so a session of another model, revision or version never builds the index of
+    this one again, and newer weights under a model's name never meet its old vectors.
 
-    The vectors' dimension is not part of it: the model's name fixes it, and the stored
-    vector column records it, so nothing needs the model loaded to pick an index.
+    The vectors' width is not part of it: the model fixes it, and the stored vector column
+    records it, so nothing needs the model loaded to pick an index.
     """
 
     model_config = ConfigDict(frozen=True)
 
     model_name: str
+    # None where nothing pins the weights (a local path, a hub model the server does not
+    # know), which are then trusted to stay what they were
+    model_revision: str | None
     chunker_version: int
 
 

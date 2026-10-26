@@ -31,7 +31,14 @@ class Embedder(ABC):
     @property
     @abstractmethod
     def model_name(self) -> str:
-        """The model's name, which fixes what the vectors mean and how wide they are."""
+        """The model's name, which with its revision fixes what the vectors mean and how
+        wide they are."""
+
+    @property
+    @abstractmethod
+    def revision(self) -> str | None:
+        """The revision of the model's weights it loads; None where nothing pins one, as
+        for a local path."""
 
     @property
     @abstractmethod
@@ -41,10 +48,6 @@ class Embedder(ABC):
     @abstractmethod
     def load(self) -> None:
         """Load the model now, if it is not in memory; blocks while it loads."""
-
-    @abstractmethod
-    def dimension(self) -> int:
-        """How wide the model's vectors are; loads the model on first use."""
 
     @abstractmethod
     def embed_query(self, text: str) -> Vector:
@@ -76,10 +79,6 @@ class IndexStore(ABC):
     def chunked_paths(self) -> set[Path]:
         """The paths of the files the index holds chunks of, recorded or not: a write that
         stopped between a file's chunks and its record leaves them unrecorded."""
-
-    @abstractmethod
-    def vector_width(self) -> int | None:
-        """How wide the stored vectors are; None before the first chunk is written."""
 
     @abstractmethod
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
