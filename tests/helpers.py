@@ -3,6 +3,7 @@
 import subprocess
 from pathlib import Path
 
+import lancedb
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.app import open_index_store
@@ -12,6 +13,7 @@ from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry
+from semantic_code_mcp.storage.lancedb import CHUNKS_TABLE, LanceDBIndexStore
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -42,6 +44,13 @@ def commit_all(repository: Path) -> None:
     """Stage and commit everything in a repository."""
     run_git(repository, "add", "--all")
     run_git(repository, "commit", "--quiet", "--message", "snapshot")
+
+
+def chunks_outside_the_full_text_index(store: LanceDBIndexStore) -> int:
+    """How many chunks of a store its full-text index does not hold yet."""
+    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
+    full_text_index = chunks_table.list_indices()[0]
+    return chunks_table.index_stats(full_text_index.name).num_unindexed_rows
 
 
 def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:

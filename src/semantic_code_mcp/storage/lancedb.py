@@ -284,9 +284,10 @@ class LanceDBIndexStore(IndexStore):
         table = self._open(CHUNKS_TABLE)
         if table is None:
             return set()
-        # One column of every row, no vectors read
+        # One column of every row, no vectors read; each path made a Path once, not per row
         rows = table.search().select([PATH_COLUMN]).limit(None).to_arrow()
-        return {Path(path) for path in rows.column(PATH_COLUMN).to_pylist()}
+        paths = rows.column(PATH_COLUMN).unique()
+        return {Path(path) for path in paths.to_pylist()}
 
     @override
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
@@ -449,8 +450,8 @@ class LanceDBIndexStore(IndexStore):
 
     def _keep_up(self, *, every_table: bool) -> None:
         """Compact a table, fold its new rows into its indexes and prune its old versions:
-        every table after a whole index is written, else a table that has gathered more
-        than VERSIONS_BEFORE_UPKEEP versions since its last upkeep in this process."""
+        every table when asked to keep up, else a table that has gathered more than
+        VERSIONS_BEFORE_UPKEEP versions since its last upkeep in this process."""
         for name in (CHUNKS_TABLE, FILES_TABLE):
             table = self._open(name)
             if table is None:

@@ -11,7 +11,12 @@ import lancedb
 import numpy
 import pytest
 
-from semantic_code_mcp.app import build_chunker, build_registry, open_index_store
+from semantic_code_mcp.app import (
+    WRITE_LOCK_TIMEOUT_SECONDS,
+    build_chunker,
+    build_registry,
+    open_index_store,
+)
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
@@ -19,22 +24,23 @@ from semantic_code_mcp.domain.models import IndexCounts, IndexIdentity
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
 from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.storage.lancedb import CHUNKS_TABLE, FILES_TABLE, LEGACY_ENTRIES
+from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
     FAKE_MODEL_NAME,
-    CancelOnceWritten,
     ChangingChunker,
     ChunkCountRecorder,
     EmbedderWatchingRecorder,
     FakeEmbedder,
     FakeIndexStore,
     ProgressRecorder,
+    StoreCancelledAfterItsWrite,
     VersionedChunker,
     vector_of,
 )
 from tests.helpers import (
+    chunks_outside_the_full_text_index,
     commit_all,
     git_output,
     indexing_service,
@@ -489,23 +495,41 @@ async def test_a_forced_run_embeds_every_chunk_again(
     assert len(embedder.embedded_texts) == 6
 
 
-async def test_an_edit_after_a_model_of_another_width_took_its_name_is_embedded_at_the_new_width(
-    test_settings: Settings, sample_project: Path, tmp_path: Path
+def add_a_function(path: Path) -> None:
+    path.write_text(path.read_text() + ADDED_FUNCTION)
+    touch_later(path)
+
+
+@pytest.mark.parametrize(
+    ("change", "chunks_after"),
+    [
+        pytest.param(add_a_function, 4, id="a function added"),
+        pytest.param(touch_later, 3, id="touched, its text as it was"),
+    ],
+)
+async def test_a_file_changed_after_a_model_of_another_width_took_its_name_is_embedded_anew(
+    test_settings: Settings,
+    sample_project: Path,
+    tmp_path: Path,
+    change: Callable[[Path], object],
+    chunks_after: int,
 ):
-    """The edited file's unchanged chunks hold vectors of the old width: none is reused."""
+    """The file's stored vectors are of the old width: none is reused, and the index starts
+    again from it, the other file unrecorded."""
     store = open_index_store(tmp_path / "index", IDENTITY)
     await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
         sample_project, force=False, progress=NO_PROGRESS
     )
-    edited = sample_project / "main.py"
-    edited.write_text(edited.read_text() + ADDED_FUNCTION)
-    touch_later(edited)
+    change(sample_project / "main.py")
     wider = indexing_service(store, FakeEmbedder(dimension=WIDE), test_settings, build_chunker())
 
     await wider.index(sample_project, force=False, progress=NO_PROGRESS)
     status = await wider.status(sample_project)
 
-    assert (store.counts(), status.stale_files_count) == (IndexCounts(files=1, chunks=4), 1)
+    assert (store.counts(), status.stale_files_count) == (
+        IndexCounts(files=1, chunks=chunks_after),
+        1,
+    )
 
 
 async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
@@ -513,13 +537,13 @@ async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
 ):
     """The next run indexes only the rest."""
     project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
-    store = open_index_store(tmp_path / "index", IDENTITY)
+    store = StoreCancelledAfterItsWrite(
+        tmp_path / "index", IDENTITY, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS
+    )
     indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
 
     with pytest.raises(asyncio.CancelledError):
-        await indexing.index(
-            project, force=False, progress=ProgressReporter(CancelOnceWritten(store))
-        )
+        await indexing.index(project, force=False, progress=NO_PROGRESS)
 
     assert store.counts() == IndexCounts(files=2, chunks=2 * FUNCTIONS_PER_FILE)
 
@@ -534,9 +558,20 @@ async def test_a_first_index_of_several_writes_leaves_every_chunk_in_the_full_te
         project, force=False, progress=NO_PROGRESS
     )
 
-    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
-    full_text_index = chunks_table.list_indices()[0]
-    assert chunks_table.index_stats(full_text_index.name).num_unindexed_rows == 0
+    assert chunks_outside_the_full_text_index(store) == 0
+
+
+async def test_a_forced_run_of_a_small_project_leaves_every_chunk_in_the_full_text_index(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """A forced run rewrites every row, though it writes once."""
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+    await indexing.index(sample_project, force=True, progress=NO_PROGRESS)
+
+    assert chunks_outside_the_full_text_index(store) == 0
 
 
 async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_index(
@@ -550,9 +585,10 @@ async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_
     lancedb.connect(str(store.directory)).open_table(FILES_TABLE).delete("path = 'gone.py'")
     (sample_project / "gone.py").unlink()
 
+    status = await indexing.status(sample_project)
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
-    assert store.counts() == IndexCounts(files=2, chunks=6)
+    assert (status.stale_files_count, store.counts()) == (1, IndexCounts(files=2, chunks=6))
 
 
 def functions_in_files(root: Path, files: int, functions: int) -> Path:

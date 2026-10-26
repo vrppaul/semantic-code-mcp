@@ -43,6 +43,10 @@ class Embedder(ABC):
         """Load the model now, if it is not in memory; blocks while it loads."""
 
     @abstractmethod
+    def dimension(self) -> int:
+        """How wide the model's vectors are; loads the model on first use."""
+
+    @abstractmethod
     def embed_query(self, text: str) -> Vector:
         """The vector of a search query; loads the model on first use."""
 

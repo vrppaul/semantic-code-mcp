@@ -45,6 +45,14 @@ class SentenceTransformerEmbedder(Embedder):
         self._loaded_model()
 
     @override
+    def dimension(self) -> int:
+        width = self._loaded_model().get_sentence_embedding_dimension()
+        if width is None:
+            message = f"{self._model_name} gives vectors of no fixed width"
+            raise ValueError(message)
+        return width
+
+    @override
     def embed_query(self, text: str) -> Vector:
         vector = self._loaded_model().encode(text, convert_to_numpy=True)
         return numpy.asarray(vector, dtype=numpy.float32)

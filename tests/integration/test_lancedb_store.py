@@ -29,6 +29,7 @@ from semantic_code_mcp.storage.lancedb import (
     LanceDBIndexStore,
 )
 from tests.fakes import EMBEDDING_DIMENSION
+from tests.helpers import chunks_outside_the_full_text_index
 
 TOWARD_QUERY = [0.9] * EMBEDDING_DIMENSION
 QUERY = numpy.full(EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
@@ -498,14 +499,7 @@ def test_keeping_up_folds_every_chunk_into_the_full_text_index(filled_store: Lan
 
     filled_store.keep_up()
 
-    assert unindexed_rows(filled_store) == 0
-
-
-def unindexed_rows(store: LanceDBIndexStore) -> int:
-    """How many chunks the full-text index of a store does not hold yet."""
-    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
-    full_text_index = chunks_table.list_indices()[0]
-    return chunks_table.index_stats(full_text_index.name).num_unindexed_rows
+    assert chunks_outside_the_full_text_index(filled_store) == 0
 
 
 def set_mode_of_tree(directory: Path, mode: int) -> None:

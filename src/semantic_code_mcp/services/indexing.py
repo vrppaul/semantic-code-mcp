@@ -13,7 +13,6 @@ those of others apart.
 
 import asyncio
 import time
-from collections.abc import Set
 from enum import Enum
 from pathlib import Path
 
@@ -48,14 +47,8 @@ DURATION_DECIMALS = 3
 EMBEDDING_SLICE_SIZE = 256
 # The vectors of no chunks: no rows, and with no vector seen, no columns
 NO_VECTORS_SHAPE = (0, 0)
-# The axis of a vector matrix along one vector: rows are chunks, columns components
-VECTOR_LENGTH_AXIS = 1
 # A run of more writes than this asks the store to fold them into its indexes at its end
 WRITES_KEPT_UP_AS_THEY_COME = 1
-# What a status takes the chunks' paths to be: reading them would cost every search about
-# ten milliseconds (measured), for chunks only a crashed run leaves unrecorded, and the
-# run that follows a crash, the files it left unrecorded being stale, reads them
-CHUNK_PATHS_UNREAD: frozenset[Path] = frozenset()
 
 
 class IndexPhase(Enum):
@@ -137,8 +130,7 @@ class IndexingService:
     def _status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files: how much it holds, and how many
         files changed since (new, modified or deleted)."""
-        files = self._discovery.discover(project_root)
-        delta = plan_delta(files, self._store.indexed_files(), CHUNK_PATHS_UNREAD, every_file=False)
+        delta = self._plan(self._discovery.discover(project_root), force=False)
         counts = self._store.counts()
         return IndexStatus(
             files_count=counts.files,
@@ -168,7 +160,7 @@ class IndexingService:
             chunks_indexed = await self._write(
                 write_slices(chunked, EMBEDDING_SLICE_SIZE),
                 delta.to_delete,
-                reuse_vectors=not force,
+                force=force,
                 progress=progress.within(IndexPhase.embedding.value, PROGRESS_TOTAL),
             )
 
@@ -205,12 +197,12 @@ class IndexingService:
         slices: list[WriteSlice],
         removed_paths: list[Path],
         *,
-        reuse_vectors: bool,
+        force: bool,
         progress: ProgressReporter,
     ) -> int:
         """Embed and write the slices one after another, the removals with the first; then,
-        after more than one write, have the store fold them into its indexes. The number of
-        chunks written."""
+        after more than one write or a forced run, which rewrites every row, have the store
+        fold them into its indexes. The number of chunks written."""
         total = sum(len(write_slice.chunks) for write_slice in slices)
         done = 0
         removals = removed_paths
@@ -218,7 +210,7 @@ class IndexingService:
             chunks = write_slice.chunks
             vectors = await self._vectors(
                 chunks,
-                reuse=reuse_vectors,
+                reuse=not force,
                 progress=progress,
                 position=EmbeddingProgress(done=done, total=total),
             )
@@ -230,7 +222,7 @@ class IndexingService:
             await asyncio.to_thread(self._store.write, update, vectors)
             done += len(chunks)
             removals = []
-        if len(slices) > WRITES_KEPT_UP_AS_THEY_COME:
+        if force or len(slices) > WRITES_KEPT_UP_AS_THEY_COME:
             await asyncio.to_thread(self._store.keep_up)
         return total
 
@@ -243,18 +235,20 @@ class IndexingService:
         position: EmbeddingProgress,
     ) -> VectorMatrix:
         """The vectors of a slice's chunks, row by row: the stored one of each chunk the
-        index holds already, when reused, and the rest embedded. A stored vector of another
-        width than the model's (a model swapped under the same name) is not reused."""
+        index holds already, when reused, and the rest embedded. Stored vectors of another
+        width than the model's (a model swapped under the same name) are not reused, even
+        when nothing else is to embed: the slice is embedded whole, and its write starts
+        the index again."""
         if not chunks:
             return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
         stored: dict[str, Vector] = {}
         if reuse:
             chunk_ids = [chunk.chunk_id for chunk in chunks]
             stored = await asyncio.to_thread(self._store.stored_vectors, chunk_ids)
+        if stored and stored_width(stored) != await self._model_width(progress, position):
+            stored = {}
         missing = [chunk for chunk in chunks if chunk.chunk_id not in stored]
         embedded = await self._embed(missing, progress, position)
-        if stored and missing and of_another_width(stored, embedded):
-            return await self._embed(chunks, progress, position)
         vectors_by_id = {
             **stored,
             **dict(zip([chunk.chunk_id for chunk in missing], embedded, strict=True)),
@@ -268,11 +262,7 @@ class IndexingService:
         before each, the model loaded first if it is not, so a long run shows it is moving."""
         if not chunks:
             return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
-        if not self._embedder.is_loaded:
-            await progress.report(
-                position.done / position.total * PROGRESS_TOTAL, "Loading the embedding model..."
-            )
-            await asyncio.to_thread(self._embedder.load)
+        await self._load_model(progress, position)
 
         started = time.perf_counter()
         texts = [chunk.content for chunk in chunks]
@@ -289,6 +279,20 @@ class IndexingService:
             "embedding_completed", chunks=len(chunks), duration_ms=elapsed_milliseconds(started)
         )
         return numpy.concatenate(batches)
+
+    async def _model_width(self, progress: ProgressReporter, position: EmbeddingProgress) -> int:
+        """How wide the model's vectors are, loading it first if it is not."""
+        await self._load_model(progress, position)
+        return await asyncio.to_thread(self._embedder.dimension)
+
+    async def _load_model(self, progress: ProgressReporter, position: EmbeddingProgress) -> None:
+        """Load the model in a worker thread, reported where the run stands, if it is not."""
+        if self._embedder.is_loaded:
+            return
+        await progress.report(
+            position.done / position.total * PROGRESS_TOTAL, "Loading the embedding model..."
+        )
+        await asyncio.to_thread(self._embedder.load)
 
 
 def write_slices(chunked: list[ChunkedFile], size: int) -> list[WriteSlice]:
@@ -310,16 +314,15 @@ def write_slices(chunked: list[ChunkedFile], size: int) -> list[WriteSlice]:
     return slices
 
 
-def of_another_width(stored: dict[str, Vector], embedded: VectorMatrix) -> bool:
-    """Whether stored vectors are of another width than vectors the model gave now."""
-    stored_width = len(next(iter(stored.values())))
-    return stored_width != embedded.shape[VECTOR_LENGTH_AXIS]
+def stored_width(stored: dict[str, Vector]) -> int:
+    """How wide stored vectors are; one table holds them, all of one width."""
+    return len(next(iter(stored.values())))
 
 
 def plan_delta(
     on_disk: list[SourceFile],
     indexed: list[SourceFile],
-    chunked_paths: Set[Path],
+    chunked_paths: set[Path],
     *,
     every_file: bool,
 ) -> IndexDelta:

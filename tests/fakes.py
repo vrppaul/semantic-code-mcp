@@ -22,6 +22,7 @@ from semantic_code_mcp.domain.models import (
     SearchResult,
     SourceFile,
 )
+from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 
 EMBEDDING_DIMENSION = 384
 FAKE_MODEL_NAME = "fake-model"
@@ -68,6 +69,11 @@ class FakeEmbedder(Embedder):
     def load(self) -> None:
         self.calling_threads.append(threading.current_thread())
         self._loaded = True
+
+    @override
+    def dimension(self) -> int:
+        self.load()
+        return self._dimension
 
     @override
     def embed_query(self, text: str) -> Vector:
@@ -194,27 +200,14 @@ class ChangingChunker(VersionedChunker):
         return self._inner.chunk_file(project_root, path)
 
 
-def go_on() -> None:
-    """Let the run go on."""
+class StoreCancelledAfterItsWrite(LanceDBIndexStore):
+    """The real store, whose run is cancelled as soon as a write of it lands: a client that
+    hung up while the run was under way."""
 
-
-def cancel() -> None:
-    raise asyncio.CancelledError
-
-
-# How a client that hangs up answers a report: before the store holds a chunk, and after
-ANSWERS_TO_A_REPORT = {False: go_on, True: cancel}
-
-
-class CancelOnceWritten:
-    """A progress callback that cancels the run at its first report after the store first
-    holds a chunk: a client that hung up while the run was under way."""
-
-    def __init__(self, store: IndexStore) -> None:
-        self._store = store
-
-    async def __call__(self, _progress: float, _total: float, _message: str) -> None:
-        ANSWERS_TO_A_REPORT[self._store.counts().chunks > 0]()
+    @override
+    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+        super().write(update, vectors)
+        raise asyncio.CancelledError
 
 
 class ChunkCountRecorder:
