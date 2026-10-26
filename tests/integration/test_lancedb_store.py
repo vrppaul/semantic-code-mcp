@@ -748,10 +748,11 @@ def write_an_edit(store: LanceDBIndexStore, number: int) -> None:
 
 def same_store_after_its_upkeeps(store: LanceDBIndexStore) -> LanceDBIndexStore:
     """The store, after an edit and an upkeep for each but the last of the upkeeps between
-    two rebuilds."""
+    two rebuilds, and one more edit for the last to fold in."""
     for number in range(UPKEEPS_PER_FULL_TEXT_REBUILD - 1):
         write_an_edit(store, number)
         store.keep_up()
+    write_an_edit(store, UPKEEPS_PER_FULL_TEXT_REBUILD - 1)
     return store
 
 

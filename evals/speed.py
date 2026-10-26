@@ -3,10 +3,11 @@
 Measured per corpus, in server processes of its own: the model load (a search of a
 one-file project), a full index from scratch with the model already loaded, warm search
 latency, an `index_status` call (each search makes one first), how much the index grows
-with each edit of a file, another than the last, and how long the search after it takes
-(it re-indexes the edited file first), the server's peak memory, and the first answer of
-a freshly started server on an up-to-date index — the process start and model load an
-agent waits for.
+with each edit of a file other than the last (the copies upkeep keeps for a few seconds
+included) and how long the search after it takes, at the median and at the slowest (it
+re-indexes the edited file first; one in twenty rebuilds the full-text index), the
+server's peak memory, and the first answer of a freshly started server on an up-to-date
+index — the process start and model load an agent waits for.
 Peak memory is read from `/proc`, so it is reported on Linux only. With 15 to 20
 questions per corpus, p95 is close to the slowest search: read it as that.
 """
@@ -82,6 +83,7 @@ class CorpusSpeed(BaseModel):
     status_p50_milliseconds: float
     index_growth_megabytes_per_edit: float
     search_after_edit_p50_milliseconds: float
+    search_after_edit_slowest_milliseconds: float
     peak_memory_megabytes: float | None
     model_load_seconds: float
     first_search_seconds: float
@@ -129,7 +131,7 @@ async def measure_speed(
             await timed_status_seconds(connection, working_tree) for _ in range(STATUS_CALLS)
         ]
         edits_cost = await edit_cost(connection, corpus, working_tree, index_directory, edits)
-        # Restoring the checkout touched the edited file: index it now, so the fresh
+        # Restoring the checkout touched the edited files: index them now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
         peak_memory = server_peak_memory_megabytes()
@@ -153,6 +155,7 @@ async def measure_speed(
             edits_cost.growth_bytes / BYTES_PER_MEGABYTE / edits
         ),
         search_after_edit_p50_milliseconds=median_milliseconds(edits_cost.search_seconds),
+        search_after_edit_slowest_milliseconds=milliseconds(max(edits_cost.search_seconds)),
         peak_memory_megabytes=peak_memory,
         model_load_seconds=rounded(model_load_seconds),
         first_search_seconds=rounded(first_search_seconds),
@@ -240,7 +243,7 @@ async def edit_cost(
 
 def edits_in_turn(queries: Sequence[Query], count: int) -> list[Edit]:
     """`count` edits of the files that answer the questions, one file after another in turn,
-    each followed by the first question its file answers. An edit of another file than the
+    each followed by the first question its file answers. An edit of a file other than the
     last is what makes upkeep compact what the last edit left, which edits of one file never
     show."""
     first_question_of_file: dict[str, str] = {}
@@ -260,13 +263,18 @@ def edit_text(path: Path, number: int) -> str:
 
 def median_milliseconds(seconds: Sequence[float]) -> float:
     """The median of durations, in milliseconds; one duration is its own median."""
-    return rounded(statistics.median(seconds) * MILLISECONDS_PER_SECOND)
+    return milliseconds(statistics.median(seconds))
+
+
+def milliseconds(seconds: float) -> float:
+    """A duration in milliseconds, rounded as the report gives it."""
+    return rounded(seconds * MILLISECONDS_PER_SECOND)
 
 
 def percentile_milliseconds(seconds: list[float], cut: int) -> float:
     """One percentile of a list of durations, in milliseconds."""
     cut_points = statistics.quantiles(seconds, n=PERCENTILE_CUTS)
-    return rounded(cut_points[cut] * MILLISECONDS_PER_SECOND)
+    return milliseconds(cut_points[cut])
 
 
 def directory_bytes(directory: Path) -> int:

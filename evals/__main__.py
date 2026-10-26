@@ -40,6 +40,7 @@ from evals.quality import (
 from evals.server import ToolCallFailedError, connect
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
 from semantic_code_mcp.logging import configure_logging
+from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_FULL_TEXT_REBUILD
 
 CHECKOUTS_ROOT = Path.home() / ".cache" / "semantic-code-mcp-evals"
 EVALS_DIRECTORY = Path(__file__).parent
@@ -48,8 +49,10 @@ RESULTS_DIRECTORY = EVALS_DIRECTORY / "results"
 QUALITY_FILE = "quality.json"
 SPEED_FILE = "speed.json"
 SERVER_LOG_FILE = "server.log"
-# Enough edits for the full-text index's rebuild, once in 20 upkeeps, to fall among them
-DEFAULT_EDITS = 20
+# Edits enough for one to pay the full-text index's rebuild, which the slowest search after
+# an edit shows: a store rebuilds at its first upkeep, the full index's, and once in this
+# many after, so the last edit's
+DEFAULT_EDITS = UPKEEPS_PER_FULL_TEXT_REBUILD
 JSON_INDENT = 2
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -250,7 +253,8 @@ def speed_summary(entry: CorpusSpeed) -> str:
         f"model load {entry.model_load_seconds}s; first search {entry.first_search_seconds}s; "
         f"peak {entry.peak_memory_megabytes}MB; "
         f"index growth {entry.index_growth_megabytes_per_edit}MB per edit; "
-        f"search after an edit {entry.search_after_edit_p50_milliseconds}ms"
+        f"search after an edit {entry.search_after_edit_p50_milliseconds}ms, "
+        f"slowest {entry.search_after_edit_slowest_milliseconds}ms"
     )
 
 
