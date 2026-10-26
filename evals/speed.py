@@ -5,9 +5,9 @@ one-file project), a full index from scratch with the model already loaded, warm
 latency, an `index_status` call (each search makes one first), how much the index grows
 with each edit of a file other than the last (the copies upkeep keeps for a few seconds
 included) and how long the search after it takes, at the median and at the slowest (it
-re-indexes the edited file first; one in twenty rebuilds the full-text index), the
-server's peak memory, and the first answer of a freshly started server on an up-to-date
-index — the process start and model load an agent waits for.
+re-indexes the edited file first; one in twenty compacts the index), the server's peak
+memory, and the first answer of a freshly started server on an up-to-date index — the
+process start and model load an agent waits for.
 Peak memory is read from `/proc`, so it is reported on Linux only. With 15 to 20
 questions per corpus, p95 is close to the slowest search: read it as that.
 """

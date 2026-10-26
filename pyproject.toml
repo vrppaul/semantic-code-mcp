@@ -15,6 +15,7 @@ dependencies = [
     "pyarrow>=23.0.0,<24",
     "pydantic>=2.12.5,<3",
     "pydantic-settings>=2.12.0,<3",
+    "pylance>=4.0.0,<4.1",
     "sentence-transformers>=5.2.0,<6",
     "structlog>=26.1.0,<27",
     "torch>=2.10.0,<3",
@@ -252,7 +253,7 @@ source_modules = [
     "semantic_code_mcp.logging",
     "semantic_code_mcp.domain",
 ]
-forbidden_modules = ["lancedb", "pyarrow", "filelock"]
+forbidden_modules = ["lancedb", "lance", "pyarrow", "filelock"]
 # Through the part that wraps it, a library is meant to be reached
 allow_indirect_imports = true
 
@@ -309,6 +310,7 @@ forbidden_modules = [
     "pydantic_settings",
     "mcp",
     "lancedb",
+    "lance",
     "pyarrow",
     "sentence_transformers",
     "torch",

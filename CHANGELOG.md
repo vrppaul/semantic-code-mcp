@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
 - Every direct dependency is bounded below its next breaking release, so none reaches a fresh `uvx` install untested, as mcp 2.x reached 0.4.0; what they pull in follows their own bounds
-- Requires LanceDB 0.30.2 or a later 0.30
+- Requires LanceDB 0.30.2 or a later 0.30, and pylance 4.0, the Lance library it is built on, for that upkeep
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each model and its revision, chunker version and storage layout keeps an index of its own beside the others in the project's index directory: two sessions of different versions or models never build each other's index again, and switching back finds the old one. The first search after the upgrade builds a new index; one that no session read or wrote for a week is removed, 0.4's included, but never while a writer holds it
 - An index run writes a slice of files at a time: a forced re-index keeps every file searchable throughout, instead of emptying the index first, and a first index stopped midway keeps the files it wrote
 - An edit re-embeds only the chunks whose text it changed; a forced re-index embeds every chunk again
-- A write no longer rebuilds the full-text index; every index run that wrote ends by compacting the index, folding its new rows into the full-text index and pruning old versions, and the full-text index is rebuilt whole at a session's first such run and once in twenty after
+- A write no longer rebuilds the full-text index; every index run that wrote ends by folding its new rows into the full-text index and pruning old versions, and at a session's first such run and once in twenty after, by compacting the index and rebuilding the full-text index whole. An edit no longer rewrites the whole index, as LanceDB's own upkeep did for each edit of a file other than the last: at 100k chunks an upkeep takes 69-72 ms against 669-672, a search 40 ms against 54, and the index peaks at 0.85 GB against 3.5
 - `index_status` of a project never indexed no longer creates its index directory
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project

@@ -40,7 +40,7 @@ from evals.quality import (
 from evals.server import ToolCallFailedError, connect
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
 from semantic_code_mcp.logging import configure_logging
-from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_FULL_TEXT_REBUILD
+from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_COMPACTION
 
 CHECKOUTS_ROOT = Path.home() / ".cache" / "semantic-code-mcp-evals"
 EVALS_DIRECTORY = Path(__file__).parent
@@ -49,10 +49,10 @@ RESULTS_DIRECTORY = EVALS_DIRECTORY / "results"
 QUALITY_FILE = "quality.json"
 SPEED_FILE = "speed.json"
 SERVER_LOG_FILE = "server.log"
-# Edits enough for one to pay the full-text index's rebuild, which the slowest search after
-# an edit shows: a store rebuilds at its first upkeep, the full index's, and once in this
-# many after, so the last edit's
-DEFAULT_EDITS = UPKEEPS_PER_FULL_TEXT_REBUILD
+# Edits enough for one to pay the index's compaction and full-text rebuild, which the slowest
+# search after an edit shows: a store compacts at its first upkeep, the full index's, and
+# once in this many after, so at the last edit's
+DEFAULT_EDITS = UPKEEPS_PER_COMPACTION
 JSON_INDENT = 2
 EXIT_OK = 0
 EXIT_FAILED = 1

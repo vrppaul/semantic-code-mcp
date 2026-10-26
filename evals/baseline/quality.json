@@ -2875,9 +2875,9 @@
               "parent": "_ApostropheReprType"
             },
             {
-              "path": "tests/typing/typing_prompt.py",
+              "path": "tests/test_termui.py",
               "symbol": "convert",
-              "parent": "DoublingType"
+              "parent": "_RejectAllRawType"
             },
             {
               "path": "tests/test_termui.py",
@@ -2944,7 +2944,7 @@
             },
             {
               "path": "tests/test_formatting.py",
-              "symbol": "test_formatting_usage_error_metavar_missing_arg",
+              "symbol": "test_formatting_usage_error",
               "parent": ""
             }
           ]
@@ -6121,12 +6121,12 @@
           "file": {
             "hits_at_1": 12,
             "hits_at_3": 14,
-            "mean_reciprocal_rank": 0.873
+            "mean_reciprocal_rank": 0.867
           },
           "chunk": {
             "hits_at_1": 10,
             "hits_at_3": 14,
-            "mean_reciprocal_rank": 0.807
+            "mean_reciprocal_rank": 0.8
           }
         },
         {
@@ -6152,7 +6152,7 @@
           "chunk": {
             "hits_at_1": 9,
             "hits_at_3": 12,
-            "mean_reciprocal_rank": 0.815
+            "mean_reciprocal_rank": 0.808
           }
         },
         {
@@ -6648,8 +6648,8 @@
           "query": "MCP tool that searches code semantically",
           "kind": "code",
           "shares_answer_words": true,
-          "file_rank": 10,
-          "chunk_rank": 10,
+          "file_rank": null,
+          "chunk_rank": null,
           "hits": [
             {
               "path": "README.md",
@@ -6697,8 +6697,8 @@
               "parent": ""
             },
             {
-              "path": "src/semantic_code_mcp/server.py",
-              "symbol": "search_code",
+              "path": "src/semantic_code_mcp/__main__.py",
+              "symbol": "__main__",
               "parent": ""
             }
           ]
@@ -7338,6 +7338,11 @@
               "path": "docs/decisions/001-initial-architecture.md",
               "symbol": "Key Design Choices",
               "parent": "001: Initial Architecture > Decision"
+            },
+            {
+              "path": "README.md",
+              "symbol": "macOS / Windows",
+              "parent": "semantic-code-mcp > Installation"
             },
             {
               "path": "TODO.md",

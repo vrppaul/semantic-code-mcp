@@ -3,6 +3,7 @@
 import os
 import re
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 
 import lancedb
@@ -25,20 +26,27 @@ from semantic_code_mcp.domain.models import (
     SearchScope,
     SourceFile,
 )
+from semantic_code_mcp.storage import lancedb as lancedb_store
 from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.lancedb import (
     CHUNKS_TABLE,
+    FILES_TABLE,
     MANIFEST_FILE,
     NO_CANDIDATES,
     REMOVING_PREFIX,
+    ROWS_PER_FRAGMENT,
     SCHEMA_VERSION,
-    UPKEEPS_PER_FULL_TEXT_REBUILD,
+    UPKEEPS_PER_COMPACTION,
     USE_MARK_INTERVAL,
     USE_STAMP_FILE,
     LanceDBIndexStore,
 )
 from tests.fakes import EMBEDDING_DIMENSION
-from tests.helpers import chunks_outside_the_full_text_index, newest_full_text_index_files
+from tests.helpers import (
+    chunks_fragments,
+    chunks_outside_the_full_text_index,
+    newest_full_text_index_files,
+)
 
 TOWARD_QUERY = [0.9] * EMBEDDING_DIMENSION
 QUERY = numpy.full(EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
@@ -48,6 +56,8 @@ LIMIT = 10
 # A text no chunk's words match, so a search finds by vector alone
 NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
+# A retention no version is young enough for, so upkeep prunes every one but the latest
+NO_RETENTION = timedelta(0)
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
 # Modes for a table's files: read and enter only, so a write to it fails; and writable again
@@ -746,13 +756,20 @@ def write_an_edit(store: LanceDBIndexStore, number: int) -> None:
     store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
 
+def next_store_on(store: LanceDBIndexStore) -> LanceDBIndexStore:
+    """A new store on the same index, as the next session opens it."""
+    return LanceDBIndexStore(
+        store.directory.parent, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+    )
+
+
 def same_store_after_its_upkeeps(store: LanceDBIndexStore) -> LanceDBIndexStore:
     """The store, after an edit and an upkeep for each but the last of the upkeeps between
-    two rebuilds, and one more edit for the last to fold in."""
-    for number in range(UPKEEPS_PER_FULL_TEXT_REBUILD - 1):
+    two compactions, and one more edit for the last to fold in."""
+    for number in range(UPKEEPS_PER_COMPACTION - 1):
         write_an_edit(store, number)
         store.keep_up()
-    write_an_edit(store, UPKEEPS_PER_FULL_TEXT_REBUILD - 1)
+    write_an_edit(store, UPKEEPS_PER_COMPACTION - 1)
     return store
 
 
@@ -760,13 +777,11 @@ def store_of_the_next_session(store: LanceDBIndexStore) -> LanceDBIndexStore:
     """A new store on the same index, after the earlier session's store folded in a part."""
     write_an_edit(store, 0)
     store.keep_up()
-    return LanceDBIndexStore(
-        store.directory.parent, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
-    )
+    return next_store_on(store)
 
 
 @pytest.mark.parametrize(
-    "store_due_a_rebuild",
+    "store_due_a_compaction",
     [
         pytest.param(same_store_after_its_upkeeps, id="the same store, once in a while"),
         pytest.param(store_of_the_next_session, id="a new store, at its first upkeep"),
@@ -774,14 +789,70 @@ def store_of_the_next_session(store: LanceDBIndexStore) -> LanceDBIndexStore:
 )
 def test_upkeep_rebuilds_the_full_text_index_before_its_parts_pile_up(
     filled_store: LanceDBIndexStore,
-    store_due_a_rebuild: Callable[[LanceDBIndexStore], LanceDBIndexStore],
+    store_due_a_compaction: Callable[[LanceDBIndexStore], LanceDBIndexStore],
 ):
-    """Each upkeep folds new rows in as a part of their own, which no later upkeep merges. A
-    store cannot know how many parts an earlier session left, so it rebuilds first."""
+    """Each upkeep folds new rows in as a part of their own, which no later upkeep merges,
+    so now and then it compacts and rebuilds the index whole. A store cannot know how many
+    parts an earlier session left, so it does so first."""
     filled_store.keep_up()
     rebuilt = newest_full_text_index_files(filled_store)
-    store = store_due_a_rebuild(filled_store)
+    store = store_due_a_compaction(filled_store)
 
     store.keep_up()
 
     assert newest_full_text_index_files(store) == rebuilt
+
+
+def test_an_upkeep_between_compactions_rewrites_no_fragment(filled_store: LanceDBIndexStore):
+    """LanceDB's own optimize compacts at every call, merging every fragment under a million
+    rows into one, so at 100k chunks each edit rewrote the whole table, in about 0.67 s."""
+    filled_store.keep_up()
+    write_an_edit(filled_store, 0)
+    filled_store.keep_up()
+    kept = [fragment.fragment_id for fragment in chunks_fragments(filled_store)]
+    later = function_chunk("later", "later.py", "def later(): pass")
+    filled_store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
+
+    filled_store.keep_up()
+
+    fragments = [fragment.fragment_id for fragment in chunks_fragments(filled_store)]
+    assert fragments[: len(kept)] == kept
+
+
+def test_compaction_merges_small_fragments_and_leaves_full_ones(store: LanceDBIndexStore):
+    """Each write leaves a fragment of its own, which compaction merges with its small
+    neighbours folded into the indexes alike, up to ROWS_PER_FRAGMENT rows; a fragment that
+    holds as many stays as it is, however large the table grows."""
+    full = [
+        function_chunk(f"full_{number}", f"full_{number}.py", f"def full_{number}(): pass")
+        for number in range(ROWS_PER_FRAGMENT)
+    ]
+    store.write(update_of(full, removed_paths=[]), vectors_of(*[TOWARD_QUERY] * len(full)))
+    store.keep_up()
+    full_fragment = chunks_fragments(store)[0].fragment_id
+    write_an_edit(store, 0)
+    store.keep_up()
+    later = function_chunk("later", "later.py", "def later(): pass")
+    store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    store.keep_up()
+    next_session = next_store_on(store)
+
+    next_session.keep_up()
+
+    fragments = chunks_fragments(next_session)
+    assert (fragments[0].fragment_id, len(fragments)) == (full_fragment, 2)
+
+
+def test_upkeep_prunes_the_versions_older_than_any_read_can_last(
+    filled_store: LanceDBIndexStore, monkeypatch: pytest.MonkeyPatch
+):
+    """Else each write would keep a copy of what it replaced, and the index grow for ever;
+    with no version old enough, every one but the latest goes."""
+    monkeypatch.setattr(lancedb_store, "OLD_VERSION_RETENTION", NO_RETENTION)
+    write_an_edit(filled_store, 0)
+
+    filled_store.keep_up()
+
+    database = lancedb.connect(str(filled_store.directory))
+    tables = (CHUNKS_TABLE, FILES_TABLE)
+    assert [len(database.open_table(name).list_versions()) for name in tables] == [1, 1]

@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import lancedb
+from lance.fragment import LanceFragment
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.app import open_index_store
@@ -55,6 +56,12 @@ def chunks_outside_the_full_text_index(store: LanceDBIndexStore) -> int:
     chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
     full_text_index = chunks_table.list_indices()[0]
     return chunks_table.index_stats(full_text_index.name).num_unindexed_rows
+
+
+def chunks_fragments(store: LanceDBIndexStore) -> list[LanceFragment]:
+    """The fragments the latest version of a store's chunks table reads, in order."""
+    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
+    return chunks_table.to_lance().get_fragments()
 
 
 def newest_full_text_index_files(store: LanceDBIndexStore) -> int:

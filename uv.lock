@@ -545,19 +545,19 @@ wheels = [
 
 [[package]]
 name = "lance-namespace"
-version = "0.4.5"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lance-namespace-urllib3-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/b5/0c3c55cf336b1e90392c2e24ac833551659e8bb3c61644b2d94825eb31bd/lance_namespace-0.4.5.tar.gz", hash = "sha256:0aee0abed3a1fa762c2955c7d12bb3004cea5c82ba28f6fcb9fe79d0cc19e317", size = 9827, upload-time = "2026-01-07T19:20:23.005Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/28/9f/7906ba4117df8d965510285eaf07264a77de2fd283b9d44ec7fc63a4a57a/lance_namespace-0.6.1.tar.gz", hash = "sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131", size = 10666, upload-time = "2026-03-17T17:55:44.977Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/34/88/173687dad72baf819223e3b506898e386bc88c26ff8da5e8013291e02daf/lance_namespace-0.4.5-py3-none-any.whl", hash = "sha256:cd1a4f789de03ba23a0c16f100b1464cca572a5d04e428917a54d09db912d548", size = 11703, upload-time = "2026-01-07T19:20:25.394Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/91/aee1c0a04d17f2810173bd304bd444eb78332045df1b0c1b07cebd01f530/lance_namespace-0.6.1-py3-none-any.whl", hash = "sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be", size = 12498, upload-time = "2026-03-17T17:55:44.062Z" },
 ]
 
 [[package]]
 name = "lance-namespace-urllib3-client"
-version = "0.4.5"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
@@ -565,9 +565,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/a9/4e527c2f05704565618b239b0965f829d1a194837f01234af3f8e2f33d92/lance_namespace_urllib3_client-0.4.5.tar.gz", hash = "sha256:184deda8cf8700926d994618187053c644eb1f2866a4479e7b80843cacc92b1c", size = 159726, upload-time = "2026-01-07T19:20:24.025Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/a1/8706a2be25bd184acccc411e48f1a42a4cbf3b6556cba15b9fcf4c15cfcc/lance_namespace_urllib3_client-0.6.1.tar.gz", hash = "sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87", size = 182567, upload-time = "2026-03-17T17:55:46.87Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/86/0adee7190408a28dcc5a0562c674537457e3de59ee51d1c724ecdc4a9930/lance_namespace_urllib3_client-0.4.5-py3-none-any.whl", hash = "sha256:2ee154d616ba4721f0bfdf043d33c4fef2e79d380653e2f263058ab00fb4adf4", size = 277969, upload-time = "2026-01-07T19:20:26.597Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/c7/cb9580602dec25f0fdd6005c1c9ba1d4c8c0c3dc8d543107e5a9f248bba8/lance_namespace_urllib3_client-0.6.1-py3-none-any.whl", hash = "sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b", size = 317111, upload-time = "2026-03-17T17:55:45.546Z" },
 ]
 
 [[package]]
@@ -939,6 +939,24 @@ crypto = [
 ]
 
 [[package]]
+name = "pylance"
+version = "4.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lance-namespace" },
+    { name = "numpy" },
+    { name = "pyarrow" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/22/4e115383441302720d4b755731b31ac369cc9b5f6e532d27136f7f5843e8/pylance-4.0.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:6ca7fba7bd1511d0ab2b889b0724a1368ba6650e82aa7048db1f5b472eee912a", size = 54451276, upload-time = "2026-08-06T10:49:45.785Z" },
+    { url = "https://files.pythonhosted.org/packages/85/56/3c3a60afb3f1c7b97eebbc1f6244337349cf18df6a3ff372af644ff23cdd/pylance-4.0.2-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8c6bb70cb3dce05160a41f75c297c7f7659783dfe905c8ec32d13691467f4de4", size = 56774722, upload-time = "2026-08-06T10:28:44.598Z" },
+    { url = "https://files.pythonhosted.org/packages/14/37/6bac654937ff9eb29baaba8c06b15566640262eb14a81eb4744f15333b27/pylance-4.0.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e575bdfebd60f3d2afe14302ebc26c7e6175336483b80f8999762cc34d66c7d4", size = 60315143, upload-time = "2026-08-06T10:40:52.377Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/9a/86392e32215607dbf640759b6402e46e2b7a343dcd53bbb326db02612c0d/pylance-4.0.2-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:a2432653856e81f7327e723be259d65e4d6daa2bdfa55ac6ad8c08273d150238", size = 56787849, upload-time = "2026-08-06T10:30:29.388Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/e0/6a067d91ed471cec8c77e9e833249c0762281d1f0ac7142e96017f9b3b9c/pylance-4.0.2-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:20528a82b6b91b06637a53b7e2b3b66fb8d6c5f4e7eabd9736d0c6bbed825fa3", size = 60282746, upload-time = "2026-08-06T10:40:58.331Z" },
+    { url = "https://files.pythonhosted.org/packages/45/63/769727e8319b43ee10c991b50cb682df96eadcea419509880c13daa0d803/pylance-4.0.2-cp39-abi3-win_amd64.whl", hash = "sha256:53c38467111af1bba3bedda789bfa350c6cb42aa7d7bad32b7657168e2c8f233", size = 65101756, upload-time = "2026-08-06T10:41:02.848Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1278,6 +1296,7 @@ dependencies = [
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pylance" },
     { name = "sentence-transformers" },
     { name = "structlog" },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
@@ -1312,6 +1331,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=23.0.0,<24" },
     { name = "pydantic", specifier = ">=2.12.5,<3" },
     { name = "pydantic-settings", specifier = ">=2.12.0,<3" },
+    { name = "pylance", specifier = ">=4.0.0,<4.1" },
     { name = "sentence-transformers", specifier = ">=5.2.0,<6" },
     { name = "structlog", specifier = ">=26.1.0,<27" },
     { name = "torch", specifier = ">=2.10.0,<3", index = "https://download.pytorch.org/whl/cpu" },
