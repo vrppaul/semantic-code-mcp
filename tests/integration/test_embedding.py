@@ -10,10 +10,14 @@ from huggingface_hub import hf_hub_download
 
 from semantic_code_mcp.embedding import (
     ALL_MINILM_L6_V2_REVISION,
-    MODEL_FILES,
+    MODULES_FILE,
+    ONNX_MODEL_FILE,
     POOLING_CONFIG_FILE,
+    SENTENCE_BERT_CONFIG_FILE,
+    TOKENIZER_CONFIG_FILE,
+    TOKENIZER_FILE,
     OnnxEmbedder,
-    UnsupportedModelError,
+    UnusableModelError,
 )
 from tests.conftest import MODEL_NAME
 from tests.fakes import EMBEDDING_DIMENSION
@@ -23,14 +27,31 @@ REFERENCE_VECTORS = Path(__file__).parent.parent / "data" / "all_minilm_l6_v2_ve
 # How far a component may stray from the reference: batching alone moves it by 6e-8
 COMPONENT_TOLERANCE = 1e-5
 HUB_REPOSITORY = f"sentence-transformers/{MODEL_NAME}"
-# Poolings the embedder does not read: the first token's state, as some models take it,
-# and that beside the mean, which sentence-transformers would join into one wider vector
-FIRST_TOKEN_POOLING = {"word_embedding_dimension": 384, "pooling_mode_cls_token": True}
-MEAN_AND_FIRST_TOKEN_POOLING = {
-    "word_embedding_dimension": 384,
-    "pooling_mode_mean_tokens": True,
-    "pooling_mode_cls_token": True,
-}
+# The files the embedder reads of a model, which a test copies into a directory
+MODEL_FILES = (
+    MODULES_FILE,
+    POOLING_CONFIG_FILE,
+    SENTENCE_BERT_CONFIG_FILE,
+    TOKENIZER_CONFIG_FILE,
+    TOKENIZER_FILE,
+    ONNX_MODEL_FILE,
+)
+# Chains the embedder does not read: poolings other than the mean alone, which
+# sentence-transformers would take another way or join into a wider vector, and a layer
+# after the pooling that changes the vector
+FIRST_TOKEN_POOLING = {"pooling_mode_cls_token": True}
+MEAN_AND_FIRST_TOKEN_POOLING = {"pooling_mode_mean_tokens": True, "pooling_mode_cls_token": True}
+MEAN_AND_LAST_TOKEN_POOLING = {"pooling_mode_mean_tokens": True, "pooling_mode_lasttoken": True}
+DENSE_AFTER_POOLING = [
+    {"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Transformer"},
+    {"idx": 1, "name": "1", "path": "1_Pooling", "type": "sentence_transformers.models.Pooling"},
+    {"idx": 2, "name": "2", "path": "2_Dense", "type": "sentence_transformers.models.Dense"},
+]
+# How sentence-transformers 5 saves a model: the pooling by name, and the limit left to the
+# tokenizer's config
+POOLING_BY_NAME = {"pooling_mode": "mean"}
+NO_LIMIT_OF_ITS_OWN = {"do_lower_case": False}
+TOKENIZER_LIMIT = {"model_max_length": 256}
 
 
 def cosine_similarity(first: numpy.ndarray, second: numpy.ndarray) -> float:
@@ -87,18 +108,54 @@ def test_a_model_in_a_directory_embeds_as_the_hub_s(embedder: OnnxEmbedder, tmp_
 
 
 @pytest.mark.parametrize(
-    "pooling",
+    ("relative_path", "content", "named"),
     [
-        pytest.param(FIRST_TOKEN_POOLING, id="the first token"),
-        pytest.param(MEAN_AND_FIRST_TOKEN_POOLING, id="the mean and the first token"),
+        pytest.param(POOLING_CONFIG_FILE, FIRST_TOKEN_POOLING, "pools", id="the first token"),
+        pytest.param(
+            POOLING_CONFIG_FILE,
+            MEAN_AND_FIRST_TOKEN_POOLING,
+            "pools",
+            id="the mean and the first token",
+        ),
+        pytest.param(
+            POOLING_CONFIG_FILE,
+            MEAN_AND_LAST_TOKEN_POOLING,
+            "pools",
+            id="the mean and the last token",
+        ),
+        pytest.param(MODULES_FILE, DENSE_AFTER_POOLING, "chains", id="a layer after the pooling"),
     ],
 )
-def test_a_model_that_pools_otherwise_is_refused_when_it_loads(
-    tmp_path: Path, pooling: dict[str, object]
+def test_a_model_the_embedder_cannot_make_the_vectors_of_is_refused_when_it_loads(
+    tmp_path: Path, relative_path: str, content: object, named: str
 ):
     """Its vectors would mean something else than its own library makes of them."""
     directory = copy_of_the_model(tmp_path)
-    (directory / POOLING_CONFIG_FILE).write_text(json.dumps(pooling))
+    (directory / relative_path).write_text(json.dumps(content))
 
-    with pytest.raises(UnsupportedModelError, match="pool"):
+    with pytest.raises(UnusableModelError, match=named):
+        OnnxEmbedder(str(directory)).load()
+
+
+def test_a_model_saved_by_sentence_transformers_5_embeds_as_its_older_save(
+    embedder: OnnxEmbedder, tmp_path: Path
+):
+    """It names its pooling instead of flagging it, and leaves the limit to the tokenizer."""
+    directory = copy_of_the_model(tmp_path)
+    (directory / POOLING_CONFIG_FILE).write_text(json.dumps(POOLING_BY_NAME))
+    (directory / SENTENCE_BERT_CONFIG_FILE).write_text(json.dumps(NO_LIMIT_OF_ITS_OWN))
+    (directory / TOKENIZER_CONFIG_FILE).write_text(json.dumps(TOKENIZER_LIMIT))
+    texts = json.loads(REFERENCE_VECTORS.read_text())["texts"]
+
+    vectors = OnnxEmbedder(str(directory)).embed_documents(texts)
+
+    assert numpy.array_equal(vectors, embedder.embed_documents(texts))
+
+
+def test_a_model_directory_without_its_onnx_export_is_refused_naming_the_file(tmp_path: Path):
+    """Else the agent would read only that the tool failed."""
+    directory = copy_of_the_model(tmp_path)
+    (directory / ONNX_MODEL_FILE).unlink()
+
+    with pytest.raises(UnusableModelError, match=ONNX_MODEL_FILE):
         OnnxEmbedder(str(directory)).load()

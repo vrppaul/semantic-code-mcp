@@ -11,7 +11,7 @@ The vectors are those sentence-transformers makes of the same model, to a few pa
 million, so an index it built keeps answering: the tokenizer cuts a text at the model's
 token limit, the model's token states are averaged over the text's tokens, and the mean
 is made unit length, as the model's own modules say. sentence-transformers itself, and
-torch under it, are not installed: about 0.8 GB less (ADR 006, stage 7).
+torch under it, are not installed: about 0.9 GB less (ADR 006, stage 7).
 """
 
 import threading
@@ -24,9 +24,10 @@ import numpy
 import onnxruntime
 import structlog
 from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import EntryNotFoundError, LocalEntryNotFoundError
 from huggingface_hub.utils import disable_progress_bars
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 from tokenizers import Tokenizer
 
 from semantic_code_mcp.domain.interfaces import Embedder, Vector, VectorMatrix
@@ -47,12 +48,19 @@ PINNED_REVISIONS: Mapping[str, str] = MappingProxyType(
 # The hub's owner of the models sentence-transformers names without one
 SENTENCE_TRANSFORMERS_OWNER = "sentence-transformers"
 OWNER_SEPARATOR = "/"
-# What the embedder reads of a model, by its place in the model's repository or directory
+# What the embedder reads of a model, by its place in the model's repository or directory:
+# the configs first, which say whether it can make the model's vectors, then the rest
+MODULES_FILE = "modules.json"
+POOLING_CONFIG_FILE = "1_Pooling/config.json"
+SENTENCE_BERT_CONFIG_FILE = "sentence_bert_config.json"
+TOKENIZER_CONFIG_FILE = "tokenizer_config.json"
 TOKENIZER_FILE = "tokenizer.json"
 ONNX_MODEL_FILE = "onnx/model.onnx"
-SENTENCE_BERT_CONFIG_FILE = "sentence_bert_config.json"
-POOLING_CONFIG_FILE = "1_Pooling/config.json"
-MODEL_FILES = (TOKENIZER_FILE, ONNX_MODEL_FILE, SENTENCE_BERT_CONFIG_FILE, POOLING_CONFIG_FILE)
+# The chains of modules whose vectors the embedder makes, each module by the last part of
+# its type: the transformer, the mean of its token states, and a unit length or none
+TYPE_SEPARATOR = "."
+READ_MODULE_CHAINS = (("Transformer", "Pooling"), ("Transformer", "Pooling", "Normalize"))
+MEAN_POOLING = "mean"
 # The model's inputs, as its ONNX export names them; one text's token types are all zero
 INPUT_IDS = "input_ids"
 ATTENTION_MASK = "attention_mask"
@@ -70,40 +78,74 @@ BATCH_SIZE = 32
 LEAST_TOKEN_COUNT = 1e-9
 LEAST_LENGTH = 1e-12
 CPU_PROVIDER = "CPUExecutionProvider"
+# onnxruntime's threads otherwise spin for about half a second after each run, so a 2 ms
+# query burned some 6 CPU-seconds (a review's probe); off, a chunk embeds as fast
+SPINNING_CONFIG_KEY = "session.intra_op.allow_spinning"
+NO_SPINNING = "0"
 
 
-class UnsupportedModelError(ValueError):
-    """A model whose vectors the embedder cannot make as the model's own library would."""
+class UnusableModelError(ValueError):
+    """A model the embedder cannot load, or whose vectors it cannot make as the model's own
+    library would; the message names the file and says why."""
 
 
-class SentenceBertConfig(BaseModel):
-    """What a sentence-transformers model says of the texts it reads."""
+class ModuleEntry(BaseModel):
+    """One module of a sentence-transformers model's chain, as `modules.json` lists it."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    # The longest text it reads, in tokens; the tokenizer's own limit can be another
-    max_seq_length: int
+    type: str
+
+    @property
+    def kind(self) -> str:
+        """The module's kind, the last part of its type: `Transformer`, `Pooling`."""
+        return self.type.rsplit(TYPE_SEPARATOR, 1)[-1]
 
 
 class PoolingConfig(BaseModel):
-    """How a sentence-transformers model makes one vector of a text's token states."""
+    """How a sentence-transformers model makes one vector of a text's token states: one
+    mode, or several joined, by name since sentence-transformers 5, by flags before."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
+    pooling_mode: str | list[str] | None = None
     pooling_mode_mean_tokens: bool = False
     pooling_mode_cls_token: bool = False
     pooling_mode_max_tokens: bool = False
     pooling_mode_mean_sqrt_len_tokens: bool = False
+    pooling_mode_weightedmean_tokens: bool = False
+    pooling_mode_lasttoken: bool = False
 
     @property
     def is_mean(self) -> bool:
         """Whether it takes the mean of the states alone, the one pooling read here."""
+        if self.pooling_mode is not None:
+            return self.pooling_mode in (MEAN_POOLING, [MEAN_POOLING])
         others = (
             self.pooling_mode_cls_token,
             self.pooling_mode_max_tokens,
             self.pooling_mode_mean_sqrt_len_tokens,
+            self.pooling_mode_weightedmean_tokens,
+            self.pooling_mode_lasttoken,
         )
         return self.pooling_mode_mean_tokens and not any(others)
+
+
+class SentenceBertConfig(BaseModel):
+    """What a sentence-transformers model says of the texts it reads: the longest, in
+    tokens, which models saved by sentence-transformers 5 leave to the tokenizer's config."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    max_seq_length: int | None = None
+
+
+class TokenizerConfig(BaseModel):
+    """The tokenizer's own limit, which a model's sentence-transformers config can lower."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    model_max_length: int
 
 
 class OnnxModel:
@@ -184,31 +226,52 @@ class OnnxEmbedder(Embedder):
 
 
 def load_model(model_name: str, revision: str | None) -> OnnxModel:
-    """Read a model's files, from its directory or the hub at the revision given, and start
-    an inference session over its ONNX export."""
+    """Read a model's configs, from its directory or the hub at the revision given, check
+    that the embedder makes its vectors, then read its tokenizer and start an inference
+    session over its ONNX export."""
     log.info("loading_embedding_model", model=model_name, revision=revision)
     # The hub draws a bar on stderr as it fetches a file, among the server's log lines
     disable_progress_bars()
-    files = {
-        relative_path: model_file(model_name, revision, relative_path)
-        for relative_path in MODEL_FILES
-    }
-    pooling = PoolingConfig.model_validate_json(files[POOLING_CONFIG_FILE].read_bytes())
+    modules = TypeAdapter(list[ModuleEntry]).validate_json(
+        model_file(model_name, revision, MODULES_FILE).read_bytes()
+    )
+    if tuple(module.kind for module in modules) not in READ_MODULE_CHAINS:
+        message = (
+            f"{model_name}'s {MODULES_FILE} chains modules other than a transformer, "
+            "its pooling and a unit length"
+        )
+        raise UnusableModelError(message)
+    pooling = PoolingConfig.model_validate_json(
+        model_file(model_name, revision, POOLING_CONFIG_FILE).read_bytes()
+    )
     if not pooling.is_mean:
         message = (
-            f"{model_name} pools a text's token states otherwise than by their mean alone, "
-            "which this embedder does not read"
+            f"{model_name} pools a text's token states otherwise than by their mean "
+            f"alone ({POOLING_CONFIG_FILE})"
         )
-        raise UnsupportedModelError(message)
-    limits = SentenceBertConfig.model_validate_json(files[SENTENCE_BERT_CONFIG_FILE].read_bytes())
-    tokenizer = Tokenizer.from_file(str(files[TOKENIZER_FILE]))
+        raise UnusableModelError(message)
+    tokenizer = Tokenizer.from_file(str(model_file(model_name, revision, TOKENIZER_FILE)))
     # The model's limit, and padding to a batch's longest text, as sentence-transformers
     # sets them over what the tokenizer's file holds (all-MiniLM-L6-v2's: 128 tokens both)
-    tokenizer.enable_truncation(max_length=limits.max_seq_length)
+    tokenizer.enable_truncation(max_length=token_limit(model_name, revision))
     tokenizer.enable_padding()
-    session = onnxruntime.InferenceSession(str(files[ONNX_MODEL_FILE]), providers=[CPU_PROVIDER])
+    options = onnxruntime.SessionOptions()
+    options.add_session_config_entry(SPINNING_CONFIG_KEY, NO_SPINNING)
+    export = model_file(model_name, revision, ONNX_MODEL_FILE)
+    session = onnxruntime.InferenceSession(str(export), options, providers=[CPU_PROVIDER])
     log.info("embedding_model_loaded", model=model_name)
     return OnnxModel(tokenizer, session)
+
+
+def token_limit(model_name: str, revision: str | None) -> int:
+    """The longest text the model reads, in tokens: its sentence-transformers config's, or
+    where that names none, its tokenizer's."""
+    config = model_file(model_name, revision, SENTENCE_BERT_CONFIG_FILE).read_bytes()
+    limit = SentenceBertConfig.model_validate_json(config).max_seq_length
+    if limit is not None:
+        return limit
+    tokenizer_config = model_file(model_name, revision, TOKENIZER_CONFIG_FILE).read_bytes()
+    return TokenizerConfig.model_validate_json(tokenizer_config).model_max_length
 
 
 def model_file(model_name: str, revision: str | None, relative_path: str) -> Path:
@@ -216,8 +279,30 @@ def model_file(model_name: str, revision: str | None, relative_path: str) -> Pat
     else in the hub's cache, fetched there once."""
     directory = Path(model_name)
     if directory.is_dir():
-        return directory / relative_path
-    return Path(hf_hub_download(hub_repository(model_name), relative_path, revision=revision))
+        return file_in_directory(directory, relative_path)
+    try:
+        return Path(hf_hub_download(hub_repository(model_name), relative_path, revision=revision))
+    except LocalEntryNotFoundError as error:
+        message = (
+            f"{model_name}'s {relative_path} is not in the hub's cache, and offline it "
+            "cannot be fetched: start the server once online"
+        )
+        raise UnusableModelError(message) from error
+    except EntryNotFoundError as error:
+        message = (
+            f"{model_name} has no {relative_path} on the hub: the embedder reads a "
+            "model's ONNX export and its sentence-transformers configs"
+        )
+        raise UnusableModelError(message) from error
+
+
+def file_in_directory(directory: Path, relative_path: str) -> Path:
+    """One of the files of a model kept in a directory, which must hold it."""
+    path = directory / relative_path
+    if not path.is_file():
+        message = f"the model in {directory} has no {relative_path}"
+        raise UnusableModelError(message)
+    return path
 
 
 def hub_repository(model_name: str) -> str:
