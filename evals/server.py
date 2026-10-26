@@ -32,6 +32,7 @@ class SearchHit(BaseModel):
     file_path: str
     name: str
     kind: str
+    parent: str | None
     line_start: int
     line_end: int
 

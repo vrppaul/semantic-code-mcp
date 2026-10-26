@@ -26,12 +26,16 @@ PARTIAL_CHECKOUT_SUFFIX = ".partial"
 
 
 class Answer(BaseModel):
-    """A result that answers a question: a file, relative to the corpus root, and a chunk name."""
+    """A result that answers a question: a file, relative to the corpus root, a chunk name,
+    and the chunk's parent where chunks of several parents in the file share that name."""
 
     model_config = ConfigDict(frozen=True)
 
     path: str
     symbol: str
+    # Named only where the name alone would take in another parent's chunk; empty for a
+    # chunk that sits in nothing
+    parent: str | None = None
 
 
 class QuestionKind(StrEnum):

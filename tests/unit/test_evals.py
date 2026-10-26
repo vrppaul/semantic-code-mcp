@@ -8,7 +8,9 @@ from evals.quality import (
     KindScores,
     QueryRanks,
     RankScores,
+    answers,
     first_rank,
+    is_ambiguous,
     relative_hit,
     sample_names,
     score,
@@ -140,16 +142,84 @@ def test_a_question_shares_its_answer_s_words_when_a_stem_is_both_s(
     assert shares_answer_words(question, (answer,)) is shares
 
 
+@pytest.mark.parametrize(
+    ("answer", "hit", "matches"),
+    [
+        pytest.param(
+            Answer(path="types.py", symbol="convert"),
+            Answer(path="types.py", symbol="convert", parent="File"),
+            True,
+            id="no parent named, any parent",
+        ),
+        pytest.param(
+            Answer(path="types.py", symbol="convert", parent="BoolParamType"),
+            Answer(path="types.py", symbol="convert", parent="BoolParamType"),
+            True,
+            id="the parent named",
+        ),
+        pytest.param(
+            Answer(path="types.py", symbol="convert", parent="BoolParamType"),
+            Answer(path="types.py", symbol="convert", parent="File"),
+            False,
+            id="another parent",
+        ),
+        pytest.param(
+            Answer(path="walk.rs", symbol="scan", parent=""),
+            Answer(path="walk.rs", symbol="scan", parent=None),
+            True,
+            id="no parent, named so",
+        ),
+        pytest.param(
+            Answer(path="types.py", symbol="convert"),
+            Answer(path="core.py", symbol="convert"),
+            False,
+            id="another file",
+        ),
+    ],
+)
+def test_a_hit_answers_when_its_file_name_and_any_parent_named_are_the_answer_s(
+    answer: Answer, hit: Answer, matches: bool
+):
+    assert answers(answer, hit) is matches
+
+
+@pytest.mark.parametrize(
+    ("answer", "ambiguous"),
+    [
+        pytest.param(Answer(path="types.py", symbol="convert"), True, id="several parents"),
+        pytest.param(
+            Answer(path="types.py", symbol="convert", parent="File"), False, id="its parent named"
+        ),
+        pytest.param(Answer(path="types.py", symbol="prompt"), False, id="overloads of one parent"),
+    ],
+)
+def test_an_answer_names_its_parent_where_chunks_of_several_share_its_name(
+    answer: Answer, ambiguous: bool
+):
+    """Else a key judged for one chunk would count every chunk of that name in the file."""
+    chunks = [
+        defined("convert", "types.py", ChunkKind.method, parent="BoolParamType"),
+        defined("convert", "types.py", ChunkKind.method, parent="File"),
+        defined("prompt", "types.py"),
+        defined("prompt", "types.py"),
+    ]
+
+    assert is_ambiguous(answer, chunks) is ambiguous
+
+
 def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):
     hit = SearchHit(
         file_path=str(tmp_path / "src" / "walk.rs"),
         name="scan",
         kind="function",
+        parent="WorkerState",
         line_start=1,
         line_end=9,
     )
 
-    assert relative_hit(hit, tmp_path) == Answer(path="src/walk.rs", symbol="scan")
+    assert relative_hit(hit, tmp_path) == Answer(
+        path="src/walk.rs", symbol="scan", parent="WorkerState"
+    )
 
 
 PYTHON_SOURCE = '''"""A module."""

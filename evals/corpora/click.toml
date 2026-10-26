@@ -108,7 +108,7 @@ answers = [
   { path = "src/click/types.py", symbol = "IntRange" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
   { path = "docs/parameter-types.md", symbol = "Int and Float Ranges" },
-  { path = "src/click/types.py", symbol = "convert" },
+  { path = "src/click/types.py", symbol = "convert", parent = "_NumberRangeBase" },
 ]
 
 [[queries]]
@@ -151,11 +151,12 @@ answers = [
 kind = "code"
 text = "read a parameter's value from an environment variable"
 answers = [
-  { path = "src/click/core.py", symbol = "resolve_envvar_value" },
+  { path = "src/click/core.py", symbol = "resolve_envvar_value", parent = "Parameter" },
+  { path = "src/click/core.py", symbol = "resolve_envvar_value", parent = "Option" },
   { path = "docs/options.md", symbol = "Values from Environment Variables" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
   { path = "docs/arguments.md", symbol = "Environment Variables" },
-  { path = "src/click/core.py", symbol = "value_from_envvar" },
+  { path = "src/click/core.py", symbol = "value_from_envvar", parent = "Parameter" },
 ]
 
 [[queries]]
@@ -175,7 +176,7 @@ text = "a command that contains subcommands and dispatches to them"
 answers = [
   { path = "src/click/core.py", symbol = "Group" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
-  { path = "src/click/core.py", symbol = "invoke" },
+  { path = "src/click/core.py", symbol = "invoke", parent = "Group" },
 ]
 
 [[queries]]
@@ -257,7 +258,7 @@ answers = [
   { path = "src/click/types.py", symbol = "str_to_bool" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
   { path = "docs/parameter-types.md", symbol = "Built-in Types Listing" },
-  { path = "src/click/types.py", symbol = "convert" },
+  { path = "src/click/types.py", symbol = "convert", parent = "BoolParamType" },
 ]
 
 [[held_out]]
@@ -287,7 +288,7 @@ text = "expand wildcards and the home directory in arguments on Windows"
 answers = [
   { path = "src/click/utils.py", symbol = "_expand_args" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
-  { path = "docs/faqs.md", symbol = "Answer" },
+  { path = "docs/faqs.md", symbol = "Answer", parent = "Frequently Asked Questions > General > Shell Variable Expansion On Windows" },
 ]
 
 [[held_out]]

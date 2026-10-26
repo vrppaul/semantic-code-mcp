@@ -55,7 +55,8 @@ answers = [
 kind = "code"
 text = "walk directories in parallel and collect the matching entries"
 answers = [
-  { path = "src/walk.rs", symbol = "scan" },
+  { path = "src/walk.rs", symbol = "scan", parent = "WorkerState" },
+  { path = "src/walk.rs", symbol = "scan", parent = "" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
   { path = "src/walk.rs", symbol = "spawn_senders" },
 ]
@@ -227,5 +228,5 @@ text = "leave some directories out of the search"
 answers = [
   { path = "README.md", symbol = "Excluding specific files or directories" },
   # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
-  { path = "CHANGELOG.md", symbol = "Features" },
+  { path = "CHANGELOG.md", symbol = "Features", parent = "10.4.0" },
 ]
