@@ -740,35 +740,47 @@ def set_mode_of_tree(directory: Path, mode: int) -> None:
         path.chmod(mode)
 
 
-def test_upkeep_rebuilds_the_full_text_index_before_its_parts_pile_up(
-    filled_store: LanceDBIndexStore,
-):
-    """Each upkeep folds new rows in as a part of their own, which no later upkeep merges."""
-    filled_store.keep_up()
-    rebuilt = newest_full_text_index_files(filled_store)
-
-    for edit in range(UPKEEPS_PER_FULL_TEXT_REBUILD):
-        near = function_chunk("near", "near.py", f"def near(): return {edit}")
-        filled_store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
-        filled_store.keep_up()
-
-    assert newest_full_text_index_files(filled_store) == rebuilt
+def write_an_edit(store: LanceDBIndexStore, number: int) -> None:
+    """Write the numbered edit of one chunk, which the full-text index has not folded in."""
+    near = function_chunk("near", "near.py", f"def near(): return {number}")
+    store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
 
-def test_a_store_rebuilds_the_full_text_index_at_its_first_upkeep(
-    filled_store: LanceDBIndexStore, tmp_path: Path
-):
-    """Else the parts an earlier session left would pile up, session after session."""
-    filled_store.keep_up()
-    rebuilt = newest_full_text_index_files(filled_store)
-    near = function_chunk("near", "near.py", "def near(): return 1")
-    filled_store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
-    filled_store.keep_up()
-    next_session = LanceDBIndexStore(
-        tmp_path / "index", IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+def same_store_after_its_upkeeps(store: LanceDBIndexStore) -> LanceDBIndexStore:
+    """The store, after an edit and an upkeep for each but the last of the upkeeps between
+    two rebuilds."""
+    for number in range(UPKEEPS_PER_FULL_TEXT_REBUILD - 1):
+        write_an_edit(store, number)
+        store.keep_up()
+    return store
+
+
+def store_of_the_next_session(store: LanceDBIndexStore) -> LanceDBIndexStore:
+    """A new store on the same index, after the earlier session's store folded in a part."""
+    write_an_edit(store, 0)
+    store.keep_up()
+    return LanceDBIndexStore(
+        store.directory.parent, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
     )
 
-    next_session.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
-    next_session.keep_up()
 
-    assert newest_full_text_index_files(next_session) == rebuilt
+@pytest.mark.parametrize(
+    "store_due_a_rebuild",
+    [
+        pytest.param(same_store_after_its_upkeeps, id="the same store, once in a while"),
+        pytest.param(store_of_the_next_session, id="a new store, at its first upkeep"),
+    ],
+)
+def test_upkeep_rebuilds_the_full_text_index_before_its_parts_pile_up(
+    filled_store: LanceDBIndexStore,
+    store_due_a_rebuild: Callable[[LanceDBIndexStore], LanceDBIndexStore],
+):
+    """Each upkeep folds new rows in as a part of their own, which no later upkeep merges. A
+    store cannot know how many parts an earlier session left, so it rebuilds first."""
+    filled_store.keep_up()
+    rebuilt = newest_full_text_index_files(filled_store)
+    store = store_due_a_rebuild(filled_store)
+
+    store.keep_up()
+
+    assert newest_full_text_index_files(store) == rebuilt

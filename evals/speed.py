@@ -3,9 +3,10 @@
 Measured per corpus, in server processes of its own: the model load (a search of a
 one-file project), a full index from scratch with the model already loaded, warm search
 latency, an `index_status` call (each search makes one first), how much the index grows
-with each single-file edit and how long the search after it takes (it re-indexes the
-edited file first), the server's peak memory, and the first answer of a freshly started
-server on an up-to-date index — the process start and model load an agent waits for.
+with each edit of a file, another than the last, and how long the search after it takes
+(it re-indexes the edited file first), the server's peak memory, and the first answer of
+a freshly started server on an up-to-date index — the process start and model load an
+agent waits for.
 Peak memory is read from `/proc`, so it is reported on Linux only. With 15 to 20
 questions per corpus, p95 is close to the slowest search: read it as that.
 """
@@ -21,7 +22,7 @@ from typing import TextIO
 
 from pydantic import BaseModel, ConfigDict
 
-from evals.corpus import Corpus, restore
+from evals.corpus import Corpus, Query, restore
 from evals.quality import RESULTS_PER_QUERY
 from evals.server import ServerConnection, connect
 
@@ -187,6 +188,16 @@ async def timed_search_seconds(
     return time.perf_counter() - started
 
 
+class Edit(BaseModel):
+    """One edit of the speed run: the file it appends to, from the checkout's root, and the
+    question asked after it, which that file answers."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: Path
+    question: str
+
+
 class EditCost(BaseModel):
     """What a run of single-file edits cost: how much the index grew, and how long each
     search took that re-indexed the edited file before it answered."""
@@ -206,25 +217,40 @@ async def edit_cost(
 ) -> EditCost:
     """What a number of single-file edits cost the index and the searches after them.
 
-    Each edit appends a definition to the file that answers the corpus's first question,
-    then asks that question, which re-indexes the file. The checkout is restored
-    afterwards, whatever happens.
+    Each edit appends a definition to a file, then asks a question that file answers, which
+    re-indexes the file. The checkout is restored afterwards, whatever happens.
     """
-    edited_file = working_tree / corpus.queries[0].answers[0].path
-    query = corpus.queries[0].text
     size_before = directory_bytes(index_directory)
     search_seconds: list[float] = []
     try:
-        for number in range(edits):
+        for number, edit in enumerate(edits_in_turn(corpus.queries, edits)):
+            edited_file = working_tree / edit.path
             with edited_file.open("a") as edited:
                 edited.write(edit_text(edited_file, number))
-            search_seconds.append(await timed_search_seconds(connection, working_tree, query))
+            search_seconds.append(
+                await timed_search_seconds(connection, working_tree, edit.question)
+            )
     finally:
         restore(working_tree)
     return EditCost(
         growth_bytes=directory_bytes(index_directory) - size_before,
         search_seconds=tuple(search_seconds),
     )
+
+
+def edits_in_turn(queries: Sequence[Query], count: int) -> list[Edit]:
+    """`count` edits of the files that answer the questions, one file after another in turn,
+    each followed by the first question its file answers. An edit of another file than the
+    last is what makes upkeep compact what the last edit left, which edits of one file never
+    show."""
+    first_question_of_file: dict[str, str] = {}
+    for query in queries:
+        first_question_of_file.setdefault(query.answers[0].path, query.text)
+    turns = [
+        Edit(path=Path(path), question=question)
+        for path, question in first_question_of_file.items()
+    ]
+    return [turns[number % len(turns)] for number in range(count)]
 
 
 def edit_text(path: Path, number: int) -> str:

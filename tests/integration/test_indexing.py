@@ -3,7 +3,7 @@
 import asyncio
 import os
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from functools import partial
 from pathlib import Path
 
@@ -59,11 +59,14 @@ WIDE = 16
 LEGACY_RECORDS = LEGACY_ENTRIES[1]
 # A filter every row of a table matches
 MATCH_EVERY_ROW = "true"
-# A function added to a module of the sample project
+# A function added to a module of a project
 ADDED_FUNCTION = "\n\ndef added():\n    return 1\n"
 # Files whose functions fill one write with the first two and a second with the third
 FILES_OF_FUNCTIONS = 3
 FUNCTIONS_PER_FILE = EMBEDDING_SLICE_SIZE * 3 // 4
+# The names of those files, and the first of them
+MODULE_NAME_FORMAT = "module_{file_number}.py"
+FIRST_MODULE = MODULE_NAME_FORMAT.format(file_number=0)
 # What the fakes and the chunkers in these tests build an index from
 IDENTITY = IndexIdentity(
     model_name=FAKE_MODEL_NAME, model_revision=None, chunker_version=CHUNKER_VERSION
@@ -575,45 +578,46 @@ async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
     assert store.counts() == IndexCounts(files=2, chunks=2 * FUNCTIONS_PER_FILE)
 
 
-async def test_a_first_index_of_several_writes_leaves_every_chunk_in_the_full_text_index(
-    test_settings: Settings, tmp_path: Path
-):
-    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
-    store = open_index_store(tmp_path / "index", IDENTITY)
-
-    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
-        project, force=False, progress=NO_PROGRESS
-    )
-
-    assert chunks_outside_the_full_text_index(store) == 0
+async def first_index(indexing: IndexingService, project: Path) -> None:
+    """A first index of the project, in several writes."""
+    await indexing.index(project, force=False, progress=NO_PROGRESS)
 
 
-async def test_a_forced_run_of_a_small_project_leaves_every_chunk_in_the_full_text_index(
-    test_settings: Settings, sample_project: Path, tmp_path: Path
-):
-    """A forced run rewrites every row, though it writes once."""
-    store = open_index_store(tmp_path / "index", IDENTITY)
-    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
-    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
-
-    await indexing.index(sample_project, force=True, progress=NO_PROGRESS)
-
-    assert chunks_outside_the_full_text_index(store) == 0
+async def forced_run(indexing: IndexingService, project: Path) -> None:
+    """A first index, then a forced run, which writes every row again."""
+    await first_index(indexing, project)
+    await indexing.index(project, force=True, progress=NO_PROGRESS)
 
 
-async def test_an_edit_leaves_every_chunk_in_the_full_text_index(
-    test_settings: Settings, sample_project: Path, tmp_path: Path
-):
-    """Rows the full-text index has not folded in score on another scale, so the edited
-    file's chunks, the ones an agent asks about next, would rank apart until upkeep."""
-    store = open_index_store(tmp_path / "index", IDENTITY)
-    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
-    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
-    edited = sample_project / "main.py"
+async def edit_of_one_file(indexing: IndexingService, project: Path) -> None:
+    """A first index, then a run after one file was edited, which writes that file only."""
+    await first_index(indexing, project)
+    edited = project / FIRST_MODULE
     edited.write_text(edited.read_text() + ADDED_FUNCTION)
     touch_later(edited)
+    await indexing.index(project, force=False, progress=NO_PROGRESS)
 
-    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        pytest.param(first_index, id="a first index of several writes"),
+        pytest.param(forced_run, id="a forced run"),
+        pytest.param(edit_of_one_file, id="an edit of one file"),
+    ],
+)
+async def test_a_run_that_wrote_leaves_every_chunk_in_the_full_text_index(
+    test_settings: Settings,
+    tmp_path: Path,
+    runs: Callable[[IndexingService, Path], Awaitable[None]],
+):
+    """Rows the full-text index has not folded in score on another scale, so the chunks a
+    run wrote, the ones an agent asks about next, would rank apart until upkeep."""
+    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+
+    await runs(indexing, project)
 
     assert chunks_outside_the_full_text_index(store) == 0
 
@@ -640,7 +644,7 @@ def functions_in_files(root: Path, files: int, functions: int) -> Path:
     project = root / "functions"
     project.mkdir()
     for file_number in range(files):
-        (project / f"module_{file_number}.py").write_text(
+        (project / MODULE_NAME_FORMAT.format(file_number=file_number)).write_text(
             "".join(
                 f"def function_{file_number}_{number}():\n    return {number}\n\n\n"
                 for number in range(functions)

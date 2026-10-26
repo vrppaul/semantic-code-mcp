@@ -48,7 +48,7 @@ RESULTS_DIRECTORY = EVALS_DIRECTORY / "results"
 QUALITY_FILE = "quality.json"
 SPEED_FILE = "speed.json"
 SERVER_LOG_FILE = "server.log"
-# Enough single-file edits for the index's upkeep to run, so its growth shows settled
+# Enough edits for the full-text index's rebuild, once in 20 upkeeps, to fall among them
 DEFAULT_EDITS = 20
 JSON_INDENT = 2
 EXIT_OK = 0

@@ -22,7 +22,7 @@ from evals.quality import (
     shares_answer_words,
 )
 from evals.server import SearchHit
-from evals.speed import edit_text
+from evals.speed import Edit, edit_text, edits_in_turn
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language
@@ -326,3 +326,32 @@ def test_an_edit_of_the_speed_run_adds_one_chunk_and_changes_no_other(
     after = build_chunker().chunk_file(tmp_path, Path(name))
 
     assert [chunk.chunk_id for chunk in after][:-1] == [chunk.chunk_id for chunk in before]
+
+
+def question_answered_in(path: str, text: str) -> Query:
+    return Query(
+        text=text,
+        kind=QuestionKind.code,
+        answers=(Answer(path=path, symbol="answer"),),
+    )
+
+
+def test_the_speed_run_edits_the_files_that_answer_its_questions_in_turn():
+    """Edits of one file never show upkeep compacting what another edit left; each edit asks
+    the first question its file answers."""
+    queries = [
+        question_answered_in("first.py", "first question"),
+        question_answered_in("first.py", "second question"),
+        question_answered_in("second.py", "third question"),
+        question_answered_in("guide.md", "fourth question"),
+    ]
+
+    edits = edits_in_turn(queries, 5)
+
+    assert edits == [
+        Edit(path=Path("first.py"), question="first question"),
+        Edit(path=Path("second.py"), question="third question"),
+        Edit(path=Path("guide.md"), question="fourth question"),
+        Edit(path=Path("first.py"), question="first question"),
+        Edit(path=Path("second.py"), question="third question"),
+    ]
