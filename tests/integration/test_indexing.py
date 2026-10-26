@@ -500,42 +500,27 @@ def add_a_function(path: Path) -> None:
     touch_later(path)
 
 
-@pytest.mark.parametrize(
-    ("change", "chunks_after"),
-    [
-        pytest.param(add_a_function, 4, id="a function added"),
-        pytest.param(touch_later, 3, id="touched, its text as it was"),
-    ],
-)
-async def test_a_file_changed_after_a_model_of_another_width_took_its_name_is_embedded_anew(
-    test_settings: Settings,
-    sample_project: Path,
-    tmp_path: Path,
-    change: Callable[[Path], object],
-    chunks_after: int,
+async def test_an_edit_after_a_model_of_another_width_took_its_name_is_embedded_anew(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
-    """The file's stored vectors are of the old width: none is reused, and the index starts
-    again from it, the other file unrecorded."""
+    """The file's unchanged chunks hold vectors of the old width: none is reused, and the
+    index starts again from the file, the other one unrecorded."""
     store = open_index_store(tmp_path / "index", IDENTITY)
     await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
         sample_project, force=False, progress=NO_PROGRESS
     )
-    change(sample_project / "main.py")
+    add_a_function(sample_project / "main.py")
     wider = indexing_service(store, FakeEmbedder(dimension=WIDE), test_settings, build_chunker())
 
     await wider.index(sample_project, force=False, progress=NO_PROGRESS)
     status = await wider.status(sample_project)
 
-    assert (store.counts(), status.stale_files_count) == (
-        IndexCounts(files=1, chunks=chunks_after),
-        1,
-    )
+    assert (store.counts(), status.stale_files_count) == (IndexCounts(files=1, chunks=4), 1)
 
 
 async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
     test_settings: Settings, tmp_path: Path
 ):
-    """The next run indexes only the rest."""
     project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
     store = StoreCancelledAfterItsWrite(
         tmp_path / "index", IDENTITY, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS

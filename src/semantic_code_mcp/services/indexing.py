@@ -47,6 +47,8 @@ DURATION_DECIMALS = 3
 EMBEDDING_SLICE_SIZE = 256
 # The vectors of no chunks: no rows, and with no vector seen, no columns
 NO_VECTORS_SHAPE = (0, 0)
+# The axis of a vector matrix along one vector: rows are chunks, columns components
+VECTOR_LENGTH_AXIS = 1
 # A run of more writes than this asks the store to fold them into its indexes at its end
 WRITES_KEPT_UP_AS_THEY_COME = 1
 
@@ -236,19 +238,20 @@ class IndexingService:
     ) -> VectorMatrix:
         """The vectors of a slice's chunks, row by row: the stored one of each chunk the
         index holds already, when reused, and the rest embedded. Stored vectors of another
-        width than the model's (a model swapped under the same name) are not reused, even
-        when nothing else is to embed: the slice is embedded whole, and its write starts
-        the index again."""
+        width than those embedded now (a model swapped under the same name) are not
+        reused: the slice is embedded whole, and its write starts the index again. A slice
+        with nothing to embed keeps its stored vectors; the search, which loads the model,
+        finds their width wrong and builds the index again."""
         if not chunks:
             return numpy.empty(NO_VECTORS_SHAPE, dtype=numpy.float32)
         stored: dict[str, Vector] = {}
         if reuse:
             chunk_ids = [chunk.chunk_id for chunk in chunks]
             stored = await asyncio.to_thread(self._store.stored_vectors, chunk_ids)
-        if stored and stored_width(stored) != await self._model_width(progress, position):
-            stored = {}
         missing = [chunk for chunk in chunks if chunk.chunk_id not in stored]
         embedded = await self._embed(missing, progress, position)
+        if stored and missing and stored_width(stored) != embedded.shape[VECTOR_LENGTH_AXIS]:
+            return await self._embed(chunks, progress, position)
         vectors_by_id = {
             **stored,
             **dict(zip([chunk.chunk_id for chunk in missing], embedded, strict=True)),
@@ -279,11 +282,6 @@ class IndexingService:
             "embedding_completed", chunks=len(chunks), duration_ms=elapsed_milliseconds(started)
         )
         return numpy.concatenate(batches)
-
-    async def _model_width(self, progress: ProgressReporter, position: EmbeddingProgress) -> int:
-        """How wide the model's vectors are, loading it first if it is not."""
-        await self._load_model(progress, position)
-        return await asyncio.to_thread(self._embedder.dimension)
 
     async def _load_model(self, progress: ProgressReporter, position: EmbeddingProgress) -> None:
         """Load the model in a worker thread, reported where the run stands, if it is not."""

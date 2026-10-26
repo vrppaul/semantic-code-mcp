@@ -78,6 +78,10 @@ class IndexStore(ABC):
         stopped between a file's chunks and its record leaves them unrecorded."""
 
     @abstractmethod
+    def vector_width(self) -> int | None:
+        """How wide the stored vectors are; None before the first chunk is written."""
+
+    @abstractmethod
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
         """The stored vector of each of these chunks the index holds, by chunk id."""
 

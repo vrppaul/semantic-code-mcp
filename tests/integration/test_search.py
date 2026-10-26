@@ -4,16 +4,26 @@ import asyncio
 import threading
 from pathlib import Path
 
-from semantic_code_mcp.app import build_chunker
+from semantic_code_mcp.app import build_chunker, open_index_store
+from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language, SearchResult
+from semantic_code_mcp.domain.interfaces import IndexStore
+from semantic_code_mcp.domain.models import (
+    Chunk,
+    ChunkKind,
+    IndexIdentity,
+    Language,
+    SearchResult,
+)
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.search import MIN_SCORE, SearchService
-from tests.fakes import FakeEmbedder, FakeIndexStore, ProgressRecorder
+from tests.fakes import FAKE_MODEL_NAME, FakeEmbedder, FakeIndexStore, ProgressRecorder
 from tests.helpers import indexing_service
 
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
+# A vector width other than the fake model's
+WIDE = 16
 BELOW_MIN_SCORE = MIN_SCORE / 2
 # A file no project of these tests holds, so no recency boost reaches it
 OLD_FILE = "nowhere/old.py"
@@ -34,9 +44,7 @@ def hit(name: str, score: float, path: str = OLD_FILE) -> SearchResult:
     return SearchResult(chunk=chunk, score=score)
 
 
-def search_service(
-    store: FakeIndexStore, settings: Settings, embedder: FakeEmbedder
-) -> SearchService:
+def search_service(store: IndexStore, settings: Settings, embedder: FakeEmbedder) -> SearchService:
     indexing = indexing_service(store, embedder, settings, build_chunker())
     return SearchService(store=store, embedder=embedder, indexing=indexing)
 
@@ -160,3 +168,20 @@ async def test_two_first_searches_at_once_both_find_the_code(
         ["found"],
         ["found"],
     ]
+
+
+async def test_a_search_after_a_model_of_another_width_took_its_name_builds_the_index_again(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """No file changed, so no run would start: the query's width alone tells."""
+    identity = IndexIdentity(model_name=FAKE_MODEL_NAME, chunker_version=CHUNKER_VERSION)
+    store = open_index_store(tmp_path / "index", identity)
+    await search_service(store, test_settings, FakeEmbedder()).search(
+        "first", sample_project, limit=LIMIT, progress=NO_PROGRESS
+    )
+
+    report = await search_service(store, test_settings, FakeEmbedder(dimension=WIDE)).search(
+        "second", sample_project, limit=LIMIT, progress=NO_PROGRESS
+    )
+
+    assert report.index_report.files_indexed == 2

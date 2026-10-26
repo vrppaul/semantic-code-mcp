@@ -122,6 +122,11 @@ class FakeIndexStore(IndexStore):
         return set(self.chunks_by_file)
 
     @override
+    def vector_width(self) -> int | None:
+        widths = {len(vector) for vectors in self.vectors_by_file.values() for vector in vectors}
+        return max(widths, default=None)
+
+    @override
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
         stored = {
             chunk.chunk_id: vector

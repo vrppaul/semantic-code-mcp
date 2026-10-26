@@ -19,6 +19,10 @@ def test_a_query_becomes_one_vector_of_the_model_dimension(embedder: SentenceTra
     assert embedder.embed_query("def hello(): pass").shape == (EMBEDDING_DIMENSION,)
 
 
+def test_the_model_s_width_is_that_of_its_vectors(embedder: SentenceTransformerEmbedder):
+    assert embedder.dimension() == len(embedder.embed_query("def hello(): pass"))
+
+
 def test_documents_become_one_row_per_text(embedder: SentenceTransformerEmbedder):
     vectors = embedder.embed_documents(["def hello(): pass", "class Foo: pass", "x = 1"])
 
