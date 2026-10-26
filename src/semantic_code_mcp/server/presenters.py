@@ -1,5 +1,7 @@
 """From what the services report to what the tools answer."""
 
+from pathlib import Path
+
 from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexReport,
@@ -28,26 +30,30 @@ SCORE_DECIMALS = 3
 CHARACTERS_PER_TOKEN = 4
 
 
-def present_search(report: SearchReport, *, include_debug: bool) -> SearchCodeResponse:
+def present_search(
+    report: SearchReport, project_root: Path, *, include_debug: bool
+) -> SearchCodeResponse:
     """The answer of `search_code`, with timings and counts when asked for."""
-    results = [present_hit(result) for result in report.results]
+    results = [present_hit(result, project_root) for result in report.results]
     return SearchCodeResponse(
         results=results,
         debug=present_search_debug(report, results) if include_debug else None,
     )
 
 
-def present_hit(result: SearchResult) -> SearchResultView:
-    """One hit, its content cut to MAX_RESULT_LINES."""
-    lines = result.content.split("\n")
+def present_hit(result: SearchResult, project_root: Path) -> SearchResultView:
+    """One hit, its file by its absolute path, its content cut to MAX_RESULT_LINES."""
+    chunk = result.chunk
+    lines = chunk.content.split("\n")
     truncated = len(lines) > MAX_RESULT_LINES
-    content = "\n".join(lines[:MAX_RESULT_LINES]) + TRUNCATION_MARK if truncated else result.content
+    content = "\n".join(lines[:MAX_RESULT_LINES]) + TRUNCATION_MARK if truncated else chunk.content
     return SearchResultView(
-        file_path=result.file_path,
-        line_start=result.line_start,
-        line_end=result.line_end,
-        name=result.name,
-        chunk_type=result.chunk_type,
+        file_path=str(project_root / chunk.path),
+        line_start=chunk.line_start,
+        line_end=chunk.line_end,
+        name=chunk.name,
+        kind=chunk.kind,
+        parent=chunk.parent,
         content=content,
         score=round(result.score, SCORE_DECIMALS),
         truncated=truncated,

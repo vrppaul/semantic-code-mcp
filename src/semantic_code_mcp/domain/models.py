@@ -11,8 +11,16 @@ LOWEST_SCORE = 0.0
 HIGHEST_SCORE = 1.0
 
 
-class ChunkType(StrEnum):
-    """Type of code chunk."""
+class Language(StrEnum):
+    """A language the chunkers read."""
+
+    python = auto()
+    rust = auto()
+    markdown = auto()
+
+
+class ChunkKind(StrEnum):
+    """What a chunk is. Rust's structs, enums, traits and impls are classes."""
 
     module = auto()
     function = auto()
@@ -21,17 +29,38 @@ class ChunkType(StrEnum):
     section = auto()
 
 
+def relative_path(path: Path) -> Path:
+    """A path the index keeps: from the project root, so a project moved keeps its index."""
+    if path.is_absolute():
+        message = f"a path from the project root was expected, not {path}"
+        raise ValueError(message)
+    return path
+
+
 class Chunk(BaseModel):
-    """A chunk of code extracted from a file."""
+    """A part of a file the index embeds and finds: a definition, a module's docstring or
+    a section of a document."""
 
     model_config = ConfigDict(frozen=True)
 
-    file_path: str
+    # Stays while the chunk's file and text stay, whatever moves around it
+    chunk_id: str
+    # The file's path from the project root
+    path: Path
+    language: Language
+    kind: ChunkKind
+    name: str
+    # The qualified name of what the chunk is defined in, `Stack` for `Stack.push`;
+    # None at the top of its file
+    parent: str | None
     line_start: int
     line_end: int
     content: str
-    chunk_type: ChunkType
-    name: str
+
+    @field_validator("path")
+    @classmethod
+    def path_must_be_relative(cls, path: Path) -> Path:
+        return relative_path(path)
 
     @field_validator("line_start")
     @classmethod
@@ -49,26 +78,12 @@ class Chunk(BaseModel):
         return self
 
 
-class ChunkLocation(BaseModel):
-    """Where a chunk starts: the key under which two searches' hits of one chunk meet."""
-
-    model_config = ConfigDict(frozen=True)
-
-    file_path: str
-    line_start: int
-
-
 class SearchResult(BaseModel):
     """A chunk with a similarity score from search."""
 
     model_config = ConfigDict(frozen=True)
 
-    file_path: str
-    line_start: int
-    line_end: int
-    content: str
-    chunk_type: ChunkType
-    name: str
+    chunk: Chunk
     score: float
 
     @field_validator("score")
@@ -79,21 +94,9 @@ class SearchResult(BaseModel):
             raise ValueError(message)
         return score
 
-    @property
-    def location(self) -> ChunkLocation:
-        return ChunkLocation(file_path=self.file_path, line_start=self.line_start)
-
     def with_score(self, score: float) -> SearchResult:
         """The same hit with another score."""
-        return SearchResult(
-            file_path=self.file_path,
-            line_start=self.line_start,
-            line_end=self.line_end,
-            content=self.content,
-            chunk_type=self.chunk_type,
-            name=self.name,
-            score=score,
-        )
+        return SearchResult(chunk=self.chunk, score=score)
 
 
 class SourceFile(BaseModel):
@@ -107,9 +110,15 @@ class SourceFile(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    # From the project root
     path: Path
     mtime_ns: int
     size_bytes: int
+
+    @field_validator("path")
+    @classmethod
+    def path_must_be_relative(cls, path: Path) -> Path:
+        return relative_path(path)
 
 
 class IndexDelta(BaseModel):

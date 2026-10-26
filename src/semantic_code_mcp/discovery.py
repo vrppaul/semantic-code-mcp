@@ -113,8 +113,8 @@ class SourceDiscovery:
         self._git_timeout_seconds = git_timeout_seconds
 
     def discover(self, project_root: Path) -> list[SourceFile]:
-        """The indexable files under a project root, sorted by their absolute paths, each
-        with its modification time and size as found now."""
+        """The indexable files under a project root, by their paths from it and sorted by
+        them, each with its modification time and size as found now."""
         root = project_root.resolve()
         candidates = self._list_with_git(root) if self._use_gitignore else None
         if candidates is None:
@@ -219,10 +219,12 @@ class SourceDiscovery:
         if path.suffix not in self._extensions:
             return False
         relative_path = path.relative_to(root).as_posix()
+        if self._is_ignored(relative_path):
+            return False
         if not is_utf8(relative_path):
             log.warning("skipped_file_name_not_utf8", file_path=ascii(relative_path))
             return False
-        return not self._is_ignored(relative_path)
+        return True
 
     def _found_inside(self, path: Path, root: Path) -> FoundFile | None:
         """A candidate that is a file and resolves inside root, with its record as of now."""
@@ -238,7 +240,9 @@ class SourceDiscovery:
             return None
         return FoundFile(
             target=target,
-            source=SourceFile(path=path, mtime_ns=status.st_mtime_ns, size_bytes=status.st_size),
+            source=SourceFile(
+                path=path.relative_to(root), mtime_ns=status.st_mtime_ns, size_bytes=status.st_size
+            ),
         )
 
     def _is_ignored(self, relative_path: str) -> bool:

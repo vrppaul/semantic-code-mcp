@@ -27,8 +27,9 @@ def make_discovery(
     )
 
 
-def relative_names(files: list[SourceFile], root: Path) -> set[str]:
-    return {file.path.relative_to(root).as_posix() for file in files}
+def relative_names(files: list[SourceFile]) -> set[str]:
+    """The paths discovery gives, each relative to the project root it was asked about."""
+    return {file.path.as_posix() for file in files}
 
 
 class TestGitDiscovery:
@@ -42,7 +43,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"tracked.py", "untracked.py"}
+        assert relative_names(files) == {"tracked.py", "untracked.py"}
 
     def test_skips_gitignored_files(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -54,7 +55,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_skips_tracked_file_deleted_from_disk(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -65,7 +66,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"kept.py"}
+        assert relative_names(files) == {"kept.py"}
 
     def test_returns_non_ascii_file_names_as_existing_paths(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -74,8 +75,8 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"тест.py"}
-        assert all(file.path.is_file() for file in files)
+        assert relative_names(files) == {"тест.py"}
+        assert all((repository / file.path).is_file() for file in files)
 
     def test_subdirectory_of_a_repository_honours_gitignore(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -88,7 +89,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(package)
 
-        assert relative_names(files, package) == {"module.py"}
+        assert relative_names(files) == {"module.py"}
 
     def test_linked_worktree_honours_gitignore(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -101,7 +102,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(worktree)
 
-        assert relative_names(files, worktree) == {"module.py"}
+        assert relative_names(files) == {"module.py"}
 
     def test_ignore_patterns_apply_to_git_results(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -112,7 +113,7 @@ class TestGitDiscovery:
 
         files = make_discovery(ignore_patterns=("docs",)).discover(repository)
 
-        assert relative_names(files, repository) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_without_gitignore_finds_ignored_files(self, tmp_path: Path):
         """An allowlist .gitignore (`/*` plus exceptions) must not hide source files."""
@@ -123,7 +124,7 @@ class TestGitDiscovery:
 
         files = make_discovery(use_gitignore=False).discover(repository)
 
-        assert relative_names(files, repository) == {"listed.py", "unlisted.py"}
+        assert relative_names(files) == {"listed.py", "unlisted.py"}
 
     def test_tracked_symlink_to_a_file_outside_the_project_is_skipped(self, tmp_path: Path):
         outside = tmp_path / "outside.py"
@@ -135,7 +136,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_project_ignored_by_an_enclosing_repository_is_walked(self, tmp_path: Path):
         """A home directory under git for dotfiles must not hide the projects inside it."""
@@ -147,7 +148,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(project)
 
-        assert relative_names(files, project) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_ignored_subdirectory_of_a_repository_is_walked(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -158,7 +159,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(experiment)
 
-        assert relative_names(files, experiment) == {"trial.py"}
+        assert relative_names(files) == {"trial.py"}
 
     def test_files_inside_a_submodule_are_found(self, tmp_path: Path):
         library = make_repository(tmp_path / "library")
@@ -180,7 +181,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(application)
 
-        assert relative_names(files, application) == {"app.py", "vendor/library/lib.py"}
+        assert relative_names(files) == {"app.py", "vendor/library/lib.py"}
 
     def test_symlink_to_a_file_inside_the_project_is_listed_once(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -190,7 +191,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"real.py"}
+        assert relative_names(files) == {"real.py"}
 
     def test_git_variables_in_the_environment_do_not_redirect_the_listing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -205,7 +206,7 @@ class TestGitDiscovery:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
 
 class TestGitUnavailable:
@@ -222,7 +223,7 @@ class TestGitUnavailable:
 
         files = make_discovery().discover(repository)
 
-        assert relative_names(files, repository) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_hanging_git_falls_back_to_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         repository = make_repository(tmp_path / "repo")
@@ -242,7 +243,7 @@ class TestGitUnavailable:
 
         files = discovery.discover(repository)
 
-        assert relative_names(files, repository) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
 
 class TestWalkDiscovery:
@@ -255,7 +256,7 @@ class TestWalkDiscovery:
 
         files = make_discovery().discover(project)
 
-        assert relative_names(files, project) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_finds_files_with_supported_extensions(self, tmp_path: Path):
         project = tmp_path / "project"
@@ -266,7 +267,7 @@ class TestWalkDiscovery:
 
         files = make_discovery(use_gitignore=False).discover(project)
 
-        assert relative_names(files, project) == {"main.py", "package/module.py"}
+        assert relative_names(files) == {"main.py", "package/module.py"}
 
     def test_name_pattern_matches_directories_at_any_depth(self, tmp_path: Path):
         project = tmp_path / "project"
@@ -279,7 +280,7 @@ class TestWalkDiscovery:
             project
         )
 
-        assert relative_names(files, project) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_path_pattern_is_anchored_at_the_project_root(self, tmp_path: Path):
         project = tmp_path / "project"
@@ -290,7 +291,7 @@ class TestWalkDiscovery:
 
         files = make_discovery(ignore_patterns=("build/**",), use_gitignore=False).discover(project)
 
-        assert relative_names(files, project) == {"tools/build/script.py"}
+        assert relative_names(files) == {"tools/build/script.py"}
 
     def test_does_not_follow_symlinked_directories(self, tmp_path: Path):
         elsewhere = tmp_path / "elsewhere"
@@ -303,7 +304,7 @@ class TestWalkDiscovery:
 
         files = make_discovery(use_gitignore=False).discover(project)
 
-        assert relative_names(files, project) == {"code.py"}
+        assert relative_names(files) == {"code.py"}
 
     def test_pattern_spellings_follow_gitignore(self, tmp_path: Path):
         """A leading `/` anchors at the root, `./` and a trailing `/` are dropped, and a
@@ -324,7 +325,7 @@ class TestWalkDiscovery:
 
         files = make_discovery(ignore_patterns=patterns, use_gitignore=False).discover(project)
 
-        assert relative_names(files, project) == {"keep.py", "tools/build/module.py"}
+        assert relative_names(files) == {"keep.py", "tools/build/module.py"}
 
 
 @pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
@@ -336,4 +337,4 @@ def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: 
 
     files = make_discovery(use_gitignore=use_gitignore).discover(repository)
 
-    assert relative_names(files, repository) == {"kept.py"}
+    assert relative_names(files) == {"kept.py"}

@@ -12,10 +12,11 @@ from filelock import FileLock, Timeout
 
 from semantic_code_mcp.domain.models import (
     Chunk,
-    ChunkType,
+    ChunkKind,
     IndexCounts,
     IndexIdentity,
     IndexUpdate,
+    Language,
     SourceFile,
     WriteScope,
 )
@@ -58,19 +59,22 @@ LEGACY_ROW = {
 }
 
 
-def function_chunk(name: str, file_path: str, content: str) -> Chunk:
+def function_chunk(name: str, path: str, content: str) -> Chunk:
     return Chunk(
-        file_path=file_path,
+        chunk_id=f"{path}#{name}",
+        path=Path(path),
+        language=Language.python,
+        kind=ChunkKind.function,
+        name=name,
+        parent=None,
         line_start=1,
         line_end=3,
         content=content,
-        chunk_type=ChunkType.function,
-        name=name,
     )
 
 
-def record_of(file_path: str) -> SourceFile:
-    return SourceFile(path=Path(file_path), mtime_ns=1, size_bytes=1)
+def record_of(path: str) -> SourceFile:
+    return SourceFile(path=Path(path), mtime_ns=1, size_bytes=1)
 
 
 def update_of(
@@ -78,7 +82,7 @@ def update_of(
 ) -> IndexUpdate:
     return IndexUpdate(
         scope=scope,
-        files=[record_of(chunk.file_path) for chunk in chunks],
+        files=[record_of(chunk.path.as_posix()) for chunk in chunks],
         chunks=chunks,
         removed_paths=removed_paths,
     )
@@ -98,13 +102,13 @@ def store(tmp_path: Path) -> LanceDBIndexStore:
 @pytest.fixture
 def filled_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
     chunks = [
-        function_chunk("near", "/project/near.py", "def near(): return elapsed_time()"),
+        function_chunk("near", "near.py", "def near(): return elapsed_time()"),
         function_chunk(
             "keyword",
-            "/project/indexer.py",
+            "indexer.py",
             'log.debug("timing", duration_ms=round(time.time() - started))',
         ),
-        function_chunk("far", "/project/far.py", "def far(): return None"),
+        function_chunk("far", "far.py", "def far(): return None"),
     ]
     store.write(
         update_of(chunks, removed_paths=[]),
@@ -116,26 +120,44 @@ def filled_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
 def test_vector_search_ranks_the_nearest_chunk_first(filled_store: LanceDBIndexStore):
     results = filled_store.search_vector(QUERY, LIMIT)
 
-    assert [result.name for result in results] == ["near", "keyword", "far"]
+    assert [result.chunk.name for result in results] == ["near", "keyword", "far"]
+
+
+def test_a_chunk_comes_back_from_a_search_as_it_was_written(store: LanceDBIndexStore):
+    method = Chunk(
+        chunk_id="stack-push",
+        path=Path("src/stack.rs"),
+        language=Language.rust,
+        kind=ChunkKind.method,
+        name="push",
+        parent="Stack",
+        line_start=4,
+        line_end=6,
+        content="fn push(&mut self, item: T) {}",
+    )
+
+    store.write(update_of([method], removed_paths=[]), vectors_of(TOWARD_QUERY))
+
+    assert [result.chunk for result in store.search_vector(QUERY, LIMIT)] == [method]
 
 
 def test_full_text_search_finds_an_exact_identifier(filled_store: LanceDBIndexStore):
     results = filled_store.search_full_text("duration_ms", LIMIT)
 
-    assert [result.name for result in results] == ["keyword"]
+    assert [result.chunk.name for result in results] == ["keyword"]
 
 
 def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
     filled_store: LanceDBIndexStore,
 ):
-    later = function_chunk("later", "/project/later.py", "def later(): return retry_budget")
+    later = function_chunk("later", "later.py", "def later(): return retry_budget")
     filled_store.write(
-        update_of([later], removed_paths=[Path("/project/indexer.py")]), vectors_of(TOWARD_QUERY)
+        update_of([later], removed_paths=[Path("indexer.py")]), vectors_of(TOWARD_QUERY)
     )
 
-    assert [result.name for result in filled_store.search_full_text("retry_budget", LIMIT)] == [
-        "later"
-    ]
+    assert [
+        result.chunk.name for result in filled_store.search_full_text("retry_budget", LIMIT)
+    ] == ["later"]
     assert filled_store.search_full_text("duration_ms", LIMIT) == []
 
 
@@ -144,7 +166,7 @@ def test_hybrid_search_returns_both_the_nearest_and_the_keyword_match(
 ):
     results = filled_store.search_hybrid(QUERY, "duration_ms", 2, VECTOR_WEIGHT)
 
-    assert {result.name for result in results} == {"near", "keyword"}
+    assert {result.chunk.name for result in results} == {"near", "keyword"}
 
 
 def test_an_empty_store_finds_nothing(store: LanceDBIndexStore):
@@ -153,26 +175,26 @@ def test_an_empty_store_finds_nothing(store: LanceDBIndexStore):
 
 def test_removing_files_takes_only_their_chunks_and_records(filled_store: LanceDBIndexStore):
     filled_store.write(
-        update_of([], removed_paths=[Path("/project/near.py"), Path("/project/it's quoted.py")]),
+        update_of([], removed_paths=[Path("near.py"), Path("it's quoted.py")]),
         numpy.empty((0, 0), dtype=numpy.float32),
     )
 
     assert sorted(str(file.path) for file in filled_store.indexed_files()) == [
-        "/project/far.py",
-        "/project/indexer.py",
+        "far.py",
+        "indexer.py",
     ]
     assert filled_store.counts().chunks == 2
 
 
 def test_a_write_of_everything_replaces_every_chunk_and_record(filled_store: LanceDBIndexStore):
-    only = function_chunk("only", "/project/only.py", "def only(): pass")
+    only = function_chunk("only", "only.py", "def only(): pass")
 
     filled_store.write(
         update_of([only], removed_paths=[], scope=WriteScope.everything), vectors_of(TOWARD_QUERY)
     )
 
-    assert [result.name for result in filled_store.search_vector(QUERY, LIMIT)] == ["only"]
-    assert [str(file.path) for file in filled_store.indexed_files()] == ["/project/only.py"]
+    assert [result.chunk.name for result in filled_store.search_vector(QUERY, LIMIT)] == ["only"]
+    assert [str(file.path) for file in filled_store.indexed_files()] == ["only.py"]
 
 
 def test_a_write_records_what_built_the_index(store: LanceDBIndexStore):
@@ -188,7 +210,7 @@ def test_a_write_waits_while_another_process_writes(tmp_path: Path):
         tmp_path / "index", IDENTITY, lock_timeout_seconds=SHORT_LOCK_TIMEOUT_SECONDS
     )
     store.directory.mkdir(parents=True)
-    chunk = function_chunk("held", "/project/held.py", "def held(): pass")
+    chunk = function_chunk("held", "held.py", "def held(): pass")
 
     with FileLock(store.write_lock), pytest.raises(Timeout):
         store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
@@ -201,8 +223,8 @@ def test_a_store_sees_what_another_store_on_its_directory_wrote(tmp_path: Path):
     directory = tmp_path / "index"
     reader = LanceDBIndexStore(directory, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
     writer = LanceDBIndexStore(directory, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
-    first = function_chunk("first", "/project/first.py", "def first(): pass")
-    second = function_chunk("second", "/project/second.py", "def second(): pass")
+    first = function_chunk("first", "first.py", "def first(): pass")
+    second = function_chunk("second", "second.py", "def second(): pass")
     writer.write(update_of([first], removed_paths=[]), vectors_of(TOWARD_QUERY))
     before = reader.counts().chunks
 
@@ -216,13 +238,15 @@ def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_un
 ):
     """A model swapped under the same name gives vectors of another width: the index starts
     again from the files written, and the next run indexes the others, unrecorded now."""
-    edited = function_chunk("near", "/project/near.py", "def near(): return elapsed_time()")
+    edited = function_chunk("near", "near.py", "def near(): return elapsed_time()")
 
     filled_store.write(update_of([edited], removed_paths=[]), vectors_of(TOWARD_QUERY * 2))
 
     wide_query = numpy.full(2 * EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
     assert filled_store.counts() == IndexCounts(files=1, chunks=1)
-    assert [result.name for result in filled_store.search_vector(wide_query, LIMIT)] == ["near"]
+    assert [result.chunk.name for result in filled_store.search_vector(wide_query, LIMIT)] == [
+        "near"
+    ]
 
 
 def test_an_index_of_another_identity_on_the_project_is_kept_apart(
@@ -232,7 +256,7 @@ def test_an_index_of_another_identity_on_the_project_is_kept_apart(
     other = LanceDBIndexStore(
         tmp_path / "index", OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
     )
-    chunk = function_chunk("other", "/project/other.py", "def other(): pass")
+    chunk = function_chunk("other", "other.py", "def other(): pass")
 
     other.write(update_of([chunk], removed_paths=[]), vectors_of(AWAY_FROM_QUERY))
 
@@ -247,7 +271,7 @@ def leave_an_index_of_another_identity(project_directory: Path) -> list[str]:
     other = LanceDBIndexStore(
         project_directory, OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
     )
-    chunk = function_chunk("other", "/project/other.py", "def other(): pass")
+    chunk = function_chunk("other", "other.py", "def other(): pass")
     other.write(update_of([chunk], removed_paths=[]), vectors_of(AWAY_FROM_QUERY))
     return [other.directory.name]
 
@@ -273,7 +297,7 @@ def test_an_index_written_within_the_week_is_left_alone(
 ):
     """Another session may still use it; this store reads and writes its own index only."""
     left = leave_index(tmp_path / "index")
-    chunk = function_chunk("own", "/project/own.py", "def own(): pass")
+    chunk = function_chunk("own", "own.py", "def own(): pass")
 
     store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
@@ -282,7 +306,7 @@ def test_an_index_written_within_the_week_is_left_alone(
 
 
 def write_own_index(store: LanceDBIndexStore) -> None:
-    chunk = function_chunk("own", "/project/own.py", "def own(): pass")
+    chunk = function_chunk("own", "own.py", "def own(): pass")
     store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
 
@@ -398,7 +422,7 @@ def test_a_whole_write_that_fails_midway_never_leaves_records_of_missing_chunks(
     of chunks that are gone, which would read as an up-to-date, empty index."""
     files_table_directory = filled_store.directory / f"{FILES_TABLE}.lance"
     set_mode_of_tree(files_table_directory, READ_ONLY)
-    only = function_chunk("only", "/project/only.py", "def only(): pass")
+    only = function_chunk("only", "only.py", "def only(): pass")
 
     with pytest.raises((OSError, RuntimeError)):
         filled_store.write(

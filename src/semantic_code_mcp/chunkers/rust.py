@@ -1,15 +1,15 @@
 """Tree-sitter based AST chunking for Rust code."""
 
 from enum import StrEnum, auto
-from pathlib import Path
 from typing import override
 
 import structlog
+import tree_sitter
 import tree_sitter_rust as tsrust
-from tree_sitter import Language, Node
+from tree_sitter import Node
 
 from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, ChunkCollector, field_text
-from semantic_code_mcp.domain.models import ChunkType
+from semantic_code_mcp.domain.models import ChunkKind, Language
 
 log = structlog.get_logger()
 
@@ -83,17 +83,20 @@ class RustChunker(BaseTreeSitterChunker):
     Functions, structs, enums, traits and impl blocks become chunks, with the
     attributes and `///` or `/** */` doc comments above them; functions and required
     method signatures inside impl and trait bodies become methods; items inside inline
-    `mod` blocks are extracted too.
+    `mod` blocks are extracted too. An item names the modules, impl or trait it sits in as
+    its parent, `outer::Stack` for a method of `impl Stack` in `mod outer`.
     """
 
-    language = Language(tsrust.language())
+    language = Language.rust
+    grammar = tree_sitter.Language(tsrust.language())
     extensions = (".rs",)
+    parent_separator = "::"
 
     @override
     def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:
         """Extract the module doc, then the items under the root."""
         self._extract_module_doc(root, collector)
-        self._walk_items(root, collector, ChunkType.function)
+        self._walk_items(root, collector, ChunkKind.function, parent=None)
 
     def _extract_module_doc(self, root: Node, collector: ChunkCollector) -> None:
         """Extract the `//!` and `/*! */` inner doc comments at the top of a module.
@@ -108,18 +111,29 @@ class RustChunker(BaseTreeSitterChunker):
                 doc_comments.append(child)
 
         if doc_comments:
-            name = Path(collector.file_path).stem
-            collector.add(doc_comments[0], doc_comments[-1], ChunkType.module, name)
+            collector.add(
+                doc_comments[0],
+                doc_comments[-1],
+                ChunkKind.module,
+                collector.path.stem,
+                parent=None,
+            )
 
     def _walk_items(
-        self, container: Node, collector: ChunkCollector, function_type: ChunkType
+        self,
+        container: Node,
+        collector: ChunkCollector,
+        function_kind: ChunkKind,
+        *,
+        parent: str | None,
     ) -> None:
         """Extract the items directly inside a container node.
 
         Args:
             container: A source file, an inline module body, or an impl/trait body.
             collector: The chunks of the file so far.
-            function_type: What a function here is — a function or a method.
+            function_kind: What a function here is — a function or a method.
+            parent: The qualified name of the container; None for the file itself.
         """
         siblings = list(container.children)
         for index, item in enumerate(siblings):
@@ -129,43 +143,67 @@ class RustChunker(BaseTreeSitterChunker):
 
             match item.type:
                 case NodeType.function_item | NodeType.function_signature_item:
-                    self._append_named_item(start_node, item, collector, function_type)
+                    self._append_named_item(
+                        start_node, item, collector, function_kind, parent=parent
+                    )
 
                 case NodeType.struct_item | NodeType.enum_item:
-                    self._append_named_item(start_node, item, collector, ChunkType.klass)
+                    self._append_named_item(
+                        start_node, item, collector, ChunkKind.klass, parent=parent
+                    )
 
                 case NodeType.trait_item:
-                    self._append_named_item(start_node, item, collector, ChunkType.klass)
-                    self._walk_body(item, collector, ChunkType.method)
+                    trait_name = self._append_named_item(
+                        start_node, item, collector, ChunkKind.klass, parent=parent
+                    )
+                    self._walk_body(
+                        item, collector, ChunkKind.method, parent=self.qualified(parent, trait_name)
+                    )
 
                 case NodeType.impl_item:
-                    self._append_impl(start_node, item, collector)
+                    self._append_impl(start_node, item, collector, parent=parent)
 
                 case NodeType.mod_item:
-                    self._walk_body(item, collector, function_type)
+                    module_name = field_text(item, FieldName.name)
+                    self._walk_body(
+                        item, collector, function_kind, parent=self.qualified(parent, module_name)
+                    )
 
-    def _append_impl(self, start_node: Node, impl_node: Node, collector: ChunkCollector) -> None:
+    def _append_impl(
+        self, start_node: Node, impl_node: Node, collector: ChunkCollector, *, parent: str | None
+    ) -> None:
         """Append a chunk for an impl block, then one for each of its methods."""
         impl_name = self._impl_name(impl_node)
         if impl_name is None:
-            log.debug("unnamed_impl_skipped", file_path=collector.file_path)
+            log.debug("unnamed_impl_skipped", file_path=str(collector.path))
             return
-        collector.add(start_node, impl_node, ChunkType.klass, impl_name)
-        self._walk_body(impl_node, collector, ChunkType.method)
+        collector.add(start_node, impl_node, ChunkKind.klass, impl_name, parent=parent)
+        self._walk_body(
+            impl_node, collector, ChunkKind.method, parent=self.qualified(parent, impl_name)
+        )
 
-    def _walk_body(self, item: Node, collector: ChunkCollector, function_type: ChunkType) -> None:
+    def _walk_body(
+        self, item: Node, collector: ChunkCollector, function_kind: ChunkKind, *, parent: str | None
+    ) -> None:
         """Walk the `body` of an impl, trait or inline module, if it has one."""
         body = item.child_by_field_name(FieldName.body)
         if body is not None:
-            self._walk_items(body, collector, function_type)
+            self._walk_items(body, collector, function_kind, parent=parent)
 
     def _append_named_item(
-        self, start_node: Node, item: Node, collector: ChunkCollector, chunk_type: ChunkType
-    ) -> None:
-        """Append a chunk for an item named by its `name` field."""
+        self,
+        start_node: Node,
+        item: Node,
+        collector: ChunkCollector,
+        kind: ChunkKind,
+        *,
+        parent: str | None,
+    ) -> str | None:
+        """Append a chunk for an item named by its `name` field; the name, if it has one."""
         name = field_text(item, FieldName.name)
         if name is not None:
-            collector.add(start_node, item, chunk_type, name)
+            collector.add(start_node, item, kind, name, parent=parent)
+        return name
 
     def _item_start(self, siblings: list[Node], item_index: int) -> Node:
         """The first attribute or outer doc comment directly above an item, or the item."""

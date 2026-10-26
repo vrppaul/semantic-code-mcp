@@ -5,6 +5,7 @@ fails when it is defined, not when a request first reaches the gap.
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import numpy
 from numpy.typing import NDArray
@@ -102,5 +103,6 @@ class Chunker(ABC):
         """The version of the chunks it makes; each version keeps an index of its own."""
 
     @abstractmethod
-    def chunk_file(self, file_path: str) -> list[Chunk]:
-        """The chunks of one file; empty when the file cannot be read."""
+    def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
+        """The chunks of the file at `path` from the project root, each naming that path;
+        empty when the file cannot be read."""

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `index_status` reports the index's `manifest` (model, chunker version, storage schema version) and a `rebuild_reason` when the next search must build it again whole; `index_codebase` and the search's debug block report the `rebuild_reason` of a run that did
+- Each `search_code` result names its `parent`: the class, impl, module or heading it sits in, as `Stack` for `Stack.push` and `Guide > Install` for a section
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
@@ -27,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`
+- A `search_code` result's `chunk_type` is now `kind`
+- The index keeps each file by its path from the project root, so a project moved with its local index (`.semantic-code/`) keeps it
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
 - Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done
 - The index keeps a record of each file and a manifest of what built it, in place of `file_mtimes.json`

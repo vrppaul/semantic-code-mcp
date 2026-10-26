@@ -3,8 +3,15 @@
 from pathlib import Path
 
 from semantic_code_mcp.chunkers.rust import RustChunker
-from semantic_code_mcp.domain.models import ChunkType
-from tests.helpers import ChunkSummary, LineRange, line_ranges, summarize
+from semantic_code_mcp.domain.models import ChunkKind
+from tests.helpers import (
+    ChunkOwner,
+    ChunkSummary,
+    LineRange,
+    line_ranges,
+    owners_of,
+    summarize,
+)
 
 
 class TestRustChunker:
@@ -17,11 +24,11 @@ class TestRustChunker:
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "hello"
-        assert chunks[0].chunk_type == ChunkType.function
+        assert chunks[0].kind == ChunkKind.function
         assert "fn hello()" in chunks[0].content
 
     def test_function_with_doc_comment(self):
@@ -35,7 +42,7 @@ fn greet(name: &str) -> String {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "greet"
@@ -50,11 +57,11 @@ fn greet(name: &str) -> String {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "Point"
-        assert chunks[0].chunk_type == ChunkType.klass
+        assert chunks[0].kind == ChunkKind.klass
 
     def test_struct_with_impl_methods(self):
         """Struct + impl block: struct as CLASS, methods as METHOD."""
@@ -74,10 +81,10 @@ impl Point {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
-        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
-        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
+        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
+        method_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.method]
 
         # struct + impl block
         assert len(class_chunks) == 2
@@ -95,11 +102,11 @@ impl Point {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "Color"
-        assert chunks[0].chunk_type == ChunkType.klass
+        assert chunks[0].kind == ChunkKind.klass
 
     def test_trait_definition(self):
         """Extracts a trait as CLASS chunk with signature methods."""
@@ -109,9 +116,9 @@ impl Point {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
-        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
+        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "Drawable"
 
@@ -126,7 +133,7 @@ impl Point {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert summarize(chunks) == [
             type_definition("Greetable"),
@@ -147,10 +154,10 @@ impl Point {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
-        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
-        method_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.method]
+        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
+        method_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.method]
 
         assert len(class_chunks) == 1
         # impl name should include trait info
@@ -166,7 +173,7 @@ struct Config {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "Config"
@@ -180,7 +187,7 @@ fn test_something() {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "test_something"
@@ -194,10 +201,10 @@ fn test_something() {
 fn configure() {}
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="config.rs")
+        chunks = chunker.chunk_string(code, Path("config.rs"))
 
-        module_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.module]
-        func_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.function]
+        module_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.module]
+        func_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.function]
 
         assert len(module_chunks) == 1
         assert module_chunks[0].name == "config"
@@ -211,11 +218,11 @@ fn configure() {}
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "identity"
-        assert chunks[0].chunk_type == ChunkType.function
+        assert chunks[0].kind == ChunkKind.function
 
     def test_generic_struct(self):
         """Generic struct is extracted."""
@@ -224,7 +231,7 @@ fn configure() {}
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "Wrapper"
@@ -237,22 +244,22 @@ fn configure() {}
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "fetch_data"
-        assert chunks[0].chunk_type == ChunkType.function
+        assert chunks[0].kind == ChunkKind.function
 
     def test_empty_file(self):
         """Empty file returns empty list."""
         chunker = RustChunker()
-        chunks = chunker.chunk_string("", file_path="test.rs")
+        chunks = chunker.chunk_string("", Path("test.rs"))
         assert chunks == []
 
     def test_whitespace_only_file(self):
         """Whitespace-only file returns empty list."""
         chunker = RustChunker()
-        chunks = chunker.chunk_string("   \n\n  ", file_path="test.rs")
+        chunks = chunker.chunk_string("   \n\n  ", Path("test.rs"))
         assert chunks == []
 
     def test_syntax_errors(self):
@@ -261,7 +268,7 @@ fn configure() {}
     this is not valid rust
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="broken.rs")
+        chunks = chunker.chunk_string(code, Path("broken.rs"))
         # tree-sitter is error-tolerant, but we accept whatever it returns
         assert isinstance(chunks, list)
 
@@ -278,7 +285,7 @@ fn second() {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         first = next(chunk for chunk in chunks if chunk.name == "first")
         second = next(chunk for chunk in chunks if chunk.name == "second")
@@ -294,7 +301,7 @@ fn second() {
         file_path.write_text("fn hello() { 42 }\n")
 
         chunker = RustChunker()
-        chunks = chunker.chunk_file(str(file_path))
+        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
 
         assert len(chunks) == 1
         assert chunks[0].name == "hello"
@@ -310,7 +317,7 @@ fn second() {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
         assert len(chunks) == 1
         assert chunks[0].name == "public_api"
@@ -322,27 +329,27 @@ fn second() {
 }
 """
         chunker = RustChunker()
-        chunks = chunker.chunk_string(code, file_path="test.rs")
+        chunks = chunker.chunk_string(code, Path("test.rs"))
 
-        class_chunks = [chunk for chunk in chunks if chunk.chunk_type == ChunkType.klass]
+        class_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.klass]
         assert len(class_chunks) == 1
         assert class_chunks[0].name == "MyStruct"
 
 
 def function(name: str) -> ChunkSummary:
-    return ChunkSummary(chunk_type=ChunkType.function, name=name)
+    return ChunkSummary(kind=ChunkKind.function, name=name)
 
 
 def method(name: str) -> ChunkSummary:
-    return ChunkSummary(chunk_type=ChunkType.method, name=name)
+    return ChunkSummary(kind=ChunkKind.method, name=name)
 
 
 def type_definition(name: str) -> ChunkSummary:
-    return ChunkSummary(chunk_type=ChunkType.klass, name=name)
+    return ChunkSummary(kind=ChunkKind.klass, name=name)
 
 
 def module(name: str) -> ChunkSummary:
-    return ChunkSummary(chunk_type=ChunkType.module, name=name)
+    return ChunkSummary(kind=ChunkKind.module, name=name)
 
 
 class TestRustChunkerSilentDrops:
@@ -363,7 +370,7 @@ impl<T> Stack<T> {
     }
 }
 """
-        chunks = RustChunker().chunk_string(code, file_path="stack.rs")
+        chunks = RustChunker().chunk_string(code, Path("stack.rs"))
 
         assert summarize(chunks) == [
             type_definition("Stack"),
@@ -379,7 +386,7 @@ impl<T> Stack<T> {
     }
 }
 """
-        chunks = RustChunker().chunk_string(code, file_path="stack.rs")
+        chunks = RustChunker().chunk_string(code, Path("stack.rs"))
 
         assert summarize(chunks) == [type_definition("Display for Stack"), method("fmt")]
 
@@ -390,7 +397,7 @@ impl<T> Stack<T> {
     }
 }
 """
-        chunks = RustChunker().chunk_string(code, file_path="stack.rs")
+        chunks = RustChunker().chunk_string(code, Path("stack.rs"))
 
         assert summarize(chunks)[0] == type_definition("PartialEq for Stack")
 
@@ -403,7 +410,7 @@ impl From<u16> for Level {
     fn from(value: u16) -> Self { Level(value.into()) }
 }
 """
-        chunks = RustChunker().chunk_string(code, file_path="level.rs")
+        chunks = RustChunker().chunk_string(code, Path("level.rs"))
 
         assert summarize(chunks) == [
             type_definition("From<u8> for Level"),
@@ -415,7 +422,7 @@ impl From<u16> for Level {
     def test_negative_impl_keeps_its_negation(self):
         code = "unsafe impl !Send for Handle {}\n"
 
-        chunks = RustChunker().chunk_string(code, file_path="handle.rs")
+        chunks = RustChunker().chunk_string(code, Path("handle.rs"))
 
         assert summarize(chunks) == [type_definition("!Send for Handle")]
 
@@ -425,7 +432,7 @@ impl From<u16> for Level {
     fn save(&self);
 }
 """
-        chunks = RustChunker().chunk_string(code, file_path="store.rs")
+        chunks = RustChunker().chunk_string(code, Path("store.rs"))
 
         assert summarize(chunks) == [type_definition("Store"), method("save")]
         assert line_ranges(chunks)[1] == LineRange(line_start=2, line_end=3)
@@ -445,7 +452,7 @@ mod tests {
     }
 }
 """
-        chunks = RustChunker().chunk_string(code, file_path="lib.rs")
+        chunks = RustChunker().chunk_string(code, Path("lib.rs"))
 
         assert summarize(chunks) == [function("helper"), function("it_works")]
         assert chunks[1].line_start == 9
@@ -456,7 +463,7 @@ mod tests {
 
 const LIMIT: u32 = 10;
 """
-        chunks = RustChunker().chunk_string(code, file_path="src/limits.rs")
+        chunks = RustChunker().chunk_string(code, Path("src/limits.rs"))
 
         assert summarize(chunks) == [module("limits")]
         assert line_ranges(chunks) == [LineRange(line_start=1, line_end=3)]
@@ -466,7 +473,7 @@ const LIMIT: u32 = 10;
 
 const LIMIT: u32 = 10;
 """
-        chunks = RustChunker().chunk_string(code, file_path="src/limits.rs")
+        chunks = RustChunker().chunk_string(code, Path("src/limits.rs"))
 
         assert summarize(chunks) == [module("limits")]
         assert line_ranges(chunks) == [LineRange(line_start=1, line_end=3)]
@@ -477,7 +484,7 @@ const LIMIT: u32 = 10;
 
 fn main() {}
 """
-        chunks = RustChunker().chunk_string(code, file_path="src/main.rs")
+        chunks = RustChunker().chunk_string(code, Path("src/main.rs"))
 
         assert summarize(chunks) == [module("main"), function("main")]
         assert line_ranges(chunks)[0] == LineRange(line_start=2, line_end=2)
@@ -487,6 +494,34 @@ fn main() {}
 
 fn main() {}
 """
-        chunks = RustChunker().chunk_string(code, file_path="src/main.rs")
+        chunks = RustChunker().chunk_string(code, Path("src/main.rs"))
 
         assert summarize(chunks) == [module("main"), function("main")]
+
+
+def test_an_item_names_the_modules_impls_and_traits_it_is_defined_in():
+    code = """mod outer {
+    pub struct Stack;
+
+    impl Stack {
+        pub fn push(&mut self) {}
+    }
+
+    pub trait Store {
+        fn save(&self);
+    }
+}
+
+fn top() {}
+"""
+
+    chunks = RustChunker().chunk_string(code, Path("lib.rs"))
+
+    assert owners_of(chunks) == [
+        ChunkOwner(name="Stack", parent="outer"),
+        ChunkOwner(name="Stack", parent="outer"),
+        ChunkOwner(name="push", parent="outer::Stack"),
+        ChunkOwner(name="Store", parent="outer"),
+        ChunkOwner(name="save", parent="outer::Store"),
+        ChunkOwner(name="top", parent=None),
+    ]

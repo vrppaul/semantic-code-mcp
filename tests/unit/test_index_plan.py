@@ -7,11 +7,11 @@ import pytest
 from semantic_code_mcp.domain.models import IndexCounts, IndexDelta, RebuildReason, SourceFile
 from semantic_code_mcp.services.indexing import plan_delta, rebuild_reason
 
-UNCHANGED = SourceFile(path=Path("/project/unchanged.py"), mtime_ns=100, size_bytes=10)
-TOUCHED = SourceFile(path=Path("/project/touched.py"), mtime_ns=200, size_bytes=10)
-RESIZED = SourceFile(path=Path("/project/resized.py"), mtime_ns=100, size_bytes=20)
-NEW = SourceFile(path=Path("/project/new.py"), mtime_ns=100, size_bytes=10)
-GONE = SourceFile(path=Path("/project/gone.py"), mtime_ns=100, size_bytes=10)
+UNCHANGED = SourceFile(path=Path("unchanged.py"), mtime_ns=100, size_bytes=10)
+TOUCHED = SourceFile(path=Path("touched.py"), mtime_ns=200, size_bytes=10)
+RESIZED = SourceFile(path=Path("resized.py"), mtime_ns=100, size_bytes=20)
+NEW = SourceFile(path=Path("new.py"), mtime_ns=100, size_bytes=10)
+GONE = SourceFile(path=Path("gone.py"), mtime_ns=100, size_bytes=10)
 ON_DISK = [UNCHANGED, TOUCHED, RESIZED, NEW]
 INDEXED = [
     UNCHANGED,

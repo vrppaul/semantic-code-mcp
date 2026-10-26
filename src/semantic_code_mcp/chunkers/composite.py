@@ -12,8 +12,8 @@ from semantic_code_mcp.domain.models import Chunk
 log = structlog.get_logger()
 
 # The version of the chunks the chunkers make: bumped by any change to what a file
-# gives, so an index built by an older version is built again
-CHUNKER_VERSION = 1
+# gives, so each version keeps an index of its own
+CHUNKER_VERSION = 2
 
 
 class CompositeChunker(Chunker):
@@ -41,22 +41,14 @@ class CompositeChunker(Chunker):
                 self._chunker_by_extension[extension] = chunker
 
     @override
-    def chunk_file(self, file_path: str) -> list[Chunk]:
-        """Extract chunks from a source file, dispatching by extension.
-
-        Args:
-            file_path: Path to the source file.
-
-        Returns:
-            List of Chunk objects, or empty list for unsupported extensions.
-        """
-        suffix = Path(file_path).suffix
-        chunker = self._chunker_by_extension.get(suffix)
+    def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
+        """The chunks of a file by the chunker of its extension; none for an extension
+        no chunker reads."""
+        chunker = self._chunker_by_extension.get(path.suffix)
         if chunker is None:
-            log.debug("unsupported_extension", file_path=file_path, extension=suffix)
+            log.debug("unsupported_extension", file_path=str(path), extension=path.suffix)
             return []
-
-        return chunker.chunk_file(file_path)
+        return chunker.chunk_file(project_root, path)
 
     @property
     @override

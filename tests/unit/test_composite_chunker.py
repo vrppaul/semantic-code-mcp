@@ -8,7 +8,7 @@ from semantic_code_mcp.chunkers.composite import CompositeChunker
 from semantic_code_mcp.chunkers.markdown import MarkdownChunker
 from semantic_code_mcp.chunkers.python import PythonChunker
 from semantic_code_mcp.chunkers.rust import RustChunker
-from semantic_code_mcp.domain.models import ChunkType
+from semantic_code_mcp.domain.models import ChunkKind, Language
 
 
 class TestCompositeChunker:
@@ -20,11 +20,11 @@ class TestCompositeChunker:
         file_path.write_text("def hello(): pass\n")
 
         chunker = CompositeChunker([PythonChunker(), RustChunker()])
-        chunks = chunker.chunk_file(str(file_path))
+        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
 
-        assert len(chunks) == 1
-        assert chunks[0].name == "hello"
-        assert chunks[0].chunk_type == ChunkType.function
+        assert [(chunk.name, chunk.kind, chunk.language) for chunk in chunks] == [
+            ("hello", ChunkKind.function, Language.python)
+        ]
 
     def test_routes_rs_to_rust_chunker(self, tmp_path: Path):
         """Routes .rs files to RustChunker."""
@@ -32,11 +32,11 @@ class TestCompositeChunker:
         file_path.write_text('fn greet() { println!("hi"); }\n')
 
         chunker = CompositeChunker([PythonChunker(), RustChunker()])
-        chunks = chunker.chunk_file(str(file_path))
+        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
 
-        assert len(chunks) == 1
-        assert chunks[0].name == "greet"
-        assert chunks[0].chunk_type == ChunkType.function
+        assert [(chunk.name, chunk.kind, chunk.language) for chunk in chunks] == [
+            ("greet", ChunkKind.function, Language.rust)
+        ]
 
     def test_routes_md_to_markdown_chunker(self, tmp_path: Path):
         """Routes .md files to MarkdownChunker."""
@@ -44,11 +44,11 @@ class TestCompositeChunker:
         file_path.write_text("# Hello\n\nWorld.\n")
 
         chunker = CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
-        chunks = chunker.chunk_file(str(file_path))
+        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
 
-        assert len(chunks) == 1
-        assert chunks[0].name == "Hello"
-        assert chunks[0].chunk_type == ChunkType.section
+        assert [(chunk.name, chunk.kind, chunk.language) for chunk in chunks] == [
+            ("Hello", ChunkKind.section, Language.markdown)
+        ]
 
     def test_unknown_extension_returns_empty(self, tmp_path: Path):
         """Unknown file extension returns empty list."""
@@ -56,7 +56,7 @@ class TestCompositeChunker:
         file_path.write_text("some text\n")
 
         chunker = CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
-        chunks = chunker.chunk_file(str(file_path))
+        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
 
         assert chunks == []
 
@@ -75,7 +75,7 @@ class TestCompositeChunker:
         file_path.write_text("def hello(): pass\n")
 
         chunker = CompositeChunker([])
-        chunks = chunker.chunk_file(str(file_path))
+        chunks = chunker.chunk_file(file_path.parent, Path(file_path.name))
 
         assert chunks == []
 

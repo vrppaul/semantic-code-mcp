@@ -259,6 +259,19 @@ async def test_a_local_index_never_shows_in_the_project_s_git_status(
     assert git_output(sample_project, "status", "--porcelain") == ""
 
 
+async def test_a_project_moved_with_its_local_index_keeps_it(sample_project: Path, tmp_path: Path):
+    settings = Settings(cache_dir=tmp_path / "cache", local_index=True)
+    first = build_registry(settings, FakeEmbedder()).services_for(sample_project).indexing
+    await first.index(sample_project, force=False, progress=NO_PROGRESS)
+    moved = sample_project.rename(tmp_path / "moved")
+
+    status = (
+        await build_registry(settings, FakeEmbedder()).services_for(moved).indexing.status(moved)
+    )
+
+    assert (status.chunks_count, status.stale_files_count) == (6, 0)
+
+
 async def test_progress_only_moves_forward(indexing: IndexingService, sample_project: Path):
     recorder = ProgressRecorder()
 

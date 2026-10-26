@@ -25,7 +25,7 @@ def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):
     hit = SearchHit(
         file_path=str(tmp_path / "src" / "walk.rs"),
         name="scan",
-        chunk_type="function",
+        kind="function",
         line_start=1,
         line_end=9,
     )

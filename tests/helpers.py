@@ -9,7 +9,7 @@ from semantic_code_mcp.app import open_index_store
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
-from semantic_code_mcp.domain.models import Chunk, ChunkType
+from semantic_code_mcp.domain.models import Chunk, ChunkKind
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry
 
@@ -83,7 +83,7 @@ class ChunkSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    chunk_type: ChunkType
+    kind: ChunkKind
     name: str
 
 
@@ -96,9 +96,23 @@ class LineRange(BaseModel):
     line_end: int
 
 
+class ChunkOwner(BaseModel):
+    """What a chunker test compares of where a chunk is defined: its name and its parent."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    parent: str | None
+
+
+def owners_of(chunks: list[Chunk]) -> list[ChunkOwner]:
+    """Each chunk's name and the qualified name of what it is defined in, in order."""
+    return [ChunkOwner(name=chunk.name, parent=chunk.parent) for chunk in chunks]
+
+
 def summarize(chunks: list[Chunk]) -> list[ChunkSummary]:
     """Each chunk's type and name, in order."""
-    return [ChunkSummary(chunk_type=chunk.chunk_type, name=chunk.name) for chunk in chunks]
+    return [ChunkSummary(kind=chunk.kind, name=chunk.name) for chunk in chunks]
 
 
 def line_ranges(chunks: list[Chunk]) -> list[LineRange]:

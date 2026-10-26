@@ -61,12 +61,12 @@ from semantic_code_mcp.domain.models import (
     HIGHEST_SCORE,
     LOWEST_SCORE,
     Chunk,
-    ChunkLocation,
-    ChunkType,
+    ChunkKind,
     IndexCounts,
     IndexIdentity,
     IndexManifest,
     IndexUpdate,
+    Language,
     SearchResult,
     SourceFile,
     WriteScope,
@@ -75,7 +75,7 @@ from semantic_code_mcp.domain.models import (
 log = structlog.get_logger()
 
 # Bumped by any change to the tables' columns; each version keeps an index of its own
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # An index's directory, under the project's, named by its layout and its identity's digest;
 # its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
@@ -114,14 +114,17 @@ NEVER_KEPT_UP = 0
 # Versions older than this are pruned by upkeep; a read finishes in milliseconds
 OLD_VERSION_RETENTION = timedelta(seconds=10)
 
+# Both tables name a file by its path from the project root, in POSIX form
+PATH_COLUMN = "path"
+CHUNK_ID_COLUMN = "chunk_id"
 VECTOR_COLUMN = "vector"
-FILE_PATH_COLUMN = "file_path"
+LANGUAGE_COLUMN = "language"
+KIND_COLUMN = "kind"
+NAME_COLUMN = "name"
+PARENT_COLUMN = "parent"
 LINE_START_COLUMN = "line_start"
 LINE_END_COLUMN = "line_end"
 CONTENT_COLUMN = "content"
-CHUNK_TYPE_COLUMN = "chunk_type"
-NAME_COLUMN = "name"
-PATH_COLUMN = "path"
 MTIME_COLUMN = "mtime_ns"
 SIZE_COLUMN = "size_bytes"
 # The axis of a vector matrix along one vector: rows are chunks, columns components
@@ -156,13 +159,16 @@ def chunks_schema(dimension: int) -> pyarrow.Schema:
     """The chunks table's columns, its vectors `dimension` wide."""
     return pyarrow.schema(
         [
+            pyarrow.field(CHUNK_ID_COLUMN, pyarrow.utf8()),
             pyarrow.field(VECTOR_COLUMN, pyarrow.list_(pyarrow.float32(), dimension)),
-            pyarrow.field(FILE_PATH_COLUMN, pyarrow.utf8()),
+            pyarrow.field(PATH_COLUMN, pyarrow.utf8()),
+            pyarrow.field(LANGUAGE_COLUMN, pyarrow.utf8()),
+            pyarrow.field(KIND_COLUMN, pyarrow.utf8()),
+            pyarrow.field(NAME_COLUMN, pyarrow.utf8()),
+            pyarrow.field(PARENT_COLUMN, pyarrow.utf8()),
             pyarrow.field(LINE_START_COLUMN, pyarrow.int32()),
             pyarrow.field(LINE_END_COLUMN, pyarrow.int32()),
             pyarrow.field(CONTENT_COLUMN, pyarrow.utf8()),
-            pyarrow.field(CHUNK_TYPE_COLUMN, pyarrow.utf8()),
-            pyarrow.field(NAME_COLUMN, pyarrow.utf8()),
         ]
     )
 
@@ -172,24 +178,30 @@ class StoredChunk(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    file_path: str
+    chunk_id: str
+    path: str
+    language: Language
+    kind: ChunkKind
+    name: str
+    parent: str | None
     line_start: int
     line_end: int
     content: str
-    chunk_type: ChunkType
-    name: str
 
     def scored(self, score: float) -> SearchResult:
         """This row as a search hit with a score."""
-        return SearchResult(
-            file_path=self.file_path,
+        chunk = Chunk(
+            chunk_id=self.chunk_id,
+            path=Path(self.path),
+            language=self.language,
+            kind=self.kind,
+            name=self.name,
+            parent=self.parent,
             line_start=self.line_start,
             line_end=self.line_end,
             content=self.content,
-            chunk_type=self.chunk_type,
-            name=self.name,
-            score=score,
         )
+        return SearchResult(chunk=chunk, score=score)
 
 
 class LeftIndex(BaseModel):
@@ -383,7 +395,7 @@ class LanceDBIndexStore(IndexStore):
         written_or_removed = [*(file.path for file in update.files), *update.removed_paths]
         stored_chunks = self._open(CHUNKS_TABLE)
         if stored_chunks is not None and written_or_removed:
-            stored_chunks.delete(path_filter(FILE_PATH_COLUMN, written_or_removed))
+            stored_chunks.delete(path_filter(PATH_COLUMN, written_or_removed))
         stored_files = self._open(FILES_TABLE)
         if stored_files is not None and update.removed_paths:
             stored_files.delete(path_filter(PATH_COLUMN, update.removed_paths))
@@ -576,13 +588,16 @@ def chunks_table(chunks: list[Chunk], vectors: VectorMatrix) -> pyarrow.Table:
     vector_column = pyarrow.FixedSizeListArray.from_arrays(pyarrow.array(vectors.ravel()), width)
     return pyarrow.table(
         {
+            CHUNK_ID_COLUMN: [chunk.chunk_id for chunk in chunks],
             VECTOR_COLUMN: vector_column,
-            FILE_PATH_COLUMN: [chunk.file_path for chunk in chunks],
+            PATH_COLUMN: [chunk.path.as_posix() for chunk in chunks],
+            LANGUAGE_COLUMN: [chunk.language for chunk in chunks],
+            KIND_COLUMN: [chunk.kind for chunk in chunks],
+            NAME_COLUMN: [chunk.name for chunk in chunks],
+            PARENT_COLUMN: [chunk.parent for chunk in chunks],
             LINE_START_COLUMN: [chunk.line_start for chunk in chunks],
             LINE_END_COLUMN: [chunk.line_end for chunk in chunks],
             CONTENT_COLUMN: [chunk.content for chunk in chunks],
-            CHUNK_TYPE_COLUMN: [chunk.chunk_type for chunk in chunks],
-            NAME_COLUMN: [chunk.name for chunk in chunks],
         },
         schema=chunks_schema(width),
     )
@@ -592,7 +607,7 @@ def files_table(files: list[SourceFile]) -> pyarrow.Table:
     """The records of indexed files as rows of the files schema."""
     return pyarrow.table(
         {
-            PATH_COLUMN: [str(file.path) for file in files],
+            PATH_COLUMN: [file.path.as_posix() for file in files],
             MTIME_COLUMN: [file.mtime_ns for file in files],
             SIZE_COLUMN: [file.size_bytes for file in files],
         },
@@ -606,7 +621,7 @@ def has_full_text_index(table: lancedb.table.Table) -> bool:
 
 def path_filter(column: str, paths: list[Path]) -> str:
     """A filter matching the rows whose column holds one of the paths."""
-    quoted = ", ".join(quote_sql(str(path)) for path in paths)
+    quoted = ", ".join(quote_sql(path.as_posix()) for path in paths)
     return f"{column} IN ({quoted})"
 
 
@@ -630,16 +645,18 @@ def merge_weighted(
     secondary_weight: float,
 ) -> list[SearchResult]:
     """Merge two ranked lists: each hit's score times its list's weight, summed per chunk."""
-    merged: dict[ChunkLocation, SearchResult] = {
-        result.location: result.with_score(result.score * primary_weight) for result in primary
+    merged: dict[str, SearchResult] = {
+        result.chunk.chunk_id: result.with_score(result.score * primary_weight)
+        for result in primary
     }
     for result in secondary:
         weighted = result.score * secondary_weight
-        earlier = merged.get(result.location)
+        chunk_id = result.chunk.chunk_id
+        earlier = merged.get(chunk_id)
         if earlier is None:
-            merged[result.location] = result.with_score(weighted)
+            merged[chunk_id] = result.with_score(weighted)
         else:
-            merged[result.location] = earlier.with_score(clamp_score(earlier.score + weighted))
+            merged[chunk_id] = earlier.with_score(clamp_score(earlier.score + weighted))
     return list(merged.values())
 
 

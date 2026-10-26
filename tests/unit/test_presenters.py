@@ -1,27 +1,50 @@
 """Tests for what the tools answer, made from what the services report."""
 
-from semantic_code_mcp.domain.models import ChunkType, SearchReport, SearchResult, SearchTimings
+from pathlib import Path
+
+from semantic_code_mcp.domain.models import (
+    Chunk,
+    ChunkKind,
+    Language,
+    SearchReport,
+    SearchResult,
+    SearchTimings,
+)
 from semantic_code_mcp.server.presenters import MAX_RESULT_LINES, present_hit, present_search
 
 TIMINGS = SearchTimings(embedding_ms=1.0, search_ms=2.0, total_ms=3.0)
+PROJECT_ROOT = Path("/project")
 
 
 def hit_of(content: str) -> SearchResult:
-    return SearchResult(
-        file_path="/project/module.py",
+    chunk = Chunk(
+        chunk_id="module-method",
+        path=Path("src/module.py"),
+        language=Language.python,
+        kind=ChunkKind.method,
+        name="method",
+        parent="Module",
         line_start=1,
         line_end=content.count("\n") + 1,
         content=content,
-        chunk_type=ChunkType.function,
-        name="function",
-        score=0.5,
+    )
+    return SearchResult(chunk=chunk, score=0.5)
+
+
+def test_a_hit_names_its_file_by_its_absolute_path_and_says_what_it_is_part_of():
+    view = present_hit(hit_of("def method(self): pass"), PROJECT_ROOT)
+
+    assert (view.file_path, view.kind, view.parent) == (
+        str(PROJECT_ROOT / "src" / "module.py"),
+        "method",
+        "Module",
     )
 
 
 def test_a_long_hit_is_cut_to_the_line_limit_and_says_so():
     long_content = "\n".join(f"line_{number} = {number}" for number in range(MAX_RESULT_LINES + 10))
 
-    view = present_hit(hit_of(long_content))
+    view = present_hit(hit_of(long_content), PROJECT_ROOT)
 
     assert view.truncated
     assert (
@@ -30,7 +53,7 @@ def test_a_long_hit_is_cut_to_the_line_limit_and_says_so():
 
 
 def test_a_short_hit_is_whole():
-    view = present_hit(hit_of("def function():\n    return 1"))
+    view = present_hit(hit_of("def function():\n    return 1"), PROJECT_ROOT)
 
     assert (view.truncated, view.content) == (False, "def function():\n    return 1")
 
@@ -40,5 +63,5 @@ def test_debug_details_only_when_asked():
         results=[hit_of("x = 1")], filtered_count=0, timings=TIMINGS, index_report=None
     )
 
-    assert present_search(report, include_debug=False).debug is None
-    assert present_search(report, include_debug=True).debug is not None
+    assert present_search(report, PROJECT_ROOT, include_debug=False).debug is None
+    assert present_search(report, PROJECT_ROOT, include_debug=True).debug is not None

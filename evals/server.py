@@ -31,7 +31,7 @@ class SearchHit(BaseModel):
 
     file_path: str
     name: str
-    chunk_type: str
+    kind: str
     line_start: int
     line_end: int
 

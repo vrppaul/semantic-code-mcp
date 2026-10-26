@@ -125,8 +125,8 @@ class FakeIndexStore(IndexStore):
             self.vectors_by_file.pop(path, None)
             self.files_by_path.pop(path, None)
         for chunk, vector in zip(update.chunks, vectors, strict=True):
-            self.chunks_by_file[Path(chunk.file_path)].append(chunk)
-            self.vectors_by_file[Path(chunk.file_path)].append(vector)
+            self.chunks_by_file[chunk.path].append(chunk)
+            self.vectors_by_file[chunk.path].append(vector)
         self.files_by_path.update({file.path: file for file in update.files})
         self.written_manifest = IndexManifest(
             identity=IndexIdentity(
@@ -165,8 +165,8 @@ class VersionedChunker(Chunker):
         return self._version
 
     @override
-    def chunk_file(self, file_path: str) -> list[Chunk]:
-        return self._inner.chunk_file(file_path)
+    def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
+        return self._inner.chunk_file(project_root, path)
 
 
 class ChangingChunker(VersionedChunker):
@@ -178,9 +178,9 @@ class ChangingChunker(VersionedChunker):
         self._change = change
 
     @override
-    def chunk_file(self, file_path: str) -> list[Chunk]:
+    def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
         self._change()
-        return self._inner.chunk_file(file_path)
+        return self._inner.chunk_file(project_root, path)
 
 
 class ChunkCountRecorder:

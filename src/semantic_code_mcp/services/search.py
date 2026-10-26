@@ -89,11 +89,13 @@ class SearchService:
             await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
             await asyncio.to_thread(self._embedder.load)
         await progress.report(SearchPhase.searching.value, "Searching...")
-        report = await asyncio.to_thread(self._run_search, query, limit, index_report)
+        report = await asyncio.to_thread(self._run_search, query, project_root, limit, index_report)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 
-    def _run_search(self, query: str, limit: int, index_report: IndexReport | None) -> SearchReport:
+    def _run_search(
+        self, query: str, project_root: Path, limit: int, index_report: IndexReport | None
+    ) -> SearchReport:
         started = time.perf_counter()
 
         embedding_started = time.perf_counter()
@@ -109,7 +111,7 @@ class SearchService:
         kept = [result for result in raw_results if result.score >= MIN_SCORE]
         now = time.time()
         boosted = sorted(
-            (with_recency_boost(result, now) for result in kept),
+            (with_recency_boost(result, project_root, now) for result in kept),
             key=lambda result: result.score,
             reverse=True,
         )
@@ -135,10 +137,10 @@ def indexing_message(status: IndexStatus) -> str:
     return f"Re-indexing {status.stale_files_count} stale files..."
 
 
-def with_recency_boost(result: SearchResult, now: float) -> SearchResult:
+def with_recency_boost(result: SearchResult, project_root: Path, now: float) -> SearchResult:
     """A hit whose file changed within the last week, scored up by as much as MAX_RECENCY_BOOST."""
     try:
-        age_seconds = now - Path(result.file_path).stat().st_mtime
+        age_seconds = now - (project_root / result.chunk.path).stat().st_mtime
     except OSError:
         return result
     if age_seconds >= ONE_WEEK_SECONDS:
@@ -149,10 +151,10 @@ def with_recency_boost(result: SearchResult, now: float) -> SearchResult:
 
 def group_by_file(results: list[SearchResult]) -> list[SearchResult]:
     """Hits grouped by file, the file with the best hit first, each file's hits in order."""
-    by_file: dict[str, list[SearchResult]] = defaultdict(list)
+    by_file: dict[Path, list[SearchResult]] = defaultdict(list)
     for result in results:
-        by_file[result.file_path].append(result)
+        by_file[result.chunk.path].append(result)
     ordered_files = sorted(
-        by_file, key=lambda file_path: max(hit.score for hit in by_file[file_path]), reverse=True
+        by_file, key=lambda path: max(hit.score for hit in by_file[path]), reverse=True
     )
-    return [hit for file_path in ordered_files for hit in by_file[file_path]]
+    return [hit for path in ordered_files for hit in by_file[path]]

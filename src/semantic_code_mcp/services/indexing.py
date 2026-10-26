@@ -159,7 +159,7 @@ class IndexingService:
             await progress.report(
                 IndexPhase.chunking.value, f"Chunking {len(plan.delta.to_index)} files..."
             )
-            chunked = await asyncio.to_thread(self._chunk, plan.delta.to_index)
+            chunked = await asyncio.to_thread(self._chunk, project_root, plan.delta.to_index)
             chunks = [chunk for chunked_file in chunked for chunk in chunked_file.chunks]
             vectors = await self._embed(chunks, progress)
             await progress.report(IndexPhase.writing.value, "Writing the index...")
@@ -198,11 +198,11 @@ class IndexingService:
         scope = WriteScope.everything if force else WriteScope.changed_files
         return IndexPlan(delta=delta, scope=scope, rebuild_reason=None)
 
-    def _chunk(self, files: list[SourceFile]) -> list[ChunkedFile]:
+    def _chunk(self, project_root: Path, files: list[SourceFile]) -> list[ChunkedFile]:
         """Chunk files one after another; tree-sitter holds the GIL, so threads gain nothing."""
         started = time.perf_counter()
         chunked = [
-            ChunkedFile(file=file, chunks=self._chunker.chunk_file(str(file.path)))
+            ChunkedFile(file=file, chunks=self._chunker.chunk_file(project_root, file.path))
             for file in files
         ]
         log.debug(

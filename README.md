@@ -99,7 +99,7 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 
-Returns ranked results with `file_path`, `line_start`, `line_end`, `name`, `chunk_type`, `content` (cut to 50 lines, `truncated` says so) and `score`. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
+Returns ranked results with `file_path` (absolute), `line_start`, `line_end`, `name`, `kind` (`module`, `function`, `method`, `class`, `section`; Rust's structs, enums, traits and impls are classes), `parent` (the class, impl, module or heading the chunk sits in, as `Stack` for `Stack.push`), `content` (cut to 50 lines, `truncated` says so) and `score`. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
 
 ### `index_codebase`
 
@@ -206,17 +206,18 @@ Steps:
 uv add tree-sitter-mylang
 ```
 
-Create `src/semantic_code_mcp/chunkers/mylang.py`:
+Add the language to `Language` in `src/semantic_code_mcp/domain/models.py`, then create `src/semantic_code_mcp/chunkers/mylang.py`:
 
 ```python
 from enum import StrEnum, auto
 from typing import override
 
+import tree_sitter
 import tree_sitter_mylang as tsmylang
-from tree_sitter import Language, Node
+from tree_sitter import Node
 
 from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, ChunkCollector, field_text
-from semantic_code_mcp.domain.models import ChunkType
+from semantic_code_mcp.domain.models import ChunkKind, Language
 
 
 class NodeType(StrEnum):
@@ -229,8 +230,11 @@ class FieldName(StrEnum):
 
 
 class MyLangChunker(BaseTreeSitterChunker):
-    language = Language(tsmylang.language())
+    language = Language.mylang
+    grammar = tree_sitter.Language(tsmylang.language())
     extensions = (".ml",)
+    # Joins an owner's name to what is defined in it: `Stack.push`
+    parent_separator = "."
 
     @override
     def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:
@@ -239,11 +243,11 @@ class MyLangChunker(BaseTreeSitterChunker):
                 case NodeType.function_definition:
                     name = field_text(node, FieldName.name)
                     if name is not None:
-                        collector.add(node, node, ChunkType.function, name)
+                        collector.add(node, node, ChunkKind.function, name, parent=None)
                 # ... other node types
 ```
 
-Register it in `src/semantic_code_mcp/services/projects.py`:
+Register it in `src/semantic_code_mcp/app.py`, and bump `CHUNKER_VERSION` in `src/semantic_code_mcp/chunkers/composite.py`, so indexes built before it are built again:
 
 ```python
 from semantic_code_mcp.chunkers.mylang import MyLangChunker

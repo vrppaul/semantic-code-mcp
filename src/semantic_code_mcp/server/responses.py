@@ -8,11 +8,14 @@ class SearchResultView(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    # Absolute, for the agent to read the file at
     file_path: str
     line_start: int
     line_end: int
     name: str
-    chunk_type: str
+    kind: str
+    # The qualified name of what the chunk is defined in: a class, an impl, a heading
+    parent: str | None
     content: str
     score: float
     truncated: bool

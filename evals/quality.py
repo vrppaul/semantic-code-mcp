@@ -100,7 +100,7 @@ def missing_answer_chunks(corpus: Corpus, working_tree: Path) -> list[Answer]:
     chunker = build_chunker()
     answers = {answer for query in corpus.queries for answer in query.answers}
     names_by_path = {
-        path: {chunk.name for chunk in chunker.chunk_file(str(working_tree / path))}
+        path: {chunk.name for chunk in chunker.chunk_file(working_tree, Path(path))}
         for path in {answer.path for answer in answers}
     }
     return sorted(

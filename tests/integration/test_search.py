@@ -6,7 +6,7 @@ from pathlib import Path
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.domain.models import ChunkType, SearchResult
+from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language, SearchResult
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.search import MIN_SCORE, SearchService
 from tests.fakes import FakeEmbedder, FakeIndexStore, ProgressRecorder
@@ -15,20 +15,23 @@ from tests.helpers import indexing_service
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
 BELOW_MIN_SCORE = MIN_SCORE / 2
-# Old enough that no recency boost reaches it
-OLD_FILE = "/nowhere/old.py"
+# A file no project of these tests holds, so no recency boost reaches it
+OLD_FILE = "nowhere/old.py"
 
 
-def hit(name: str, score: float, file_path: str = OLD_FILE) -> SearchResult:
-    return SearchResult(
-        file_path=file_path,
+def hit(name: str, score: float, path: str = OLD_FILE) -> SearchResult:
+    chunk = Chunk(
+        chunk_id=f"{path}#{name}",
+        path=Path(path),
+        language=Language.python,
+        kind=ChunkKind.function,
+        name=name,
+        parent=None,
         line_start=1,
         line_end=2,
         content=f"def {name}(): pass",
-        chunk_type=ChunkType.function,
-        name=name,
-        score=score,
     )
+    return SearchResult(chunk=chunk, score=score)
 
 
 def search_service(
@@ -46,7 +49,7 @@ async def test_hits_below_the_minimum_score_are_dropped(
 
     report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
-    assert [result.name for result in report.results] == ["kept"]
+    assert [result.chunk.name for result in report.results] == ["kept"]
     assert report.filtered_count == 1
 
 
@@ -64,16 +67,16 @@ async def test_hits_of_one_file_stand_together_best_file_first(
 ):
     store = FakeIndexStore(
         hits=[
-            hit("best", 0.9, "/nowhere/a.py"),
-            hit("second", 0.8, "/nowhere/b.py"),
-            hit("third", 0.7, "/nowhere/a.py"),
+            hit("best", 0.9, "nowhere/a.py"),
+            hit("second", 0.8, "nowhere/b.py"),
+            hit("third", 0.7, "nowhere/a.py"),
         ]
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
     report = await service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS)
 
-    assert [result.name for result in report.results] == ["best", "third", "second"]
+    assert [result.chunk.name for result in report.results] == ["best", "third", "second"]
 
 
 async def test_a_project_never_indexed_is_indexed_before_the_search(
@@ -153,7 +156,7 @@ async def test_two_first_searches_at_once_both_find_the_code(
         service.search("anything", sample_project, limit=LIMIT, progress=NO_PROGRESS),
     )
 
-    assert [[result.name for result in report.results] for report in reports] == [
+    assert [[result.chunk.name for result in report.results] for report in reports] == [
         ["found"],
         ["found"],
     ]

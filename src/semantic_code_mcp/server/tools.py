@@ -59,7 +59,9 @@ async def search_code(
         include_debug: Also return timings and counts of the search.
 
     Returns:
-        Matching chunks with file path, line range, name, type, content and score.
+        Matching chunks with the file's absolute path, line range, name, kind (module,
+        function, method, class, section), the class, impl or heading it belongs to, content
+        and score.
     """
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)
@@ -67,7 +69,7 @@ async def search_code(
         report = await services.search.search(
             query, project_root, limit=limit, progress=ProgressReporter(ctx.report_progress)
         )
-        return present_search(report, include_debug=include_debug)
+        return present_search(report, project_root, include_debug=include_debug)
 
 
 async def index_codebase(
