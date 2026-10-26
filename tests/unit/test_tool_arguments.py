@@ -9,12 +9,11 @@ from mcp.server.mcpserver.exceptions import ToolError
 from semantic_code_mcp.domain.globs import (
     LONGEST_GLOB,
     NEGATION_INSTEAD,
-    PARENT_DIRECTORY,
     PARENT_DIRECTORY_INSTEAD,
     REFUSED_CHARACTERS,
     TOO_LONG,
-    parts_of,
     read_glob,
+    refusal_of,
 )
 from semantic_code_mcp.server.tools import given_glob
 
@@ -78,10 +77,9 @@ def test_a_glob_too_long_for_the_store_s_regex_is_refused_without_its_echo(glob:
         given_glob(glob)
 
 
-# What a glob an agent writes is made of, but the characters a search refuses outright,
-# and no step out of the directory searched
-WRITTEN_GLOBS = strategies.text(alphabet="ab.*?/ \t", max_size=40).filter(
-    lambda glob: PARENT_DIRECTORY not in parts_of(glob)
+# What a glob an agent writes is made of, of those a search does not refuse
+WRITTEN_GLOBS = strategies.text(alphabet="ab.*?/ !\t", max_size=40).filter(
+    lambda glob: refusal_of(glob) is None
 )
 
 

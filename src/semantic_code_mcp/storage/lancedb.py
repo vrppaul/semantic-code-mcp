@@ -146,7 +146,8 @@ NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
 # The full-text index keeps the words LanceDB drops by default (`a`, `the`, `is`, `not`):
-# the harness found more with them kept (ADR 006, stage 6)
+# the questions the harness chooses by gained 2.1, the held-out ones lost 0.5, at 6-8% more
+# index (ADR 006, stage 6)
 REMOVE_STOP_WORDS = False
 COSINE_METRIC = "cosine"
 # What LanceDB adds to a hit, the distance of a vector hit and the score of a text hit:

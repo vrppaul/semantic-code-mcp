@@ -18,8 +18,8 @@ CURRENT_DIRECTORY = "."
 PARENT_DIRECTORY = ".."
 # A part a path spells the directory it is in with, or that two slashes leave
 NAMELESS_PARTS = frozenset({"", CURRENT_DIRECTORY})
-# The longest glob a search reads, once read: thousands of wildcards overflow the store's
-# regex. Its refusal does not repeat the glob back.
+# The longest glob a search reads, as written and once read: thousands of wildcards
+# overflow the store's regex. Its refusal does not repeat the glob back.
 LONGEST_GLOB = 1000
 TOO_LONG = f"A glob of more than {LONGEST_GLOB} characters is not read"
 # What a glob of a .gitignore or a shell may start with or hold that a search does not
@@ -72,8 +72,8 @@ def spelling_of(glob: str) -> str | None:
     named = [part for part in parts if part not in NAMELESS_PARTS]
     if not named:
         return None
-    # A slash makes a path when a named part follows it, or when it leads the glob
-    is_path = parts[0] in NAMELESS_PARTS or any(part not in NAMELESS_PARTS for part in parts[1:])
+    # A slash makes a path when a named part follows it, as it does a leading one here
+    is_path = any(part not in NAMELESS_PARTS for part in parts[1:])
     joined = PATH_SEPARATOR.join(named)
     return PATH_SEPARATOR + joined if is_path else joined
 
