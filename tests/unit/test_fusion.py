@@ -90,12 +90,3 @@ def test_chunks_ranked_alike_come_closest_in_meaning_first(
     )
 
     assert [hit.chunk.chunk_id for hit in fuse(candidates)] == order
-
-
-def test_a_section_of_prose_comes_after_code_ranked_alike_even_closer_in_meaning():
-    candidates = SearchCandidates(
-        by_vector=[candidate("section", similarity=0.6, kind=ChunkKind.section)],
-        by_keyword=[candidate("function", similarity=0.4)],
-    )
-
-    assert [hit.chunk.chunk_id for hit in fuse(candidates)] == ["function", "section"]

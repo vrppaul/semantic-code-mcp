@@ -212,6 +212,15 @@ def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
     assert matching(filled_store, "duration_ms") == []
 
 
+def test_a_word_lancedb_drops_by_default_still_finds_a_chunk(store: LanceDBIndexStore):
+    """`is` of `is_empty`, `not` or `if` are words of code that an agent searches for, and
+    the harness found more when the index kept them."""
+    chunk = function_chunk("is_empty", "check.py", "def is_empty(items): return not items")
+    store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
+
+    assert [candidate.chunk.name for candidate in matching(store, "not")] == ["is_empty"]
+
+
 def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
     filled_store: LanceDBIndexStore,
 ):

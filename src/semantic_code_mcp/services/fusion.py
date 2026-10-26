@@ -4,27 +4,17 @@ Reciprocal Rank Fusion scores a chunk by the sum, over the channels that found i
 1 / (RRF_K + its rank there). It reads only ranks, so neither channel's scores need a
 scale the other's can be put on: full-text scores move with the corpus and with whether
 the full-text index has taken a row in yet, cosine similarities with the model. A chunk
-both channels rank within their first RRF_K + 1 comes before one of its kind only a single
-channel ranks first.
-
-A chunk's fused score is weighed by its kind: prose, which a model reads as easily as the
-question, would otherwise outrank the code it describes.
+both channels rank within their first RRF_K + 1 comes before one only a single channel
+ranks first. Every kind of chunk is fused alike: on the harness, weighing prose down
+gained nothing once every right answer counted (ADR 006, stage 6, the prose prior).
 """
 
-from collections.abc import Mapping
-from types import MappingProxyType
-
-from semantic_code_mcp.domain.models import Candidate, ChunkKind, SearchCandidates, SearchHit
+from semantic_code_mcp.domain.models import Candidate, SearchCandidates, SearchHit
 
 # The constant of Reciprocal Rank Fusion, as its authors set it (Cormack, Clarke and
 # Büttcher, 2009): large enough that one channel's first few hits do not drown the rest
 RRF_K = 60
 FIRST_RANK = 1
-# What a kind's fused score is multiplied by: a section of a document ranks a little below
-# code fused alike, as the harness chose (ADR 006, stage 6, the prose prior)
-KIND_WEIGHTS: Mapping[ChunkKind, float] = MappingProxyType({ChunkKind.section: 0.95})
-# The weight of a kind the table leaves out
-UNWEIGHTED = 1.0
 
 
 def fuse(candidates: SearchCandidates) -> list[SearchHit]:
@@ -51,15 +41,13 @@ def ranks_of(found: list[Candidate]) -> dict[str, int]:
 
 
 def hit_of(candidate: Candidate, vector_rank: int | None, keyword_rank: int | None) -> SearchHit:
-    """A chunk with its ranks in each channel and the score they fuse to, weighed by its
-    kind."""
+    """A chunk with its ranks in each channel and the score they fuse to."""
     return SearchHit(
         chunk=candidate.chunk,
         similarity=candidate.similarity,
         vector_rank=vector_rank,
         keyword_rank=keyword_rank,
-        fused_score=KIND_WEIGHTS.get(candidate.chunk.kind, UNWEIGHTED)
-        * (reciprocal_rank(vector_rank) + reciprocal_rank(keyword_rank)),
+        fused_score=reciprocal_rank(vector_rank) + reciprocal_rank(keyword_rank),
     )
 
 

@@ -83,9 +83,9 @@ from semantic_code_mcp.storage.search_text import search_text
 
 log = structlog.get_logger()
 
-# Bumped by any change to the tables' columns or to what one is made from (4: the search
-# text splits only names and parents); each version keeps an index of its own
-SCHEMA_VERSION = 4
+# Bumped by any change to the tables' columns or to what one is made from, its full-text
+# index among them (5: stop words kept); each version keeps an index of its own
+SCHEMA_VERSION = 5
 
 # An index's directory, under the project's, named by its layout and its identity's digest;
 # its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
@@ -145,6 +145,9 @@ VECTOR_LENGTH_AXIS = 1
 NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
+# The full-text index keeps the words LanceDB drops by default (`is`, `not`, `if`, `for`),
+# which are words of code an agent searches for (ADR 006, stage 6)
+REMOVE_STOP_WORDS = False
 COSINE_METRIC = "cosine"
 # What LanceDB adds to a hit, the distance of a vector hit and the score of a text hit:
 # named among the columns a search reads, or each search warns that a later LanceDB will
@@ -422,7 +425,7 @@ class LanceDBIndexStore(IndexStore):
                 .execute(rows)
             )
         if not has_full_text_index(table):
-            table.create_fts_index(SEARCH_TEXT_COLUMN)
+            table.create_fts_index(SEARCH_TEXT_COLUMN, remove_stop_words=REMOVE_STOP_WORDS)
 
     def _write_records(self, database: lancedb.DBConnection, update: IndexUpdate) -> None:
         """Record the files written and drop the records of the files removed, after their
