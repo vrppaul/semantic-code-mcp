@@ -2,14 +2,25 @@
 each file they came from, and the manifest of what built them.
 
 A project's index directory holds an index for each identity — the model, the chunker
-version — and layout, each in a directory of its own named after them. So a session of
-another model or version, or a server upgraded or rolled back, uses an index of its own
-and never builds this one again; switching back finds the old one still there. An index
-nobody wrote for UNUSED_INDEX_RETENTION is removed by the next write of another, and so
-is what 0.4 kept directly in the project's directory.
+version — and layout, each in a directory of its own named after them, with its write
+lock beside it. So a session of another model or version, or a server upgraded or rolled
+back, uses an index of its own and never builds this one again; switching back finds the
+old one still there.
 
-A write is one call, under a file lock in the index's directory, so two server processes
-on one index never write side by side. A write of changed files replaces those files'
+An index nobody used for UNUSED_INDEX_RETENTION is removed, and so is what 0.4 kept
+directly in the project's directory. A write renames a new manifest into the index's
+directory and a read touches a stamp there, at most once per USE_MARK_INTERVAL, so an
+index's age is the newest change to its directory or to what lies directly inside it.
+Each store looks for the project's unused indexes as often as it marks its own. It takes
+an index's write lock without waiting, so it never removes one a writer holds, looks at
+its age again under the lock, and renames the directory out of every store's reach
+before deleting it: a writer that comes later writes a new index, which a run fills.
+The lock lies beside the directory, not in it, so the rename works where an open file
+pins its directory (Windows); lock files are never deleted, since a writer may be
+waiting on one.
+
+A write is one call, under the index's write lock, so two server processes on one index
+never write side by side. A write of changed files replaces those files'
 chunks, then their records; a whole-index write removes every record, then every chunk,
 then writes both again. The manifest comes last either way. The chunks table is made by
 the first write that has vectors, as wide as they are; vectors of another width (a model
@@ -24,10 +35,11 @@ index and prunes runs after a write once a table has gathered enough versions, n
 every write, where it would cost more than the write itself; after a whole index is
 written it runs at once, so its rows are not searched unindexed until then.
 
-The index directory holds a `.gitignore` of `*`, so a project-local index never shows
-in the project's own repository.
+The project's index directory holds a `.gitignore` of `*`, so a project-local index
+never shows in the project's own repository, nor what 0.4 left there.
 """
 
+import contextlib
 import hashlib
 import os
 import shutil
@@ -65,22 +77,30 @@ log = structlog.get_logger()
 # Bumped by any change to the tables' columns; each version keeps an index of its own
 SCHEMA_VERSION = 1
 
-# An index's directory, under the project's, named by its layout and its identity's digest
+# An index's directory, under the project's, named by its layout and its identity's digest;
+# its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
 INDEX_DIRECTORY_FORMAT = "schema-{schema_version}-{identity_digest}"
 INDEX_DIRECTORY_PATTERN = "schema-*"
 IDENTITY_DIGEST_LENGTH = 16
-# An index nobody wrote for this long is removed by the next write of another index of the
-# project: no session indexed with its model or version for a week, and a rebuild costs
-# minutes where keeping it costs the disk it fills
+WRITE_LOCK_SUFFIX = ".lock"
+# An index nobody read or wrote for this long is removed: no session used its model or
+# version for a week, and a rebuild costs minutes where keeping it costs the disk it fills
 UNUSED_INDEX_RETENTION = timedelta(days=7)
+# How often a store marks its index as used and looks for the project's unused indexes:
+# rarely enough to cost nothing, far more often than an index takes to count as unused
+USE_MARK_INTERVAL = timedelta(hours=1)
+USE_STAMP_FILE = "last_used"
+# Taken without waiting: an index whose writer holds its lock is in use
+NO_WAIT_SECONDS = 0
 # What 0.4 kept directly in a project's index directory: its chunks table and its record
 # of mtimes, removed together
 LEGACY_ENTRIES = ("chunks.lance", "file_mtimes.json")
+# An index is renamed to this prefix before it is deleted, out of reach of every store
+REMOVING_PREFIX = ".removing-"
 
 CHUNKS_TABLE = "chunks"
 FILES_TABLE = "files"
 MANIFEST_FILE = "manifest.json"
-WRITE_LOCK_FILE = "write.lock"
 GITIGNORE_FILE = ".gitignore"
 IGNORE_EVERYTHING = "*\n"
 # Written beside its target, then renamed over it, so a crash never leaves half a file
@@ -173,11 +193,13 @@ class StoredChunk(BaseModel):
 
 
 class LeftIndex(BaseModel):
-    """An index of the project this store does not use, by the paths it is made of."""
+    """An index of the project this store does not use: the paths it is made of, and the
+    lock its writers hold, which 0.4 had none of."""
 
     model_config = ConfigDict(frozen=True)
 
     parts: list[Path]
+    write_lock: Path | None
 
 
 class StoredFile(BaseModel):
@@ -213,11 +235,19 @@ class LanceDBIndexStore(IndexStore):
         self._connection: lancedb.DBConnection | None = None
         # The version each table had after its last upkeep; only a write changes it
         self._kept_up_at: dict[str, int] = {}
+        self._noting_use = threading.Lock()
+        # When this store last marked its index as used, by the monotonic clock
+        self._noted_use_at: float | None = None
 
     @property
     def directory(self) -> Path:
         """Where this index lives."""
         return self._directory
+
+    @property
+    def write_lock(self) -> Path:
+        """The file a writer of this index locks, beside its directory."""
+        return write_lock_of(self._directory)
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -227,7 +257,7 @@ class LanceDBIndexStore(IndexStore):
         try:
             return IndexManifest.model_validate_json(path.read_bytes())
         except ValidationError as error:
-            # Read as an index without a manifest, which the next run rebuilds
+            # Read as an index without a manifest, which its next write writes again
             log.warning("manifest_unreadable", directory=str(self._directory), error=str(error))
             return None
 
@@ -247,8 +277,9 @@ class LanceDBIndexStore(IndexStore):
         if len(update.chunks) != len(vectors):
             message = f"{len(update.chunks)} chunks but {len(vectors)} vectors"
             raise ValueError(message)
+        self._note_use()
         database = self._created_database()
-        with FileLock(self._directory / WRITE_LOCK_FILE, timeout=self._lock_timeout_seconds):
+        with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
             if update.chunks:
                 self._fit_layout(database, vectors.shape[VECTOR_LENGTH_AXIS])
             match update.scope:
@@ -265,7 +296,6 @@ class LanceDBIndexStore(IndexStore):
             )
             write_atomically(self._directory / MANIFEST_FILE, manifest.model_dump_json())
             self._keep_up(every_table=update.scope == WriteScope.everything)
-        self._remove_unused_indexes()
         log.debug(
             "index_written",
             scope=update.scope,
@@ -402,19 +432,22 @@ class LanceDBIndexStore(IndexStore):
                 self._kept_up_at[name] = table.version
                 log.debug("table_kept_up", table=name)
 
-    def _remove_unused_indexes(self) -> None:
-        """Remove each other index of the project that nothing wrote for
-        UNUSED_INDEX_RETENTION. One that vanishes or cannot be read meanwhile is left for
-        the next write. A session that writes such an index at the very moment it goes
-        fails that write once; its next run builds the index again."""
-        unused_before = time.time() - UNUSED_INDEX_RETENTION.total_seconds()
-        for left in left_indexes(self._project_directory, self._directory):
-            try:
-                if last_change(left) < unused_before:
-                    remove_index(left)
-                    log.info("unused_index_removed", parts=[str(part) for part in left.parts])
-            except OSError as error:
-                log.warning("unused_index_not_removed", error=str(error))
+    def _note_use(self) -> None:
+        """Mark this index as used, so another store leaves it, and remove the project's
+        indexes nobody used for UNUSED_INDEX_RETENTION; at most once per USE_MARK_INTERVAL.
+        Neither can fail a read: what cannot be done now is left for the next time."""
+        with self._noting_use:
+            now = time.monotonic()
+            interval = USE_MARK_INTERVAL.total_seconds()
+            if self._noted_use_at is not None and now - self._noted_use_at < interval:
+                return
+            self._noted_use_at = now
+        try:
+            if self._directory.is_dir():
+                (self._directory / USE_STAMP_FILE).touch()
+        except OSError as error:
+            log.debug("index_use_not_marked", directory=str(self._directory), error=str(error))
+        remove_unused_indexes(self._project_directory, self._directory)
 
     def _count(self, name: str) -> int:
         table = self._open(name)
@@ -429,14 +462,16 @@ class LanceDBIndexStore(IndexStore):
 
     def _existing_database(self) -> lancedb.DBConnection | None:
         """The connection, for a reader; None while the index directory is not made yet."""
+        self._note_use()
         if not self._directory.is_dir():
             return None
         return self._connect()
 
     def _created_database(self) -> lancedb.DBConnection:
-        """The connection, for a writer, making the directory and its `.gitignore` first."""
+        """The connection, for a writer, making the directory and the project's
+        `.gitignore` first."""
         self._directory.mkdir(parents=True, exist_ok=True)
-        ignore_file = self._directory / GITIGNORE_FILE
+        ignore_file = self._project_directory / GITIGNORE_FILE
         if not ignore_file.exists():
             ignore_file.write_text(IGNORE_EVERYTHING)
         return self._connect()
@@ -457,23 +492,67 @@ def index_directory_name(identity: IndexIdentity) -> str:
     )
 
 
+def write_lock_of(index_directory: Path) -> Path:
+    return index_directory.with_name(index_directory.name + WRITE_LOCK_SUFFIX)
+
+
+def remove_unused_indexes(project_directory: Path, own_directory: Path) -> None:
+    """Remove the project's indexes nobody used for UNUSED_INDEX_RETENTION, and finish the
+    removals that stopped after their rename. One that vanishes, is locked or cannot be
+    removed meanwhile is left for the next time."""
+    unused_before = time.time() - UNUSED_INDEX_RETENTION.total_seconds()
+    for entry in project_directory.glob(f"{REMOVING_PREFIX}*"):
+        try:
+            delete_entry(entry)
+        except OSError as error:
+            log.debug("removal_not_finished", entry=str(entry), error=str(error))
+    for left in left_indexes(project_directory, own_directory):
+        parts = [str(part) for part in left.parts]
+        try:
+            if remove_if_unused(left, unused_before):
+                log.info("unused_index_removed", parts=parts)
+        except OSError as error:
+            log.debug("unused_index_left", parts=parts, error=str(error))
+
+
 def left_indexes(project_directory: Path, own_directory: Path) -> list[LeftIndex]:
     """The project's indexes other than this store's: one per identity directory, and the
     entries 0.4 kept in the project's directory, as one."""
     others = [
-        LeftIndex(parts=[directory])
+        LeftIndex(parts=[directory], write_lock=write_lock_of(directory))
         for directory in sorted(project_directory.glob(INDEX_DIRECTORY_PATTERN))
-        if directory != own_directory
+        if directory.is_dir() and directory != own_directory
     ]
     legacy = [
         project_directory / name for name in LEGACY_ENTRIES if (project_directory / name).exists()
     ]
-    return [*others, LeftIndex(parts=legacy)] if legacy else others
+    return [*others, LeftIndex(parts=legacy, write_lock=None)] if legacy else others
+
+
+def remove_if_unused(left: LeftIndex, unused_before: float) -> bool:
+    """Remove an index nobody used since `unused_before`, unless a writer holds its lock;
+    whether it went. Its age is read again under the lock, which a writer that finished in
+    between has moved on, and its parts are renamed out of reach before they are deleted."""
+    if last_change(left) >= unused_before:
+        return False
+    lock = (
+        contextlib.nullcontext()
+        if left.write_lock is None
+        else FileLock(left.write_lock, timeout=NO_WAIT_SECONDS)
+    )
+    with lock:
+        if last_change(left) >= unused_before:
+            return False
+        moved = [part.rename(part.with_name(REMOVING_PREFIX + part.name)) for part in left.parts]
+    for part in moved:
+        delete_entry(part)
+    return True
 
 
 def last_change(left: LeftIndex) -> float:
-    """When an index was last written, in seconds since the epoch: the latest change to any
-    of its parts or to what lies directly inside one, where each write leaves a new file."""
+    """When an index was last used, in seconds since the epoch: the latest change to any of
+    its parts or to what lies directly inside one, where a write renames a new manifest
+    and a read touches a stamp."""
     entries = [
         *left.parts,
         *(child for part in left.parts if part.is_dir() for child in part.iterdir()),
@@ -481,12 +560,11 @@ def last_change(left: LeftIndex) -> float:
     return max(entry.lstat().st_mtime for entry in entries)
 
 
-def remove_index(left: LeftIndex) -> None:
-    for part in left.parts:
-        if part.is_dir():
-            shutil.rmtree(part)
-        else:
-            part.unlink(missing_ok=True)
+def delete_entry(entry: Path) -> None:
+    if entry.is_dir():
+        shutil.rmtree(entry)
+    else:
+        entry.unlink(missing_ok=True)
 
 
 def chunks_table(chunks: list[Chunk], vectors: VectorMatrix) -> pyarrow.Table:

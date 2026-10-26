@@ -22,8 +22,8 @@ from semantic_code_mcp.domain.models import (
 from semantic_code_mcp.storage.lancedb import (
     FILES_TABLE,
     MANIFEST_FILE,
+    REMOVING_PREFIX,
     SCHEMA_VERSION,
-    WRITE_LOCK_FILE,
     LanceDBIndexStore,
 )
 from tests.fakes import EMBEDDING_DIMENSION
@@ -190,7 +190,7 @@ def test_a_write_waits_while_another_process_writes(tmp_path: Path):
     store.directory.mkdir(parents=True)
     chunk = function_chunk("held", "/project/held.py", "def held(): pass")
 
-    with FileLock(store.directory / WRITE_LOCK_FILE), pytest.raises(Timeout):
+    with FileLock(store.write_lock), pytest.raises(Timeout):
         store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
     assert store.counts().chunks == 0
@@ -277,21 +277,83 @@ def test_an_index_written_within_the_week_is_left_alone(
 
     store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
-    assert names_in(tmp_path / "index") == sorted([store.directory.name, *left])
+    assert set(left) <= set(names_in(tmp_path / "index"))
     assert store.counts() == IndexCounts(files=1, chunks=1)
 
 
-@pytest.mark.parametrize("leave_index", LEFT_INDEXES)
-def test_an_index_nobody_wrote_for_a_week_is_removed_by_the_next_write(
-    store: LanceDBIndexStore, tmp_path: Path, leave_index: Callable[[Path], list[str]]
-):
-    leave_index(tmp_path / "index")
-    set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
+def write_own_index(store: LanceDBIndexStore) -> None:
     chunk = function_chunk("own", "/project/own.py", "def own(): pass")
-
     store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
-    assert names_in(tmp_path / "index") == [store.directory.name]
+
+def read_own_index(store: LanceDBIndexStore) -> None:
+    store.counts()
+
+
+@pytest.mark.parametrize("leave_index", LEFT_INDEXES)
+@pytest.mark.parametrize(
+    "use_own_index",
+    [pytest.param(write_own_index, id="written"), pytest.param(read_own_index, id="read")],
+)
+def test_an_index_nobody_used_for_a_week_is_removed_when_another_is_first_used(
+    store: LanceDBIndexStore,
+    tmp_path: Path,
+    leave_index: Callable[[Path], list[str]],
+    use_own_index: Callable[[LanceDBIndexStore], None],
+):
+    left = leave_index(tmp_path / "index")
+    set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
+
+    use_own_index(store)
+
+    assert set(names_in(tmp_path / "index")).isdisjoint(left)
+
+
+def test_an_index_only_read_within_the_week_is_left_alone(store: LanceDBIndexStore, tmp_path: Path):
+    """A session that searches a project nobody edits keeps its index, unwritten for weeks."""
+    left = leave_an_index_of_another_identity(tmp_path / "index")
+    read_as_another_session(tmp_path / "index")
+    set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
+    read_as_another_session(tmp_path / "index")
+
+    write_own_index(store)
+
+    assert set(left) <= set(names_in(tmp_path / "index"))
+
+
+def read_as_another_session(project_directory: Path) -> None:
+    """A search of the other identity's index, by a server process of its own."""
+    LanceDBIndexStore(
+        project_directory, OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+    ).counts()
+
+
+def test_an_unused_index_that_another_process_is_writing_is_left_alone(
+    store: LanceDBIndexStore, tmp_path: Path
+):
+    other = LanceDBIndexStore(
+        tmp_path / "index", OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+    )
+    write_own_index(other)
+    set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
+
+    with FileLock(other.write_lock):
+        write_own_index(store)
+
+    assert other.directory.name in names_in(tmp_path / "index")
+
+
+def test_a_removal_stopped_midway_is_finished_by_the_next_use(
+    store: LanceDBIndexStore, tmp_path: Path
+):
+    """An index is renamed before it is deleted; a crash between the two leaves the name."""
+    half_removed = tmp_path / "index" / f"{REMOVING_PREFIX}schema-1-0123456789abcdef"
+    half_removed.mkdir(parents=True)
+    (half_removed / MANIFEST_FILE).write_text("{}")
+
+    write_own_index(store)
+
+    assert half_removed.name not in names_in(tmp_path / "index")
 
 
 def names_in(directory: Path) -> list[str]:

@@ -99,7 +99,7 @@ class Chunker(ABC):
     @property
     @abstractmethod
     def version(self) -> int:
-        """The version of the chunks it makes; an index of another version is rebuilt."""
+        """The version of the chunks it makes; each version keeps an index of its own."""
 
     @abstractmethod
     def chunk_file(self, file_path: str) -> list[Chunk]:

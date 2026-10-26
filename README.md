@@ -20,7 +20,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — hybrid semantic + keyword search with recency boosting
 
-Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each model, chunker version and storage layout keeps an index of its own, so a new version or another model builds a new index once, and switching back finds the old one; an index nobody wrote for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
+Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each model, chunker version and storage layout keeps an index of its own, so a new version or another model builds a new index once, and switching back finds the old one; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
 
 ## Installation
 

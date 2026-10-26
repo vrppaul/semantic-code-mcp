@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
 - Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done
 - The index keeps a record of each file and a manifest of what built it, in place of `file_mtimes.json`
-- Each model, chunker version and storage layout keeps an index of its own beside the others in the project's index directory: two sessions of different versions or models never build each other's index again, and switching back finds the old one. The first search after the upgrade builds a new index; one that nobody wrote for a week is removed, 0.4's included
+- Each model, chunker version and storage layout keeps an index of its own beside the others in the project's index directory: two sessions of different versions or models never build each other's index again, and switching back finds the old one. The first search after the upgrade builds a new index; one that no session read or wrote for a week is removed, 0.4's included, but never while a writer holds it
 - A run writes once, after embedding: a forced re-index or a rebuild keeps the old index searchable until the new one is ready, instead of emptying it first
 - A write no longer rebuilds the full-text index; the index is compacted, its new rows indexed and old versions pruned once twenty versions have gathered, and at once after a whole index is written
 - `index_status` of a project never indexed no longer creates its index directory

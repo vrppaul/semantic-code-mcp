@@ -13,13 +13,13 @@ import pytest
 
 from semantic_code_mcp.app import build_chunker, build_registry, open_index_store
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
-from semantic_code_mcp.config import Settings, get_index_path
+from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
 from semantic_code_mcp.domain.models import IndexIdentity, RebuildReason
 from semantic_code_mcp.embedding import SentenceTransformerEmbedder
 from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService, IndexPhase
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.storage.lancedb import FILES_TABLE, MATCH_EVERY_ROW
+from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES, MATCH_EVERY_ROW
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
@@ -48,6 +48,8 @@ LATER_MTIME_SECONDS = 4_000_000_000
 TWO_AND_A_PART_SLICES = 2 * EMBEDDING_SLICE_SIZE + 10
 # A vector width other than the fake model's, so a change of model changes the width too
 WIDE = 16
+# 0.4's record of mtimes, which it kept in a project-local index directory
+LEGACY_RECORDS = LEGACY_ENTRIES[1]
 # What the fakes and the chunkers in these tests build an index from
 IDENTITY = IndexIdentity(model_name=FAKE_MODEL_NAME, chunker_version=CHUNKER_VERSION)
 
@@ -244,8 +246,11 @@ async def test_tracked_file_deleted_from_disk_is_not_indexed_again(
 async def test_a_local_index_never_shows_in_the_project_s_git_status(
     sample_project: Path, tmp_path: Path
 ):
+    """Not even what 0.4 left in it, untracked, before its removal a week later."""
     make_repository(sample_project)
     commit_all(sample_project)
+    (sample_project / LOCAL_INDEX_DIRECTORY).mkdir()
+    (sample_project / LOCAL_INDEX_DIRECTORY / LEGACY_RECORDS).write_text("{}")
     settings = Settings(cache_dir=tmp_path / "cache", local_index=True)
     indexing = build_registry(settings, FakeEmbedder()).services_for(sample_project).indexing
 
