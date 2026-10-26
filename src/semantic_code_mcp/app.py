@@ -70,6 +70,7 @@ def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
             ignore_patterns=settings.ignore_patterns,
             use_gitignore=settings.use_gitignore,
             git_timeout_seconds=settings.git_timeout_seconds,
+            home_directory=Path.home(),
         ),
         open_store=open_index_store,
     )

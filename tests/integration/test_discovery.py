@@ -13,17 +13,21 @@ PYTHON_EXTENSIONS = (".py",)
 NO_IGNORE_PATTERNS: tuple[str, ...] = ()
 SHORT_GIT_TIMEOUT_SECONDS = 0.2
 GIT_TIMEOUT_SECONDS = 10.0
+# A home directory no repository of a test lies at or above
+HOME_OF_NO_TEST = Path("/home-of-no-test")
 
 
 def make_discovery(
     ignore_patterns: tuple[str, ...] = NO_IGNORE_PATTERNS,
     use_gitignore: bool = True,
+    home_directory: Path = HOME_OF_NO_TEST,
 ) -> SourceDiscovery:
     return SourceDiscovery(
         extensions=PYTHON_EXTENSIONS,
         ignore_patterns=ignore_patterns,
         use_gitignore=use_gitignore,
         git_timeout_seconds=GIT_TIMEOUT_SECONDS,
+        home_directory=home_directory,
     )
 
 
@@ -239,6 +243,7 @@ class TestGitUnavailable:
             ignore_patterns=NO_IGNORE_PATTERNS,
             use_gitignore=True,
             git_timeout_seconds=SHORT_GIT_TIMEOUT_SECONDS,
+            home_directory=HOME_OF_NO_TEST,
         )
 
         files = discovery.discover(repository)
@@ -342,14 +347,19 @@ def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: 
 
 @pytest.fixture
 def directories(tmp_path: Path) -> Path:
-    """A repository with a package two levels down, a directory outside any repository,
-    and a home directory under git for dotfiles that ignores the project inside it."""
+    """A repository with a package two levels down, a directory outside any repository, a
+    repository that ignores the project inside it, a large repository that hides untracked
+    files for speed, a home directory under git for dotfiles and a link to it, and a
+    repository that holds a home directory below its root."""
     repository = make_repository(tmp_path / "repo")
     (repository / "pkg" / "sub").mkdir(parents=True)
     (tmp_path / "plain").mkdir()
-    home = make_repository(tmp_path / "home")
-    (home / ".gitignore").write_text("*\n!.gitignore\n")
-    (home / "projects" / "app").mkdir(parents=True)
+    ignoring = make_repository(tmp_path / "ignoring")
+    (ignoring / ".gitignore").write_text("*\n!.gitignore\n")
+    (ignoring / "projects" / "app").mkdir(parents=True)
+    large = make_repository(tmp_path / "large")
+    run_git(large, "config", "status.showUntrackedFiles", "no")
+    (large / "pkg").mkdir()
     dotfiles = make_repository(tmp_path / "dotfiles")
     run_git(dotfiles, "config", "status.showUntrackedFiles", "no")
     (dotfiles / ".bashrc").write_text("export EDITOR=vi\n")
@@ -361,6 +371,10 @@ def directories(tmp_path: Path) -> Path:
     (dotfiles / "projects" / "kept" / ".editorconfig").write_text("root = true\n")
     run_git(dotfiles, "add", "projects/kept/.editorconfig")
     run_git(dotfiles, "commit", "--quiet", "--message", "editor settings")
+    (tmp_path / "linked-home").symlink_to(dotfiles)
+    system = make_repository(tmp_path / "system")
+    (system / "home" / "user" / "projects" / "app").mkdir(parents=True)
+    (system / "srv" / "app").mkdir(parents=True)
     return tmp_path
 
 
@@ -370,13 +384,10 @@ def directories(tmp_path: Path) -> Path:
         pytest.param("repo/pkg/sub", "repo", id="a directory inside a repository"),
         pytest.param("repo", "repo", id="a repository's root"),
         pytest.param("plain", "plain", id="a directory outside any repository"),
-        pytest.param("home/projects/app", "home/projects/app", id="a project the repo ignores"),
         pytest.param(
-            "dotfiles/projects/tool", "dotfiles/projects/tool", id="a project it tracks nothing of"
+            "ignoring/projects/app", "ignoring/projects/app", id="a project the repository ignores"
         ),
-        pytest.param(
-            "dotfiles/projects/kept", "dotfiles/projects/kept", id="a project it tracks a file of"
-        ),
+        pytest.param("large/pkg", "large", id="a repository that hides untracked files"),
     ],
 )
 def test_a_project_is_the_whole_repository_a_directory_lies_in(
@@ -386,6 +397,30 @@ def test_a_project_is_the_whole_repository_a_directory_lies_in(
     found = make_discovery().project_root_of((directories / asked).resolve())
 
     assert found == (directories / root).resolve()
+
+
+@pytest.mark.parametrize(
+    ("asked", "home"),
+    [
+        pytest.param("dotfiles/projects/tool", "dotfiles", id="a project it tracks nothing of"),
+        pytest.param("dotfiles/projects/kept", "dotfiles", id="a project it tracks a file of"),
+        pytest.param("dotfiles/projects/tool", "linked-home", id="a home through a symlink"),
+        pytest.param(
+            "system/home/user/projects/app", "system/home/user", id="a project in the home"
+        ),
+        pytest.param("system/srv/app", "system/home/user", id="a project beside the home"),
+    ],
+)
+def test_a_repository_at_or_above_the_home_directory_holds_projects_apart(
+    directories: Path, asked: str, home: str
+):
+    """A home directory under git for its dotfiles would otherwise index every project of
+    the user's as one, however its owner keeps untracked files out of its status."""
+    discovery = make_discovery(home_directory=directories / home)
+
+    found = discovery.project_root_of((directories / asked).resolve())
+
+    assert found == (directories / asked).resolve()
 
 
 def test_a_user_s_setting_that_hides_untracked_files_keeps_a_repository_whole(

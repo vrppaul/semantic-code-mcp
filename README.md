@@ -95,7 +95,7 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | `str` | required | Natural language description of what you're looking for |
-| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory |
+| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `chunk_kinds` | `list[str]` | all | Only chunks of these kinds: `module`, `function`, `method`, `class`, `section` |
 | `languages` | `list[str]` | all | Only chunks of files in these languages: `python`, `rust`, `markdown` |
@@ -111,7 +111,7 @@ Index a codebase for semantic search. Only processes new and changed files unles
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory |
+| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 | `force` | `bool` | `False` | Re-index all files regardless of changes |
 
 ### `index_status`
@@ -120,7 +120,7 @@ Check indexing status for a project.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory |
+| `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 
 Returns `is_indexed`, `last_updated`, `files_count`, `chunks_count` and `stale_files_count`.
 

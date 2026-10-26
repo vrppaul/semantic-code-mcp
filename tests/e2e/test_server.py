@@ -96,6 +96,9 @@ def documented_project(project: Path) -> Path:
         pytest.param({"languages": ["python"]}, ["load_config"], id="to Python"),
         pytest.param({"path_glob": "docs"}, [GUIDE_SECTION], id="to a directory"),
         pytest.param({"exclude_glob": "docs"}, ["load_config"], id="leaving a directory out"),
+        pytest.param(
+            {"path_glob": ""}, ["load_config", GUIDE_SECTION], id="by a blank glob, not at all"
+        ),
     ],
 )
 async def test_a_narrowed_search_keeps_to_what_it_names(
@@ -222,22 +225,6 @@ async def test_two_spellings_of_one_project_share_its_local_index(
 
     # One lock for both spellings: the two runs do not store the chunks twice
     assert IndexStatusResponse.model_validate(structured(result)).chunks_count == 2
-
-
-async def test_a_blank_glob_narrows_nothing(documented_project: Path, client: Client):
-    """Agents fill an optional string with an empty one."""
-    async with client:
-        result = await client.call_tool(
-            "search_code",
-            {
-                "query": CONFIGURATION_QUESTION,
-                "project_path": str(documented_project),
-                "path_glob": "",
-            },
-        )
-
-    hits = SearchCodeResponse.model_validate(structured(result)).results
-    assert sorted(hit.name for hit in hits) == sorted([GUIDE_SECTION, "load_config"])
 
 
 @pytest.fixture

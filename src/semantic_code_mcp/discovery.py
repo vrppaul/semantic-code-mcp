@@ -24,9 +24,6 @@ GIT_REDIRECTING_VARIABLES = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"}
 )
 
-# The git setting a repository that hides untracked files has, and its value then
-UNTRACKED_FILES_SETTING = "status.showUntrackedFiles"
-UNTRACKED_FILES_HIDDEN = b"no"
 # How ignore patterns are spelled: see SourceDiscovery.
 PATH_SEPARATOR = "/"
 CURRENT_DIRECTORY_PREFIX = "./"
@@ -109,11 +106,14 @@ class SourceDiscovery:
         ignore_patterns: Sequence[str],
         use_gitignore: bool,
         git_timeout_seconds: float,
+        home_directory: Path,
     ) -> None:
         self._extensions = frozenset(extensions)
         self._patterns = parse_ignore_patterns(ignore_patterns)
         self._use_gitignore = use_gitignore
         self._git_timeout_seconds = git_timeout_seconds
+        # Resolved as git resolves the work tree roots it is compared with
+        self._home_directory = home_directory.resolve()
 
     def discover(self, project_root: Path) -> list[SourceFile]:
         """The indexable files under a project root, by their paths from it and sorted by
@@ -128,13 +128,13 @@ class SourceDiscovery:
         """The root of the project a directory belongs to: of the git work tree it lies
         in, so a repository has one index whichever of its directories a search names; the
         directory itself outside a work tree, where the repository around it ignores it, or
-        where that repository's own setting hides untracked files, as a home directory under
-        git for its dotfiles is set up: its owner says what it does not track is not its.
-        Asked of git whether or not it lists the files."""
+        where that repository's root is the user's home directory or above it, as a home
+        under git for its dotfiles is, which holds projects rather than being one. Asked of
+        git whether or not it lists the files."""
         repository_root = self._repository_of(directory)
         if repository_root is None or repository_root == directory:
             return directory
-        if self._hides_untracked_files(directory):
+        if self._home_directory.is_relative_to(repository_root):
             return directory
         return repository_root
 
@@ -174,14 +174,6 @@ class SourceDiscovery:
             )
             return None
         return repository_root
-
-    def _hides_untracked_files(self, directory: Path) -> bool:
-        """Whether the repository around the directory keeps untracked files out of its
-        status by a setting of its own, as a home directory under git for its dotfiles is
-        set up to; a user's global setting, kept for speed in large repositories, is not
-        read."""
-        setting = self._run_git(["config", "--local", "--get", UNTRACKED_FILES_SETTING], directory)
-        return setting is not None and setting.stdout.strip() == UNTRACKED_FILES_HIDDEN
 
     def _is_ignored_by_git(self, root: Path) -> bool:
         """Whether the repository around root ignores root itself."""

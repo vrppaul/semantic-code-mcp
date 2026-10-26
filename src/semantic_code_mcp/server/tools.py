@@ -138,7 +138,8 @@ async def index_codebase(
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
-            indexes the whole repository.
+            indexes the whole repository, unless the repository ignores it or holds the
+            user's home directory.
         force: If True, re-index all files regardless of changes.
 
     Returns:
@@ -169,7 +170,8 @@ async def index_status(
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
-            reports the whole repository's index.
+            reports the whole repository's index, unless the repository ignores it or holds
+            the user's home directory.
 
     Returns:
         Index status including files count and chunks count.
