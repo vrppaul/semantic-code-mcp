@@ -3,15 +3,18 @@
 from pathlib import Path
 
 import pytest
-from evals.corpus import Answer, QuestionKind
+from evals.corpus import TOP_LEVEL, Answer, Corpus, CorpusSource, Query, QuestionKind
 from evals.quality import (
+    Hit,
     KindScores,
     QueryRanks,
     RankScores,
+    chunks_by_file,
     first_rank,
     hit_answers,
     is_ambiguous,
     is_held,
+    missing_answer_chunks,
     relative_hit,
     sample_names,
     score,
@@ -148,50 +151,50 @@ def test_a_question_shares_its_answer_s_words_when_a_stem_is_both_s(
     [
         pytest.param(
             Answer(path="types.py", symbol="convert"),
-            Answer(path="types.py", symbol="convert", parent="File"),
+            Hit(path="types.py", symbol="convert", parent="File"),
             True,
             id="no parent named, any parent",
         ),
         pytest.param(
             Answer(path="types.py", symbol="convert", parent="BoolParamType"),
-            Answer(path="types.py", symbol="convert", parent="BoolParamType"),
+            Hit(path="types.py", symbol="convert", parent="BoolParamType"),
             True,
             id="the parent named",
         ),
         pytest.param(
             Answer(path="types.py", symbol="convert", parent="BoolParamType"),
-            Answer(path="types.py", symbol="convert", parent="File"),
+            Hit(path="types.py", symbol="convert", parent="File"),
             False,
             id="another parent",
         ),
         pytest.param(
-            Answer(path="walk.rs", symbol="scan", parent=""),
-            Answer(path="walk.rs", symbol="scan", parent=""),
+            Answer(path="walk.rs", symbol="scan", parent=TOP_LEVEL),
+            Hit(path="walk.rs", symbol="scan", parent=TOP_LEVEL),
             True,
-            id="no parent, named so",
+            id="the top level named, a top-level hit",
         ),
         pytest.param(
-            Answer(path="walk.rs", symbol="scan", parent=""),
-            Answer(path="walk.rs", symbol="scan", parent="WorkerState"),
+            Answer(path="walk.rs", symbol="scan", parent=TOP_LEVEL),
+            Hit(path="walk.rs", symbol="scan", parent="WorkerState"),
             False,
-            id="no parent named, a method's hit",
+            id="the top level named, a method's hit",
         ),
         pytest.param(
             Answer(path="types.py", symbol="convert"),
-            Answer(path="types.py", symbol="to_info_dict"),
+            Hit(path="types.py", symbol="to_info_dict", parent=TOP_LEVEL),
             False,
             id="another name",
         ),
         pytest.param(
             Answer(path="types.py", symbol="convert"),
-            Answer(path="core.py", symbol="convert"),
+            Hit(path="core.py", symbol="convert", parent=TOP_LEVEL),
             False,
             id="another file",
         ),
     ],
 )
 def test_a_hit_answers_when_its_file_name_and_any_parent_named_are_the_answer_s(
-    answer: Answer, hit: Answer, matches: bool
+    answer: Answer, hit: Hit, matches: bool
 ):
     assert hit_answers(hit, answer) is matches
 
@@ -227,28 +230,59 @@ def test_an_answer_names_its_parent_where_chunks_of_several_share_its_name(
         pytest.param(
             Answer(path="types.py", symbol="convert", parent="Path"), False, id="a parent none has"
         ),
+        pytest.param(
+            Answer(path="types.py", symbol="open_url", parent=TOP_LEVEL),
+            True,
+            id="the top level named",
+        ),
     ],
 )
 def test_an_answer_is_held_when_a_chunk_of_its_file_is_it(answer: Answer, held: bool):
     """A mistyped parent would otherwise score as a miss forever."""
-    chunks = [defined("convert", "types.py", ChunkKind.method, parent="File")]
+    chunks = [
+        defined("convert", "types.py", ChunkKind.method, parent="File"),
+        defined("open_url", "types.py"),
+    ]
 
     assert is_held(answer, chunks) is held
 
 
-def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):
+def test_an_answer_in_a_file_the_server_does_not_index_is_a_mistake():
+    """It could never be hit, and would score as a miss forever."""
+    indexed = Answer(path="types.py", symbol="convert")
+    unindexed = Answer(path="build/types.py", symbol="convert")
+    question = Query(text="convert a value", kind=QuestionKind.code, answers=(indexed, unindexed))
+    corpus = Corpus(
+        corpus=CorpusSource(name="click", repository="click.git", commit="abc"),
+        queries=(question,),
+        held_out=(),
+    )
+
+    mistakes = missing_answer_chunks(corpus, chunks_by_file([defined("convert", "types.py")]))
+
+    assert mistakes == [unindexed]
+
+
+@pytest.mark.parametrize(
+    ("parent", "named"),
+    [
+        pytest.param("WorkerState", "WorkerState", id="a method"),
+        pytest.param(None, TOP_LEVEL, id="the top level"),
+    ],
+)
+def test_relative_hit_names_the_file_from_the_corpus_root_and_the_parent(
+    tmp_path: Path, parent: str | None, named: str
+):
     hit = SearchHit(
         file_path=str(tmp_path / "src" / "walk.rs"),
         name="scan",
         kind="function",
-        parent="WorkerState",
+        parent=parent,
         line_start=1,
         line_end=9,
     )
 
-    assert relative_hit(hit, tmp_path) == Answer(
-        path="src/walk.rs", symbol="scan", parent="WorkerState"
-    )
+    assert relative_hit(hit, tmp_path) == Hit(path="src/walk.rs", symbol="scan", parent=named)
 
 
 PYTHON_SOURCE = '''"""A module."""

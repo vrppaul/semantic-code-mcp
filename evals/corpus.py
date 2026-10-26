@@ -3,8 +3,8 @@
 Each corpus is a TOML file under `evals/corpora/`. A question says what it asks for, code
 or its documentation, and names every answer that counts — a file, the chunk name inside
 it, and its parent where chunks of several parents share that name — so a score never
-depends on taste. The questions under `held_out` are asked
-and reported apart, and never looked at while a weight or a floor is chosen.
+depends on taste. The questions under `held_out` are asked and reported apart, and never
+looked at while a weight or a floor is chosen.
 """
 
 import shutil
@@ -26,20 +26,21 @@ COMMIT_PREFIX_LENGTH = 12
 PARTIAL_CHECKOUT_SUFFIX = ".partial"
 
 
-# How an answer, and every hit, names the parent of a chunk that sits in nothing
+# How a key, and every hit, names the parent of a chunk that sits in nothing
 TOP_LEVEL = ""
 
 
 class Answer(BaseModel):
-    """A result that answers a question: a file, relative to the corpus root, a chunk name,
-    and the chunk's parent where chunks of several parents in the file share that name."""
+    """A chunk that answers a question, as its key names it: a file, relative to the corpus
+    root, a chunk name, and the chunk's parent where chunks of several parents in the file
+    share that name."""
 
     model_config = ConfigDict(frozen=True)
 
     path: str
     symbol: str
-    # In a key, named only where the name alone would take in another parent's chunk, and
-    # None for any parent; a hit always names it, TOP_LEVEL for a chunk that sits in nothing
+    # Named only where the name alone would take in another parent's chunk, TOP_LEVEL for a
+    # chunk that sits in nothing; None takes a chunk of any parent
     parent: str | None = None
 
 

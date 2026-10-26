@@ -9,6 +9,7 @@ chunk of that name, and how many results questions no corpus answers get, which 
 search keeps at none.
 """
 
+from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -62,6 +63,17 @@ WORDINGS = (True, False)
 HOME_OF_NO_CORPUS = Path("/home-of-no-corpus")
 
 
+class Hit(BaseModel):
+    """A result as a key is compared with it: its file from the corpus root, its chunk's
+    name, and its parent, TOP_LEVEL for a chunk that sits in nothing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    symbol: str
+    parent: str
+
+
 class QueryRanks(BaseModel):
     """Where one question's answer landed: the first matching file and the first matching chunk."""
 
@@ -74,7 +86,7 @@ class QueryRanks(BaseModel):
     file_rank: int | None
     chunk_rank: int | None
     # What came back, best first, so a miss can be read without running the model again
-    hits: tuple[Answer, ...]
+    hits: tuple[Hit, ...]
 
 
 class NameRank(BaseModel):
@@ -85,7 +97,7 @@ class NameRank(BaseModel):
 
     name: str
     rank: int | None
-    hits: tuple[Answer, ...]
+    hits: tuple[Hit, ...]
 
 
 class RankScores(BaseModel):
@@ -169,7 +181,8 @@ async def measure_quality(
     if missing_files:
         message = f"{corpus.corpus.name}: answers name files the checkout lacks: {missing_files}"
         raise CorpusMistakeError(message)
-    chunks_by_path = answer_files(corpus, working_tree)
+    chunks = chunks_of(working_tree)
+    chunks_by_path = chunks_by_file(chunks)
     missing_chunks = missing_answer_chunks(corpus, chunks_by_path)
     if missing_chunks:
         message = f"{corpus.corpus.name}: answers name chunks no file holds: {missing_chunks}"
@@ -183,7 +196,7 @@ async def measure_quality(
     held_out_ranks = [
         await rank_query(query, working_tree, connection) for query in corpus.held_out
     ]
-    names = sample_names(chunks_of(working_tree))
+    names = sample_names(chunks)
     name_ranks = [await rank_name(name, working_tree, connection) for name in names]
     return CorpusQuality(
         corpus=corpus.corpus.name,
@@ -352,17 +365,26 @@ def chunks_of(working_tree: Path) -> list[Chunk]:
     ]
 
 
-def missing_answer_chunks(corpus: Corpus, chunks_by_path: dict[str, list[Chunk]]) -> list[Answer]:
-    """Answers that no chunk the server's chunker gives that file matches.
+def chunks_by_file(chunks: Sequence[Chunk]) -> dict[str, list[Chunk]]:
+    """The chunks of each file, by its path from the corpus root."""
+    grouped: dict[str, list[Chunk]] = defaultdict(list)
+    for chunk in chunks:
+        grouped[chunk.path.as_posix()].append(chunk)
+    return dict(grouped)
 
-    Answers name chunks as the chunker names them, so a mistyped name would score as a
-    miss forever; this asks the chunker itself, without the model.
+
+def missing_answer_chunks(corpus: Corpus, chunks_by_path: dict[str, list[Chunk]]) -> list[Answer]:
+    """Answers that no chunk of their file, as the server discovers and chunks it, matches.
+
+    Answers name chunks as the chunker names them, so a mistyped name, or a file the server
+    never indexes, would score as a miss forever; this asks the server's own parts, without
+    the model.
     """
     return sorted(
         (
             answer
             for answer in every_answer(corpus)
-            if not is_held(answer, chunks_by_path[answer.path])
+            if not is_held(answer, chunks_by_path.get(answer.path, []))
         ),
         key=answer_order,
     )
@@ -375,7 +397,7 @@ def ambiguous_answers(corpus: Corpus, chunks_by_path: dict[str, list[Chunk]]) ->
         (
             answer
             for answer in every_answer(corpus)
-            if is_ambiguous(answer, chunks_by_path[answer.path])
+            if is_ambiguous(answer, chunks_by_path.get(answer.path, []))
         ),
         key=answer_order,
     )
@@ -383,7 +405,7 @@ def ambiguous_answers(corpus: Corpus, chunks_by_path: dict[str, list[Chunk]]) ->
 
 def is_held(answer: Answer, chunks: Sequence[Chunk]) -> bool:
     """Whether a chunk of the answer's file is the answer."""
-    return any(hit_answers(chunk_answer(chunk), answer) for chunk in chunks)
+    return any(hit_answers(chunk_hit(chunk), answer) for chunk in chunks)
 
 
 def is_ambiguous(answer: Answer, chunks: Sequence[Chunk]) -> bool:
@@ -393,7 +415,7 @@ def is_ambiguous(answer: Answer, chunks: Sequence[Chunk]) -> bool:
     return answer.parent is None and len(parents) > ONE_PARENT
 
 
-def hit_answers(hit: Answer, expected: Answer) -> bool:
+def hit_answers(hit: Hit, expected: Answer) -> bool:
     """Whether a hit is the expected answer: its file and name, and its parent where the
     answer names one."""
     return (
@@ -403,33 +425,25 @@ def hit_answers(hit: Answer, expected: Answer) -> bool:
     )
 
 
-def answer_files(corpus: Corpus, working_tree: Path) -> dict[str, list[Chunk]]:
-    """The chunks of every file an answer of the corpus names, by the file's path."""
-    chunker = build_chunker()
-    return {
-        path: chunker.chunk_file(working_tree, Path(path))
-        for path in {answer.path for answer in every_answer(corpus)}
-    }
-
-
 def every_answer(corpus: Corpus) -> set[Answer]:
     return {answer for query in corpus.every_query() for answer in query.answers}
 
 
-def chunk_answer(chunk: Chunk) -> Answer:
-    """A chunk as an answer names it."""
-    return Answer(path=chunk.path.as_posix(), symbol=chunk.name, parent=chunk.parent or TOP_LEVEL)
+def chunk_hit(chunk: Chunk) -> Hit:
+    """A chunk as a hit of it is compared with a key."""
+    return Hit(path=chunk.path.as_posix(), symbol=chunk.name, parent=chunk.parent or TOP_LEVEL)
 
 
 def answer_order(answer: Answer) -> tuple[str, str, str]:
-    return (answer.path, answer.symbol, answer.parent or "")
+    """The order mistakes are reported in; a key of any parent sorts beside the top level."""
+    return (answer.path, answer.symbol, answer.parent or TOP_LEVEL)
 
 
-def relative_hit(hit: SearchHit, working_tree: Path) -> Answer:
-    """A hit as an answer is written: its path from the corpus root, its chunk name, and its
-    parent, TOP_LEVEL where it sits in nothing."""
+def relative_hit(hit: SearchHit, working_tree: Path) -> Hit:
+    """A result as a key is compared with it: its path from the corpus root, its chunk name,
+    and its parent, TOP_LEVEL where it sits in nothing."""
     path = Path(hit.file_path).resolve().relative_to(working_tree.resolve()).as_posix()
-    return Answer(path=path, symbol=hit.name, parent=hit.parent or TOP_LEVEL)
+    return Hit(path=path, symbol=hit.name, parent=hit.parent or TOP_LEVEL)
 
 
 def first_rank(matches: Sequence[bool]) -> int | None:
