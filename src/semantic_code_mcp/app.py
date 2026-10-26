@@ -26,6 +26,10 @@ PACKAGE_NAME = "semantic-code-mcp"
 # How long a write waits while another server process writes the same index; a write
 # takes seconds at most, embedding having happened before it
 WRITE_LOCK_TIMEOUT_SECONDS = 60.0
+# The level MCPServer sets Python's own logging to, with a handler on stderr: the records
+# of the libraries below it, as httpx's for each model file the hub fetches, would land
+# among the server's JSON lines
+LIBRARY_LOG_LEVEL = "WARNING"
 
 
 def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegistry]:
@@ -41,6 +45,7 @@ def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegis
         version=version(PACKAGE_NAME),
         lifespan=partial(project_registry_lifespan, settings=settings, embedder=embedder),
         middleware=middleware,
+        log_level=LIBRARY_LOG_LEVEL,
     )
     for tool in (search_code, index_codebase, index_status):
         server.add_tool(tool)

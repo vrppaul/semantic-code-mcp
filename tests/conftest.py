@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.embedding import SentenceTransformerEmbedder
+from semantic_code_mcp.embedding import OnnxEmbedder
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -40,9 +40,9 @@ def git_without_the_machine_s_configuration(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.fixture(scope="session")
-def embedder() -> SentenceTransformerEmbedder:
+def embedder() -> OnnxEmbedder:
     """The real embedding model, loaded once for the whole session on first use."""
-    return SentenceTransformerEmbedder(MODEL_NAME)
+    return OnnxEmbedder(MODEL_NAME)
 
 
 @pytest.fixture

@@ -29,11 +29,10 @@ paths:
 - PyPI rejects duplicate versions — a tag can only be used once
 - The `fallback-version` (`0.0.0`) is used only when building outside a git checkout; a checkout without tags builds `0.0.1.devN`
 
-## Platform-Specific Install
+## Install
 
-macOS and Windows take PyPI's torch, already CPU-only (~1.7GB); Linux takes the CPU-only index, which avoids the CUDA build (~3.5GB → ~1.7GB):
+One command on every platform, with no torch and no extra index (about 0.6 GB):
 
 ```bash
-uvx semantic-code-mcp                                                          # macOS, Windows
-uvx --index pytorch-cpu=https://download.pytorch.org/whl/cpu semantic-code-mcp  # Linux
+uvx semantic-code-mcp
 ```

@@ -12,11 +12,11 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
               AST Chunker      Embedder        LanceDB
-             (tree-sitter)  (sentence-trans)  (vectors)
+             (tree-sitter)   (onnxruntime)    (vectors)
 ```
 
 1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
-2. **Embedding** — sentence-transformers encodes each chunk (all-MiniLM-L6-v2, 384d)
+2. **Embedding** — onnxruntime runs the model's ONNX export on each chunk (all-MiniLM-L6-v2, 384d), with no torch
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
 4. **Search** — a search by meaning and one by words, fused by rank
 
@@ -24,9 +24,7 @@ Indexing is incremental: the index records each file's modification time and siz
 
 ## Installation
 
-### macOS / Windows
-
-PyPI ships CPU-only torch on these platforms, so no extra flags are needed (~1.7GB install).
+One command on every platform, about 0.6 GB installed; the first start fetches the model's ONNX file (90 MB) from the Hugging Face hub once:
 
 ```bash
 uvx semantic-code-mcp
@@ -38,22 +36,6 @@ uvx semantic-code-mcp
 claude mcp add --scope user semantic-code -- uvx semantic-code-mcp
 ```
 
-### Linux
-
-> [!IMPORTANT]
-> Without the `--index` flag, PyPI installs CUDA-bundled torch (~3.5GB). Unless you need GPU acceleration (you don't — embeddings run on CPU), use the command below to get the CPU-only build (~1.7GB).
-
-```bash
-uvx --index pytorch-cpu=https://download.pytorch.org/whl/cpu semantic-code-mcp
-```
-
-**Claude Code integration:**
-
-```bash
-claude mcp add --scope user semantic-code -- \
-  uvx --index pytorch-cpu=https://download.pytorch.org/whl/cpu semantic-code-mcp
-```
-
 <details>
 <summary>Claude Desktop / other MCP clients (JSON config)</summary>
 
@@ -62,13 +44,11 @@ claude mcp add --scope user semantic-code -- \
   "mcpServers": {
     "semantic-code": {
       "command": "uvx",
-      "args": ["--index", "pytorch-cpu=https://download.pytorch.org/whl/cpu", "semantic-code-mcp"]
+      "args": ["semantic-code-mcp"]
     }
   }
 }
 ```
-
-On macOS/Windows you can omit the `--index` and `pytorch-cpu` args.
 
 </details>
 
@@ -132,7 +112,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 |----------|---------|-------------|
 | `SEMANTIC_CODE_MCP_CACHE_DIR` | `~/.cache/semantic-code-mcp` | Where indexes are stored |
 | `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` at the root of each project's repository; it holds a `.gitignore`, so git never shows it |
-| `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
+| `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | A sentence-transformers model with an ONNX export (`onnx/model.onnx`) that pools by the mean, by hub name or directory |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
@@ -172,7 +152,7 @@ claude mcp add --scope user semantic-code \
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | MCP Framework | mcp 2.x (`MCPServer`) | The official Python SDK, STDIO transport |
-| Embeddings | sentence-transformers | Local, no API costs, good quality |
+| Embeddings | onnxruntime over the model's ONNX export | Local, no API costs, no torch |
 | Vector Store | LanceDB | Embedded (like SQLite), no server needed |
 | Chunking | tree-sitter | AST-based, respects code structure |
 

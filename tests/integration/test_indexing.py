@@ -21,7 +21,7 @@ from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
 from semantic_code_mcp.domain.models import IndexCounts, IndexIdentity
-from semantic_code_mcp.embedding import SentenceTransformerEmbedder
+from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES, NO_CANDIDATES
@@ -353,7 +353,7 @@ async def test_a_project_without_indexable_files_indexes_nothing(
 
 
 async def test_status_does_not_load_the_model(test_settings: Settings, sample_project: Path):
-    embedder = SentenceTransformerEmbedder(MODEL_NAME)
+    embedder = OnnxEmbedder(MODEL_NAME)
     indexing = build_registry(test_settings, embedder).services_for(sample_project).indexing
 
     await indexing.status(sample_project)

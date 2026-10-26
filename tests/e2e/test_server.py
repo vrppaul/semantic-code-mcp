@@ -11,7 +11,7 @@ from mcp.types import CallToolResult
 from semantic_code_mcp.app import create_app
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.globs import REFUSED_CHARACTERS
-from semantic_code_mcp.embedding import SentenceTransformerEmbedder
+from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
     IndexStatusResponse,
@@ -67,7 +67,7 @@ def project(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client(test_settings: Settings, embedder: SentenceTransformerEmbedder) -> Client:
+def client(test_settings: Settings, embedder: OnnxEmbedder) -> Client:
     # "legacy" goes through JSON-RPC framing, as a real client does
     return Client(create_app(test_settings, embedder=embedder), mode="legacy")
 
@@ -206,7 +206,7 @@ async def test_a_limit_over_the_maximum_is_refused(project: Path, client: Client
 
 
 async def test_a_failure_inside_a_tool_reaches_the_agent_with_its_cause(
-    project: Path, tmp_path: Path, embedder: SentenceTransformerEmbedder
+    project: Path, tmp_path: Path, embedder: OnnxEmbedder
 ):
     """An index directory that cannot be made: the agent must hear why, not just that."""
     blocking_file = tmp_path / "not-a-directory"
@@ -229,7 +229,7 @@ async def test_a_relative_project_path_is_refused(client: Client):
 
 
 async def test_two_spellings_of_one_project_share_its_local_index(
-    project: Path, tmp_path: Path, embedder: SentenceTransformerEmbedder
+    project: Path, tmp_path: Path, embedder: OnnxEmbedder
 ):
     settings = Settings(cache_dir=tmp_path / "cache", local_index=True)
     client = Client(create_app(settings, embedder=embedder), mode="legacy")

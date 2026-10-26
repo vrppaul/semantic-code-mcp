@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The ranking boost of files edited within the last week
 - Settings that nothing read: `SEMANTIC_CODE_MCP_EMBEDDING_DEVICE`, `SEMANTIC_CODE_MCP_CHUNKING_TARGET_TOKENS`, `SEMANTIC_CODE_MCP_CHUNKING_MAX_TOKENS`
 - The `pandas` dependency
+- sentence-transformers and torch: the embedder runs the model's ONNX export on onnxruntime, so the install no longer needs the `--index pytorch-cpu=...` flag on Linux
 
 ### Added
 - `index_status` reports the index's `manifest` (model, its revision, chunker version, storage schema version)
@@ -28,8 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end tests drive the three MCP tools through a client
 
 ### Changed
+- The server's stderr holds its own JSON log lines alone: the libraries' records below WARNING (httpx's request of each model file, sentence-transformers' lines and progress bar) no longer land among them
+- Embeddings run on onnxruntime over the model's ONNX export, with its own tokenizer, instead of sentence-transformers and torch: the install takes about 0.6 GB on every platform, against 1.5 GB on Linux with the CPU-only torch index (3.5 GB without it), a chunk embeds 15-22% faster, and the model loads in a third of a second instead of four, so a fresh server answers its first search in 2 s instead of 5.5. The vectors are those sentence-transformers made, to a few parts in a million, so an index built before keeps answering; the first start fetches the model's ONNX file (90 MB) once. A model set by `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` needs an ONNX export (`onnx/model.onnx`) and mean pooling; one without is refused with the reason when it loads
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
-- Every direct dependency is bounded below its next breaking release, so none reaches a fresh `uvx` install untested, as mcp 2.x reached 0.4.0; what they pull in follows their own bounds. Tested on what a fresh install takes: sentence-transformers 5.7, transformers 5, huggingface-hub 2, torch 2.14 and numpy 2.5, under which the default model's vectors are the same as under transformers 4
+- Every direct dependency is bounded below its next breaking release, so none reaches a fresh `uvx` install untested, as mcp 2.x reached 0.4.0; what they pull in follows their own bounds
 - Requires LanceDB 0.30.2 exactly, and pylance 4.0, the Lance library it is built on, for that upkeep: another LanceDB may bundle another Lance
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
