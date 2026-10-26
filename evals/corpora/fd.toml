@@ -5,10 +5,12 @@ repository = "https://github.com/sharkdp/fd.git"
 commit = "c44735ec0f130c2486afe9c976937c03b57a8c62"
 
 [[queries]]
+kind = "code"
 text = "parse a size filter such as +10k or -1M"
 answers = [{ path = "src/filter/size.rs", symbol = "from_string" }]
 
 [[queries]]
+kind = "code"
 text = "filter files changed before or after a date"
 answers = [
   { path = "src/filter/time.rs", symbol = "TimeFilter" },
@@ -16,47 +18,58 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "run a command for every search result"
 answers = [
   { path = "src/exec/job.rs", symbol = "job" },
   # Added after a run, rightly: runs the command set on one result
   { path = "src/exec/mod.rs", symbol = "execute" },
+  { path = "README.md", symbol = "Command execution" },
 ]
 
 [[queries]]
+kind = "code"
 text = "run one command with all the results as its arguments"
 answers = [
   { path = "src/exec/job.rs", symbol = "batch" },
   # Added after a run, rightly: runs the command once with every result as arguments.
   # `new_batch`, added with it, only builds the command set and runs nothing: not an answer
   { path = "src/exec/mod.rs", symbol = "execute_batch" },
+  { path = "README.md", symbol = "Command execution" },
 ]
 
 [[queries]]
+kind = "code"
 text = "walk directories in parallel and collect the matching entries"
 answers = [{ path = "src/walk.rs", symbol = "scan" }]
 
 [[queries]]
+kind = "code"
 text = "print a path in color"
 answers = [{ path = "src/output.rs", symbol = "print_entry_colorized" }]
 
 [[queries]]
+kind = "code"
 text = "check whether a file or directory is empty"
 answers = [{ path = "src/filesystem.rs", symbol = "is_empty" }]
 
 [[queries]]
+kind = "code"
 text = "decide whether an entry has one of the requested file types"
 answers = [{ path = "src/filetypes.rs", symbol = "should_ignore" }]
 
 [[queries]]
+kind = "code"
 text = "combine the exit codes of several commands into one"
 answers = [{ path = "src/exit_codes.rs", symbol = "merge_exitcodes" }]
 
 [[queries]]
+kind = "code"
 text = "parse placeholders like {} and {/} in a command template"
 answers = [{ path = "src/fmt/mod.rs", symbol = "parse" }]
 
 [[queries]]
+kind = "code"
 text = "filter files by the user and group that own them"
 answers = [
   { path = "src/filter/owner.rs", symbol = "OwnerFilter" },
@@ -64,6 +77,7 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "turn a path into a file URL for terminal hyperlinks"
 answers = [
   { path = "src/hyperlink.rs", symbol = "PathUrl" },
@@ -75,6 +89,7 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "escape control characters before printing a file name to the terminal"
 answers = [
   { path = "src/sanitize.rs", symbol = "sanitize_for_term" },
@@ -82,25 +97,28 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "check if a regex pattern has an uppercase letter to choose case sensitivity"
 answers = [{ path = "src/regex_helper.rs", symbol = "pattern_has_uppercase_char" }]
 
 [[queries]]
+kind = "code"
 text = "strip the leading ./ from a path"
 answers = [{ path = "src/filesystem.rs", symbol = "strip_current_dir" }]
 
-# Questions whose answer is the documentation, so the harness weighs prose against code
-
 [[queries]]
-text = "make the search include hidden files and the files gitignore excludes"
+kind = "documentation"
+text = "make the search also list dotfiles and what .gitignore patterns leave out"
 answers = [{ path = "README.md", symbol = "Hidden and ignored files" }]
 
 [[queries]]
-text = "remove every file and directory that a search matches"
+kind = "documentation"
+text = "remove everything a search matches"
 answers = [{ path = "README.md", symbol = "Deleting files" }]
 
 [[queries]]
-text = "the steps of publishing a new release"
+kind = "documentation"
+text = "what a maintainer does to ship fd to its users, step by step"
 answers = [
   { path = "doc/release-checklist.md", symbol = "Release checklist" },
   { path = "doc/release-checklist.md", symbol = "Version bump" },
@@ -109,8 +127,59 @@ answers = [
 ]
 
 [[queries]]
-text = "where to report a security vulnerability privately"
+kind = "documentation"
+text = "how to tell the maintainers in private about a flaw that attackers could exploit"
 answers = [
   { path = "SECURITY.md", symbol = "Security Reporting" },
   { path = "SECURITY.md", symbol = "Reporting" },
 ]
+
+# Held out: written before the prose weight was swept again, reported apart, and never
+# looked at while a weight or a floor is chosen
+
+[[held_out]]
+kind = "code"
+text = "turn a glob pattern given on the command line into a regular expression"
+answers = [{ path = "src/main.rs", symbol = "build_pattern_regex" }]
+
+[[held_out]]
+kind = "code"
+text = "make a relative path absolute"
+answers = [
+  { path = "src/filesystem.rs", symbol = "path_absolute_form" },
+  { path = "src/filesystem.rs", symbol = "absolute_path" },
+]
+
+[[held_out]]
+kind = "code"
+text = "warn when the search pattern looks like a path rather than a name"
+answers = [
+  { path = "src/main.rs", symbol = "ensure_search_pattern_is_not_a_path" },
+  { path = "src/main.rs", symbol = "ensure_single_search_pattern_is_not_a_path" },
+]
+
+[[held_out]]
+kind = "code"
+text = "report a symlink whose target is missing as an entry"
+answers = [
+  { path = "src/walk.rs", symbol = "broken_symlink_from_err" },
+  { path = "src/dir_entry.rs", symbol = "broken_symlink" },
+]
+
+[[held_out]]
+kind = "code"
+text = "buffer results to sort them when the search finishes quickly"
+answers = [
+  { path = "src/walk.rs", symbol = "ReceiverBuffer" },
+  { path = "src/walk.rs", symbol = "ReceiverMode" },
+]
+
+[[held_out]]
+kind = "documentation"
+text = "use fd to pick a file interactively with fzf"
+answers = [{ path = "README.md", symbol = "Using fd with `fzf`" }]
+
+[[held_out]]
+kind = "documentation"
+text = "leave some directories out of the search"
+answers = [{ path = "README.md", symbol = "Excluding specific files or directories" }]

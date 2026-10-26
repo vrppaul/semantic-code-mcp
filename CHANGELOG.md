@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search_code` takes `chunk_kinds`, `languages`, `path_glob` and `exclude_glob`, applied before the best hits are taken, so a narrow search still fills its results (#3). A glob reads as in a `.gitignore`, from the directory searched, without character classes; one holding a class, braces, a leading `!` or `..` is refused with the reason
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
 - `SEMANTIC_CODE_MCP_MIN_SIMILARITY` (0.35) and `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` (0.2): how close in meaning to the query a hit must be to stay, without and with its words matching the query's
-- `python -m evals quality` asks eight questions no corpus answers and reports what they get
+- `python -m evals quality` scores code and documentation questions apart, asks a sample of bare names, held-out questions, and questions no corpus answers, of other fields and of programming, and reports what they get
 - `LICENSE` (MIT) and license, author and project URLs in the package metadata; the wheel used to ship without a license
 - CI runs every pre-commit gate, the tests and a build on each push to `master` and each pull request
 - `CONTRIBUTING.md`, `SECURITY.md` and a pull request template

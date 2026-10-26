@@ -1,13 +1,16 @@
 """Pinned corpora: which repository at which commit, and the questions asked of it.
 
-Each corpus is a TOML file under `evals/corpora/`. A question names every answer that
-counts — a file and the chunk name inside it — so a score never depends on taste.
+Each corpus is a TOML file under `evals/corpora/`. A question says what it asks for, code
+or its documentation, and names every answer that counts — a file and the chunk name
+inside it — so a score never depends on taste. The questions under `held_out` are asked
+and reported apart, and never looked at while a weight or a floor is chosen.
 """
 
 import shutil
 import subprocess  # nosec B404
 import tomllib
 from collections.abc import Sequence
+from enum import StrEnum, auto
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -31,12 +34,20 @@ class Answer(BaseModel):
     symbol: str
 
 
+class QuestionKind(StrEnum):
+    """What a question asks for: the code that does a thing, or the documentation of it."""
+
+    code = auto()
+    documentation = auto()
+
+
 class Query(BaseModel):
-    """A question in plain words and every answer that counts."""
+    """A question in plain words, what it asks for, and every answer that counts."""
 
     model_config = ConfigDict(frozen=True)
 
     text: str
+    kind: QuestionKind
     answers: tuple[Answer, ...]
 
 
@@ -57,19 +68,26 @@ class Corpus(BaseModel):
 
     corpus: CorpusSource
     queries: tuple[Query, ...]
+    held_out: tuple[Query, ...]
+
+    def every_query(self) -> tuple[Query, ...]:
+        """The questions chosen by and the questions held out, together."""
+        return (*self.queries, *self.held_out)
 
 
 class OffTopicQuestions(BaseModel):
-    """Questions no corpus answers, as the file holds them."""
+    """Questions no corpus answers, as the file holds them: of other fields than
+    programming, and of programming."""
 
     model_config = ConfigDict(frozen=True)
 
-    questions: tuple[str, ...]
+    far: tuple[str, ...]
+    near: tuple[str, ...]
 
 
-def load_off_topic_questions() -> tuple[str, ...]:
+def load_off_topic_questions() -> OffTopicQuestions:
     """The questions no corpus answers, which a good search answers with nothing."""
-    return OffTopicQuestions.model_validate(tomllib.loads(OFF_TOPIC_FILE.read_text())).questions
+    return OffTopicQuestions.model_validate(tomllib.loads(OFF_TOPIC_FILE.read_text()))
 
 
 def available_corpus_names() -> list[str]:
@@ -114,7 +132,7 @@ def checkout(source: CorpusSource, checkouts_root: Path) -> Path:
 
 def missing_answer_paths(corpus: Corpus, working_tree: Path) -> list[str]:
     """Answer paths that name no file in the checkout: a mistake in the corpus file."""
-    answer_paths = {answer.path for query in corpus.queries for answer in query.answers}
+    answer_paths = {answer.path for query in corpus.every_query() for answer in query.answers}
     return sorted(path for path in answer_paths if not (working_tree / path).is_file())
 
 

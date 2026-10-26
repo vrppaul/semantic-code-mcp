@@ -3,12 +3,22 @@
 from pathlib import Path
 
 import pytest
-from evals.corpus import Answer
-from evals.quality import RankScores, first_rank, relative_hit, score
+from evals.corpus import Answer, QuestionKind
+from evals.quality import (
+    KindScores,
+    QueryRanks,
+    RankScores,
+    first_rank,
+    relative_hit,
+    sample_names,
+    score,
+    scores_by_kind,
+)
 from evals.server import SearchHit
 from evals.speed import edit_text
 
 from semantic_code_mcp.app import build_chunker
+from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language
 
 
 def test_first_rank_counts_from_one():
@@ -23,6 +33,68 @@ def test_score_counts_hits_and_averages_reciprocal_ranks_over_every_question():
     scores = score([1, 3, None, 2])
 
     assert scores == RankScores(hits_at_1=1, hits_at_3=3, mean_reciprocal_rank=0.458)
+
+
+def ranks_of(kind: QuestionKind, file_rank: int | None, chunk_rank: int | None) -> QueryRanks:
+    return QueryRanks(
+        query="a question", kind=kind, file_rank=file_rank, chunk_rank=chunk_rank, hits=()
+    )
+
+
+def test_scores_are_kept_apart_for_each_kind_of_question():
+    ranks = [
+        ranks_of(QuestionKind.code, 1, 2),
+        ranks_of(QuestionKind.documentation, 4, None),
+        ranks_of(QuestionKind.code, None, None),
+    ]
+
+    assert scores_by_kind(ranks) == (
+        KindScores(
+            kind=QuestionKind.code,
+            queries=2,
+            file=RankScores(hits_at_1=1, hits_at_3=1, mean_reciprocal_rank=0.5),
+            chunk=RankScores(hits_at_1=0, hits_at_3=1, mean_reciprocal_rank=0.25),
+        ),
+        KindScores(
+            kind=QuestionKind.documentation,
+            queries=1,
+            file=RankScores(hits_at_1=0, hits_at_3=0, mean_reciprocal_rank=0.25),
+            chunk=RankScores(hits_at_1=0, hits_at_3=0, mean_reciprocal_rank=0.0),
+        ),
+    )
+
+
+def defined(name: str, path: str, kind: ChunkKind = ChunkKind.function) -> Chunk:
+    return Chunk(
+        chunk_id=f"{path}:{name}",
+        path=Path(path),
+        language=Language.python,
+        kind=kind,
+        name=name,
+        parent=None,
+        line_start=1,
+        line_end=1,
+        content=f"def {name}(): ...",
+    )
+
+
+def test_a_bare_name_is_asked_of_every_fifth_name_one_file_defines():
+    """A name defined in two files, or that is no identifier, has no one chunk to find;
+    each such name here sorts first, where the sample would take it."""
+    chunks = [
+        *(defined(f"name_{number:02}", "a.py") for number in range(12)),
+        defined("name_03", "a.py", ChunkKind.method),
+        defined("aaa", "a.py"),
+        defined("aaa", "b.py"),
+        defined("Display for Path", "a.py", ChunkKind.klass),
+        defined("Install", "a.md", ChunkKind.section),
+    ]
+
+    assert sample_names(chunks) == [
+        Answer(path="a.py", symbol="name_00"),
+        Answer(path="a.py", symbol="name_05"),
+        Answer(path="a.py", symbol="name_10"),
+    ]
 
 
 def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):

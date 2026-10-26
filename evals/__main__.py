@@ -29,7 +29,13 @@ from evals.corpus import (
     load_corpora,
     load_off_topic_questions,
 )
-from evals.quality import CorpusMistakeError, CorpusQuality, RankScores, measure_quality
+from evals.quality import (
+    CorpusMistakeError,
+    CorpusQuality,
+    KindScores,
+    RankScores,
+    measure_quality,
+)
 from evals.server import ToolCallFailedError, connect
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
 from semantic_code_mcp.logging import configure_logging
@@ -181,10 +187,24 @@ def describe_quality(entry: CorpusQuality, baseline: CorpusQuality | None) -> st
 
 
 def quality_summary(entry: CorpusQuality) -> str:
+    """The scores of each kind of question, the names, the off-topic questions and, after
+    them, the questions held out."""
+    kinds = " | ".join(kind_summary(scores) for scores in entry.kinds)
+    held_out = " | ".join(kind_summary(scores) for scores in entry.held_out)
+    off_topic = entry.off_topic
     return (
-        f"file {rank_summary(entry.file, entry.queries)} | "
-        f"chunk {rank_summary(entry.chunk, entry.queries)} | "
-        f"off-topic {entry.off_topic_results} results for {entry.off_topic_questions} questions"
+        f"{kinds} | names {entry.names.names}: "
+        f"chunk {rank_summary(entry.names.chunk, entry.names.names)} | "
+        f"off-topic {off_topic.far_results} results for {off_topic.far_questions} far, "
+        f"{off_topic.near_results} for {off_topic.near_questions} near questions"
+        f"\n    held out: {held_out}"
+    )
+
+
+def kind_summary(scores: KindScores) -> str:
+    return (
+        f"{scores.kind} {scores.queries}: file {rank_summary(scores.file, scores.queries)}, "
+        f"chunk {rank_summary(scores.chunk, scores.queries)}"
     )
 
 

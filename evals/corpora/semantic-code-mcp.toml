@@ -6,10 +6,12 @@ repository = "https://github.com/vrppaul/semantic-code-mcp.git"
 commit = "46e1562fcd1ea823620b92ee2fbab2c298b4fa73"
 
 [[queries]]
+kind = "code"
 text = "dependency injection container that shares the embedding model across requests"
 answers = [{ path = "src/semantic_code_mcp/container.py", symbol = "Container" }]
 
 [[queries]]
+kind = "code"
 text = "detect which files changed since the last index using modification times"
 answers = [
   { path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_changes" },
@@ -21,86 +23,109 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "create the full text search index on the content column"
 answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "_ensure_fts_index" }]
 
 [[queries]]
+kind = "code"
 text = "merge vector and keyword search results with weighted scores"
 answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "_merge_results" }]
 
 [[queries]]
+kind = "code"
 text = "split a markdown document into sections by heading"
 answers = [{ path = "src/semantic_code_mcp/chunkers/markdown.py", symbol = "_extract_section" }]
 
 [[queries]]
+kind = "code"
 text = "list source files using git"
 answers = [{ path = "src/semantic_code_mcp/services/index_service.py", symbol = "_scan_with_git" }]
 
 [[queries]]
+kind = "code"
 text = "boost recently modified files in the ranking"
 answers = [{ path = "src/semantic_code_mcp/services/search_service.py", symbol = "_apply_recency_boost" }]
 
 [[queries]]
+kind = "code"
 text = "MCP tool that searches code semantically"
 answers = [{ path = "src/semantic_code_mcp/server.py", symbol = "search_code" }]
 
 [[queries]]
+kind = "code"
 text = "detect the module docstring as the first statement of a file"
 answers = [{ path = "src/semantic_code_mcp/chunkers/python.py", symbol = "_extract_module_docstring" }]
 
 [[queries]]
+kind = "code"
 text = "application settings loaded from environment variables"
-answers = [{ path = "src/semantic_code_mcp/config.py", symbol = "Settings" }]
+answers = [
+  { path = "src/semantic_code_mcp/config.py", symbol = "Settings" },
+  { path = "README.md", symbol = "Configuration" },
+]
 
 [[queries]]
+kind = "code"
 text = "profile an async function with pyinstrument"
 answers = [{ path = "src/semantic_code_mcp/profiling.py", symbol = "profile_async" }]
 
 [[queries]]
+kind = "code"
 text = "truncate long search results to a maximum number of lines"
 answers = [{ path = "src/semantic_code_mcp/models/responses.py", symbol = "from_domain" }]
 
 [[queries]]
+kind = "code"
 text = "escape single quotes in a SQL filter when deleting rows"
 answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "delete_by_file" }]
 
 [[queries]]
-text = "how to add support for a new programming language"
+kind = "documentation"
+text = "what to write so the indexer understands Go or JavaScript files"
 answers = [{ path = "README.md", symbol = "Adding a New Language" }]
 
 [[queries]]
+kind = "code"
 text = "name an impl block after its trait and its type"
 answers = [{ path = "src/semantic_code_mcp/chunkers/rust.py", symbol = "_get_impl_name" }]
 
 [[queries]]
+kind = "code"
 text = "dispatch a file to the chunker registered for its extension"
 answers = [{ path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "chunk_file" }]
 
-# Questions whose answer is the documentation, so the harness weighs prose against code
-
 [[queries]]
-text = "why the index is kept in LanceDB rather than FAISS"
+kind = "documentation"
+text = "which vector store was turned down for being harder to set up and to persist"
 answers = [{ path = "docs/decisions/001-initial-architecture.md", symbol = "FAISS instead of LanceDB" }]
 
 [[queries]]
-text = "why the code blocks inside a markdown document are not chunks of their own"
+kind = "documentation"
+text = "why snippets inside markdown text are not indexed on their own"
 answers = [
   { path = "docs/decisions/005-markdown-chunking.md", symbol = "C: Extract fenced code blocks as separate chunks" },
 ]
 
 [[queries]]
-text = "the environment variables that configure the server"
-answers = [{ path = "README.md", symbol = "Configuration" }]
+kind = "documentation"
+text = "how to change where the indexes are stored or which model embeds the code"
+answers = [
+  { path = "README.md", symbol = "Configuration" },
+  { path = "src/semantic_code_mcp/config.py", symbol = "Settings" },
+]
 
 [[queries]]
-text = "install the server on linux without the large CUDA build of torch"
+kind = "documentation"
+text = "set the server up on Ubuntu without downloading the GPU build of torch"
 answers = [
   { path = "README.md", symbol = "Linux" },
   { path = ".claude/rules/publishing.md", symbol = "Platform-Specific Install" },
 ]
 
 [[queries]]
-text = "how a release of the package reaches PyPI"
+kind = "documentation"
+text = "how a new version of the package gets published to PyPI"
 answers = [
   { path = ".claude/rules/publishing.md", symbol = "Release Process" },
   { path = ".claude/rules/publishing.md", symbol = "How It Works" },
@@ -110,9 +135,48 @@ answers = [
 ]
 
 [[queries]]
-text = "why a module's docstring gets a chunk of its own"
+kind = "documentation"
+text = "why the text at the top of a Python file is indexed apart from its functions"
 answers = [
   { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "003: Module Docstring Chunking" },
   { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "Context" },
   { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "Decision" },
 ]
+
+# Held out: written before the prose weight was swept again, reported apart, and never
+# looked at while a weight or a floor is chosen
+
+[[held_out]]
+kind = "code"
+text = "save the cached modification times to disk without leaving a half-written file"
+answers = [{ path = "src/semantic_code_mcp/storage/cache.py", symbol = "_save" }]
+
+[[held_out]]
+kind = "code"
+text = "group search results so each file appears once"
+answers = [{ path = "src/semantic_code_mcp/services/search_service.py", symbol = "_group_by_file" }]
+
+[[held_out]]
+kind = "code"
+text = "read the patterns of a gitignore file"
+answers = [{ path = "src/semantic_code_mcp/services/index_service.py", symbol = "_parse_gitignore" }]
+
+[[held_out]]
+kind = "code"
+text = "search with both embeddings and keywords at once"
+answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "search_hybrid" }]
+
+[[held_out]]
+kind = "code"
+text = "chunk many files in parallel batches"
+answers = [{ path = "src/semantic_code_mcp/services/index_service.py", symbol = "chunk_files" }]
+
+[[held_out]]
+kind = "documentation"
+text = "update the server to its newest version"
+answers = [{ path = "README.md", symbol = "Updating" }]
+
+[[held_out]]
+kind = "documentation"
+text = "the libraries the project is built with"
+answers = [{ path = "README.md", symbol = "Tech Stack" }]

@@ -1,6 +1,8 @@
-# Questions no corpus answers: a search for one of them should come back empty. The last
-# is gibberish, which a small model still finds a little like code.
-questions = [
+# Questions no corpus answers: a search for one of them should come back empty.
+
+# Of other fields than programming. The last is gibberish, which a small model still finds
+# a little like code.
+far = [
   "a chocolate cake recipe with fresh strawberries",
   "the weather in Paris tomorrow",
   "who won the football world cup in 1998",
@@ -9,4 +11,15 @@ questions = [
   "the best time of year to plant tomatoes",
   "a train timetable from Berlin to Prague",
   "asdkjh qwpoeiru zxmcnv",
+]
+
+# Of programming, about what none of the corpora does: their words lie closer to code's
+near = [
+  "connect to a PostgreSQL database and run a schema migration",
+  "render a triangle with OpenGL shaders",
+  "send an email through an SMTP server",
+  "authenticate a user with OAuth access tokens",
+  "compress a directory into a zip archive",
+  "serve HTTP requests with a REST API router",
+  "a red-black tree insertion that rebalances",
 ]

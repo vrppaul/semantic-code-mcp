@@ -5,6 +5,7 @@ repository = "https://github.com/pallets/click.git"
 commit = "2247b35ea1c47c727d7a06e51fa280e12a863ff6"
 
 [[queries]]
+kind = "code"
 text = "show a progress bar while iterating over a long list of items"
 answers = [
   { path = "src/click/termui.py", symbol = "progressbar" },
@@ -12,6 +13,7 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "open the user's text editor to edit a message"
 answers = [
   { path = "src/click/termui.py", symbol = "edit" },
@@ -19,33 +21,41 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "ask the user a yes or no question"
 answers = [{ path = "src/click/termui.py", symbol = "confirm" }]
 
 [[queries]]
+kind = "code"
 text = "send long output through a pager such as less"
 answers = [
   { path = "src/click/termui.py", symbol = "echo_via_pager" },
   { path = "src/click/_termui_impl.py", symbol = "_pipepager" },
+  { path = "docs/utils.md", symbol = "Pager Support" },
 ]
 
 [[queries]]
+kind = "code"
 text = "find the directory where an application should keep its configuration on each operating system"
 answers = [{ path = "src/click/utils.py", symbol = "get_app_dir" }]
 
 [[queries]]
+kind = "code"
 text = "split a command line string into arguments for shell completion"
 answers = [{ path = "src/click/shell_completion.py", symbol = "split_arg_string" }]
 
 [[queries]]
+kind = "code"
 text = "completion support for the zsh shell"
 answers = [{ path = "src/click/shell_completion.py", symbol = "ZshComplete" }]
 
 [[queries]]
+kind = "code"
 text = "wrap paragraphs of help text to fit the terminal width"
 answers = [{ path = "src/click/formatting.py", symbol = "wrap_text" }]
 
 [[queries]]
+kind = "code"
 text = "invoke a command in a test and capture what it prints"
 answers = [
   { path = "src/click/testing.py", symbol = "invoke" },
@@ -54,18 +64,25 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "parse several short flags grouped together like -abc"
-answers = [{ path = "src/click/parser.py", symbol = "_match_short_opt" }]
+answers = [
+  { path = "src/click/parser.py", symbol = "_match_short_opt" },
+  { path = "docs/options.md", symbol = "Combining short options" },
+]
 
 [[queries]]
+kind = "code"
 text = "an integer parameter type limited to a minimum and a maximum"
 answers = [{ path = "src/click/types.py", symbol = "IntRange" }]
 
 [[queries]]
+kind = "code"
 text = "write a file atomically by renaming a temporary file into place"
 answers = [{ path = "src/click/_compat.py", symbol = "_AtomicFile" }]
 
 [[queries]]
+kind = "code"
 text = "remove ANSI color escape codes from text"
 answers = [
   { path = "src/click/_compat.py", symbol = "strip_ansi" },
@@ -74,10 +91,12 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "color text with foreground and background colors and make it bold"
 answers = [{ path = "src/click/termui.py", symbol = "style" }]
 
 [[queries]]
+kind = "code"
 text = "suggest a similar option name when the user mistypes one"
 answers = [
   { path = "src/click/exceptions.py", symbol = "NoSuchOption" },
@@ -85,43 +104,60 @@ answers = [
 ]
 
 [[queries]]
+kind = "code"
 text = "read a parameter's value from an environment variable"
-answers = [{ path = "src/click/core.py", symbol = "resolve_envvar_value" }]
+answers = [
+  { path = "src/click/core.py", symbol = "resolve_envvar_value" },
+  { path = "docs/options.md", symbol = "Values from Environment Variables" },
+]
 
 [[queries]]
+kind = "code"
 text = "the object that holds state while a command runs"
-answers = [{ path = "src/click/core.py", symbol = "Context" }]
+answers = [
+  { path = "src/click/core.py", symbol = "Context" },
+  { path = "docs/complex.md", symbol = "Contexts" },
+]
 
 [[queries]]
+kind = "code"
 text = "a command that contains subcommands and dispatches to them"
 answers = [{ path = "src/click/core.py", symbol = "Group" }]
 
 [[queries]]
+kind = "code"
 text = "a file that is opened only when it is first used"
 answers = [{ path = "src/click/utils.py", symbol = "_LazyFile" }]
 
 [[queries]]
+kind = "code"
 text = "open a URL or a file in the default application"
 answers = [
   { path = "src/click/termui.py", symbol = "launch" },
   { path = "src/click/_termui_impl.py", symbol = "open_url" },
+  { path = "docs/utils.md", symbol = "Launching Applications" },
 ]
 
-# Questions whose answer is the documentation, so the harness weighs prose against code
-
 [[queries]]
+kind = "documentation"
 text = "why click will not guess an option the user abbreviated or mistyped"
 answers = [{ path = "docs/why.md", symbol = "Why No Auto Correction?" }]
 
 [[queries]]
+kind = "documentation"
 text = "give each test of a command its own directory so the files it writes go away"
 answers = [{ path = "docs/testing.md", symbol = "File System Isolation" }]
 
 [[queries]]
-text = "in what order the callbacks of a command's parameters run"
-answers = [{ path = "docs/click-concepts.md", symbol = "Callback Evaluation Order" }]
+kind = "documentation"
+text = "in which sequence a command processes its parameters and calls their hooks"
+answers = [
+  { path = "docs/click-concepts.md", symbol = "Callback Evaluation Order" },
+  { path = "src/click/core.py", symbol = "iter_params_for_processing" },
+]
 
 [[queries]]
+kind = "documentation"
 text = "install a click program as a console script declared in pyproject.toml"
 answers = [
   { path = "docs/entry-points.md", symbol = "Packaging Entry Points" },
@@ -130,11 +166,64 @@ answers = [
 ]
 
 [[queries]]
-text = "what an application must change when it moves from click 8.3 to 9.0"
+kind = "documentation"
+text = "what an application must change for the next major version of click"
 answers = [
   { path = "docs/upgrade-guides.md", symbol = "Upgrading 8.3.X to 9.0" },
   { path = "docs/upgrade-guides.md", symbol = "Deprecations" },
   { path = "docs/upgrade-guides.md", symbol = "Removals with prior deprecation" },
   { path = "docs/upgrade-guides.md", symbol = "Removals with no prior deprecation" },
   { path = "docs/upgrade-guides.md", symbol = "Changes" },
+]
+
+# Held out: written before the prose weight was swept again, reported apart, and never
+# looked at while a weight or a floor is chosen
+
+[[held_out]]
+kind = "code"
+text = "keep a closed pipe from raising an error when output is cut short"
+answers = [{ path = "src/click/utils.py", symbol = "_PacifyFlushWrapper" }]
+
+[[held_out]]
+kind = "code"
+text = "turn text such as yes, on or 1 into a boolean value"
+answers = [
+  { path = "src/click/types.py", symbol = "BoolParamType" },
+  { path = "src/click/types.py", symbol = "str_to_bool" },
+]
+
+[[held_out]]
+kind = "code"
+text = "convert a date string into a datetime by trying several formats"
+answers = [
+  { path = "src/click/types.py", symbol = "DateTime" },
+  { path = "src/click/types.py", symbol = "_try_to_convert_date" },
+]
+
+[[held_out]]
+kind = "code"
+text = "share one object between a parent command and its subcommands"
+answers = [
+  { path = "src/click/decorators.py", symbol = "make_pass_decorator" },
+  { path = "src/click/decorators.py", symbol = "pass_obj" },
+  { path = "docs/complex.md", symbol = "Ensuring Object Creation" },
+]
+
+[[held_out]]
+kind = "code"
+text = "expand wildcards and the home directory in arguments on Windows"
+answers = [{ path = "src/click/utils.py", symbol = "_expand_args" }]
+
+[[held_out]]
+kind = "documentation"
+text = "feed text to a command's prompts when testing it"
+answers = [{ path = "docs/testing.md", symbol = "Input Streams" }]
+
+[[held_out]]
+kind = "documentation"
+text = "load a group's subcommands only when one of them is called"
+answers = [
+  { path = "docs/complex.md", symbol = "Lazily Loading Subcommands" },
+  { path = "docs/complex.md", symbol = "Defining the Lazy Group" },
+  { path = "docs/complex.md", symbol = "What triggers Lazy Loading?" },
 ]
