@@ -128,30 +128,6 @@
             {
               "path": "docs/prompts.md",
               "symbol": "Confirmation Prompts"
-            },
-            {
-              "path": "docs/option-decorators.md",
-              "symbol": "Confirmation Option"
-            },
-            {
-              "path": "docs/faqs.md",
-              "symbol": "Frequently Asked Questions"
-            },
-            {
-              "path": "src/click/core.py",
-              "symbol": "prompt_for_value"
-            },
-            {
-              "path": "src/click/termui.py",
-              "symbol": "prompt"
-            },
-            {
-              "path": "README.md",
-              "symbol": "Contributing"
-            },
-            {
-              "path": "tests/test_types/test_Choice.py",
-              "symbol": "test_choice_get_invalid_choice_message"
             }
           ]
         },
@@ -220,31 +196,11 @@
               "symbol": "Interleaved Commands"
             },
             {
-              "path": "docs/entry-points.md",
-              "symbol": "Project Files"
-            },
-            {
               "path": "docs/standalone-apps.md",
               "symbol": "Building and Packaging"
             },
             {
               "path": "examples/aliases/aliases.py",
-              "symbol": "__init__"
-            },
-            {
-              "path": "docs/testing.md",
-              "symbol": "File System Isolation"
-            },
-            {
-              "path": "examples/aliases/aliases.py",
-              "symbol": "cli"
-            },
-            {
-              "path": "docs/complex.md",
-              "symbol": "Complex Applications"
-            },
-            {
-              "path": "examples/complex/complex/cli.py",
               "symbol": "__init__"
             }
           ]
@@ -510,24 +466,24 @@
               "symbol": "parameter-types"
             },
             {
-              "path": "docs/parameter-types.md",
-              "symbol": "Built-in Types Listing"
-            },
-            {
               "path": "examples/validation/validation.py",
               "symbol": "validate_count"
-            },
-            {
-              "path": "docs/prompts.md",
-              "symbol": "Input Prompts"
             },
             {
               "path": "docs/parameters.md",
               "symbol": "parameters"
             },
             {
-              "path": "docs/wincmd.md",
-              "symbol": "Unicode Arguments"
+              "path": "src/click/types.py",
+              "symbol": "_NumberParamTypeBase"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 8.4.0"
+            },
+            {
+              "path": "src/click/types.py",
+              "symbol": "convert"
             }
           ]
         },
@@ -694,10 +650,6 @@
               "symbol": "options"
             },
             {
-              "path": "tests/test_options.py",
-              "symbol": "test_suggest_possible_options"
-            },
-            {
               "path": "docs/parameter-types.md",
               "symbol": "Built-in Types Examples"
             },
@@ -716,6 +668,10 @@
             {
               "path": "docs/prompts.md",
               "symbol": "Option Prompts"
+            },
+            {
+              "path": "docs/advanced.md",
+              "symbol": "Forwarding Unknown Options"
             }
           ]
         },
@@ -792,16 +748,8 @@
               "symbol": "get_command"
             },
             {
-              "path": "docs/testing.md",
-              "symbol": "Running tests in parallel"
-            },
-            {
               "path": "tests/test_context.py",
               "symbol": "test_global_context_object"
-            },
-            {
-              "path": "docs/shell-completion.md",
-              "symbol": "Custom Type Completion"
             },
             {
               "path": "src/click/parser.py",
@@ -810,6 +758,14 @@
             {
               "path": "src/click/parser.py",
               "symbol": "parse_args"
+            },
+            {
+              "path": "tests/typing/typing_aliased_group.py",
+              "symbol": "push"
+            },
+            {
+              "path": "src/click/parser.py",
+              "symbol": "_process_args_for_options"
             }
           ]
         },
@@ -843,10 +799,6 @@
               "symbol": "test_basic_group"
             },
             {
-              "path": "docs/why.md",
-              "symbol": "Why not Docopt etc.?"
-            },
-            {
               "path": "src/click/core.py",
               "symbol": "list_commands"
             },
@@ -857,6 +809,10 @@
             {
               "path": "tests/test_options.py",
               "symbol": "test_envvar_container_type"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "_complete_visible_commands"
             }
           ]
         },
@@ -898,12 +854,12 @@
               "symbol": "open"
             },
             {
-              "path": "tests/test_termui.py",
-              "symbol": "test_get_pager_file_missing_pager_keeps_borrowed_stream_open"
-            },
-            {
               "path": "src/click/utils.py",
               "symbol": "__enter__"
+            },
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_file_type_help_default"
             }
           ]
         },
@@ -954,7 +910,9 @@
             }
           ]
         }
-      ]
+      ],
+      "off_topic_questions": 8,
+      "off_topic_results": 0
     },
     {
       "corpus": "fd",
@@ -1102,12 +1060,12 @@
               "symbol": "Features"
             },
             {
-              "path": "src/main.rs",
-              "symbol": "ensure_search_pattern_is_not_a_path"
+              "path": "README.md",
+              "symbol": "Using fd with `xargs` or `parallel`"
             },
             {
               "path": "README.md",
-              "symbol": "Using fd with `xargs` or `parallel`"
+              "symbol": "Examples"
             }
           ]
         },
@@ -1196,12 +1154,12 @@
               "symbol": "scan"
             },
             {
-              "path": "src/walk.rs",
-              "symbol": "WorkerState"
-            },
-            {
               "path": "src/dir_entry.rs",
               "symbol": "DirEntryInner"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Using fd with `xargs` or `parallel`"
             }
           ]
         },
@@ -1462,10 +1420,6 @@
               "symbol": "OwnerFilter"
             },
             {
-              "path": "src/filter/owner.rs",
-              "symbol": "from_string"
-            },
-            {
               "path": "CHANGELOG.md",
               "symbol": "Features"
             },
@@ -1484,6 +1438,10 @@
             {
               "path": "CHANGELOG.md",
               "symbol": "Features"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "Opts"
             }
           ]
         },
@@ -1675,7 +1633,9 @@
             }
           ]
         }
-      ]
+      ],
+      "off_topic_questions": 8,
+      "off_topic_results": 0
     },
     {
       "corpus": "semantic-code-mcp",
@@ -1823,12 +1783,12 @@
               "symbol": "index_service"
             },
             {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "LanceDBConnection"
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "SearchService"
             },
             {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "ensure_table"
+              "path": "src/semantic_code_mcp/models/responses.py",
+              "symbol": "IndexResultSummary"
             }
           ]
         },
@@ -1956,20 +1916,20 @@
               "symbol": "_is_git_repo"
             },
             {
-              "path": "README.md",
-              "symbol": "How It Works"
-            },
-            {
-              "path": "src/semantic_code_mcp/chunkers/base.py",
-              "symbol": "BaseTreeSitterChunker"
-            },
-            {
               "path": ".claude/rules/publishing.md",
               "symbol": "Release Process"
             },
             {
               "path": "src/semantic_code_mcp/services/index_service.py",
               "symbol": "_parse_gitignore"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "chunk_file"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/cache.py",
+              "symbol": "get_tracked_files"
             }
           ]
         },
@@ -2267,38 +2227,6 @@
             {
               "path": "CHANGELOG.md",
               "symbol": "Fixed"
-            },
-            {
-              "path": "docs/decisions/005-markdown-chunking.md",
-              "symbol": "ChunkType extension"
-            },
-            {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "search"
-            },
-            {
-              "path": "docs/decisions/003-module-docstring-chunking.md",
-              "symbol": "Alternatives Considered"
-            },
-            {
-              "path": "src/semantic_code_mcp/services/search_service.py",
-              "symbol": "SearchOutcome"
-            },
-            {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "clear"
-            },
-            {
-              "path": "src/semantic_code_mcp/protocols.py",
-              "symbol": "clear"
-            },
-            {
-              "path": "src/semantic_code_mcp/protocols.py",
-              "symbol": "delete_by_file"
-            },
-            {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "drop_table"
             }
           ]
         },
@@ -2332,20 +2260,12 @@
               "symbol": "Option A: One class per language (no shared base)"
             },
             {
-              "path": "src/semantic_code_mcp/chunkers/composite.py",
-              "symbol": "__init__"
-            },
-            {
-              "path": "src/semantic_code_mcp/container.py",
-              "symbol": "get_chunkers"
-            },
-            {
               "path": "README.md",
               "symbol": "Tech Stack"
             },
             {
-              "path": "src/semantic_code_mcp/chunkers/composite.py",
-              "symbol": "CompositeChunker"
+              "path": "docs/decisions/001-initial-architecture.md",
+              "symbol": "Tech Stack"
             }
           ]
         },
@@ -2443,7 +2363,9 @@
             }
           ]
         }
-      ]
+      ],
+      "off_topic_questions": 8,
+      "off_topic_results": 0
     }
   ]
 }

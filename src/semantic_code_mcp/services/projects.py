@@ -8,7 +8,7 @@ from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import IndexIdentity
 from semantic_code_mcp.services.indexing import IndexingService
-from semantic_code_mcp.services.search import SearchService
+from semantic_code_mcp.services.search import SearchService, SimilarityFloors
 
 # Opens the store of a project's index of one identity, kept under the project's index
 # directory; the composition root says which store
@@ -74,5 +74,13 @@ class ProjectRegistry:
         )
         return ProjectServices(
             indexing=indexing,
-            search=SearchService(store=store, embedder=self._embedder, indexing=indexing),
+            search=SearchService(
+                store=store,
+                embedder=self._embedder,
+                indexing=indexing,
+                floors=SimilarityFloors(
+                    without_keyword=self._settings.min_similarity,
+                    with_keyword=self._settings.min_keyword_similarity,
+                ),
+            ),
         )

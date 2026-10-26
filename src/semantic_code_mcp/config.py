@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from semantic_code_mcp.domain.models import HIGHEST_SIMILARITY, LOWEST_SIMILARITY
+
 # Never source. A name matches a path component at any depth; `name/**` matches only
 # at the project root, so a source package called `build` or `dist` deeper down is indexed.
 DEFAULT_IGNORE_PATTERNS = (
@@ -57,6 +59,13 @@ class Settings(BaseSettings):
     use_gitignore: bool = True
     # Git normally answers in milliseconds; past this, discovery walks the file system
     git_timeout_seconds: float = 10.0
+
+    # How close in meaning to the query, a cosine similarity, a hit must be to stay: one no
+    # keyword matched, and one whose words match the query's. Set on the harness for the
+    # default model: its right answers lie from 0.43 and 0.28 up, off-topic questions'
+    # best hits up to 0.31 and 0.21 (ADR 006, stage 6); another model scores on its own scale
+    min_similarity: float = Field(default=0.35, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY)
+    min_keyword_similarity: float = Field(default=0.25, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY)
 
     @property
     def profiles_dir(self) -> Path:

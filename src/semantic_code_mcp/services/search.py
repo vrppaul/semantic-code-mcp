@@ -11,6 +11,8 @@ import time
 from enum import Enum
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
+
 from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
 from semantic_code_mcp.domain.models import (
     IndexReport,
@@ -24,14 +26,6 @@ from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.timing import elapsed_milliseconds
 
-# A hit no keyword matched is kept from this cosine similarity to the query up: the
-# blended score's floor of 0.3 kept such a hit, which scored (1 + similarity) / 4, from
-# a similarity of 0.2
-MIN_SIMILARITY = 0.2
-# A hit whose words match the query's is kept from this lower similarity up: an
-# identifier's own chunk can sit at 0.2, while a word a query shares by chance, as the
-# "fresh" of a cake recipe, finds chunks at -0.1 to 0.05 (a review's probes)
-MIN_KEYWORD_SIMILARITY = 0.1
 # Each channel brings this many candidates per result asked for, so fusion can lift a
 # chunk one channel ranks below the limit
 CANDIDATES_PER_RESULT = 2
@@ -54,13 +48,30 @@ class SearchPhase(Enum):
 INDEXING_BAND_END = SearchPhase.loading_model.value
 
 
+class SimilarityFloors(BaseModel):
+    """How close in meaning to the query a hit must be to stay: a hit no keyword matched,
+    and, less close, one whose words match the query's."""
+
+    model_config = ConfigDict(frozen=True)
+
+    without_keyword: float
+    with_keyword: float
+
+
 class SearchService:
     """Answers searches over one project, indexing what changed first."""
 
-    def __init__(self, store: IndexStore, embedder: Embedder, indexing: IndexingService) -> None:
+    def __init__(
+        self,
+        store: IndexStore,
+        embedder: Embedder,
+        indexing: IndexingService,
+        floors: SimilarityFloors,
+    ) -> None:
         self._store = store
         self._embedder = embedder
         self._indexing = indexing
+        self._floors = floors
 
     async def search(
         self, query: str, project_root: Path, *, limit: int, progress: ProgressReporter
@@ -110,7 +121,7 @@ class SearchService:
         hits = fuse(candidates)
         search_ms = elapsed_milliseconds(search_started)
 
-        kept = [hit for hit in hits if is_relevant(hit)]
+        kept = [hit for hit in hits if is_relevant(hit, self._floors)]
         return SearchReport(
             results=kept[:limit],
             filtered_count=len(hits) - len(kept),
@@ -130,8 +141,8 @@ def indexing_message(status: IndexStatus) -> str:
     return f"Re-indexing {status.stale_files_count} stale files..."
 
 
-def is_relevant(hit: SearchHit) -> bool:
+def is_relevant(hit: SearchHit, floors: SimilarityFloors) -> bool:
     """Whether a hit stays: its meaning near enough the query's, and less near where its
     words match the query's too."""
-    floor = MIN_SIMILARITY if hit.keyword_rank is None else MIN_KEYWORD_SIMILARITY
+    floor = floors.without_keyword if hit.keyword_rank is None else floors.with_keyword
     return hit.similarity >= floor

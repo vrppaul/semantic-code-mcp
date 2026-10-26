@@ -7,6 +7,7 @@ from pathlib import Path
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.models import (
+    LOWEST_SIMILARITY,
     Candidate,
     Chunk,
     ChunkKind,
@@ -14,21 +15,18 @@ from semantic_code_mcp.domain.models import (
     SearchCandidates,
 )
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.services.search import (
-    MIN_KEYWORD_SIMILARITY,
-    MIN_SIMILARITY,
-    SearchService,
-)
+from semantic_code_mcp.services.search import SearchService, SimilarityFloors
 from semantic_code_mcp.storage.lancedb import NO_CANDIDATES
 from tests.fakes import FakeEmbedder, FakeIndexStore, ProgressRecorder
-from tests.helpers import indexing_service
+from tests.helpers import indexing_service, registry_of
 
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
 CLOSE = 0.9
+FLOORS = SimilarityFloors(without_keyword=0.2, with_keyword=0.1)
 # Too far in meaning for a hit no keyword matched, near enough for one whose words match
-BETWEEN_THE_FLOORS = (MIN_SIMILARITY + MIN_KEYWORD_SIMILARITY) / 2
-BELOW_BOTH_FLOORS = MIN_KEYWORD_SIMILARITY / 2
+BETWEEN_THE_FLOORS = (FLOORS.without_keyword + FLOORS.with_keyword) / 2
+BELOW_BOTH_FLOORS = FLOORS.with_keyword / 2
 # A file no project of these tests holds
 ELSEWHERE = "nowhere/old.py"
 
@@ -56,7 +54,7 @@ def search_service(
     store: FakeIndexStore, settings: Settings, embedder: FakeEmbedder
 ) -> SearchService:
     indexing = indexing_service(store, embedder, settings, build_chunker())
-    return SearchService(store=store, embedder=embedder, indexing=indexing)
+    return SearchService(store=store, embedder=embedder, indexing=indexing, floors=FLOORS)
 
 
 async def test_a_hit_far_in_meaning_is_dropped_and_one_whose_words_match_further(
@@ -188,3 +186,20 @@ async def test_two_first_searches_at_once_both_find_the_code(
         ["found"],
         ["found"],
     ]
+
+
+async def test_a_search_keeps_what_the_floors_of_the_settings_let_through(
+    test_settings: Settings, sample_project: Path
+):
+    """Floors at the lowest similarity let every chunk of the project through, those the
+    query's word matches among them."""
+    settings = Settings(
+        cache_dir=test_settings.cache_dir,
+        min_similarity=LOWEST_SIMILARITY,
+        min_keyword_similarity=LOWEST_SIMILARITY,
+    )
+    search = registry_of(settings, FakeEmbedder(), build_chunker()).services_for(sample_project)
+
+    report = await search.search.search("greet", sample_project, limit=LIMIT, progress=NO_PROGRESS)
+
+    assert len(report.results) == 6
