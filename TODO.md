@@ -25,4 +25,4 @@ With the global cache (`~/.cache/semantic-code-mcp/`), a project moved or delete
 About forty tests of the three chunker test files are named by what they feed the chunker (`test_simple_function`, `test_struct_definition`), not by the behaviour they hold, as `.claude/rules/testing.md` asks; stage 6 renamed only those it rewrote.
 
 ### LanceDB index tuning
-A flat cosine scan answers in 23–36 ms at 11.5k chunks and 50–90 ms at 100k on LanceDB 0.30. LanceDB 0.32 to 0.40 scan two to three times slower (150–190 ms at 100k), which holds the package at 0.30; a vector index (IVF or HNSW) past some row count would let it move on, and pays off on large corpora anyway.
+A flat cosine scan answers in 23–36 ms at 11.5k chunks and, over fragments of 4,096 rows read side by side, about 40 ms at 100k on LanceDB 0.30.2 (54 over one fragment). LanceDB 0.32 to 0.40 scan two to three times slower (150–190 ms at 100k), which holds the package at 0.30.2; a vector index (IVF or HNSW) past some row count would let it move on, and pays off on large corpora anyway.
