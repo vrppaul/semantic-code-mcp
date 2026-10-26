@@ -39,7 +39,7 @@
           "file": {
             "hits_at_1": 3,
             "hits_at_3": 4,
-            "mean_reciprocal_rank": 0.667
+            "mean_reciprocal_rank": 0.689
           },
           "chunk": {
             "hits_at_1": 3,
@@ -72,9 +72,9 @@
       },
       "off_topic": {
         "far_questions": 8,
-        "far_results": 1,
+        "far_results": 0,
         "near_questions": 7,
-        "near_results": 11
+        "near_results": 4
       },
       "ranks": [
         {
@@ -194,10 +194,6 @@
             {
               "path": "docs/prompts.md",
               "symbol": "Confirmation Prompts"
-            },
-            {
-              "path": "docs/option-decorators.md",
-              "symbol": "Confirmation Option"
             }
           ]
         },
@@ -268,28 +264,12 @@
               "symbol": "Interleaved Commands"
             },
             {
-              "path": "docs/entry-points.md",
-              "symbol": "Project Files"
-            },
-            {
               "path": "examples/aliases/aliases.py",
               "symbol": "__init__"
             },
             {
               "path": "docs/standalone-apps.md",
               "symbol": "Building and Packaging"
-            },
-            {
-              "path": "docs/complex.md",
-              "symbol": "Complex Applications"
-            },
-            {
-              "path": "docs/standalone-apps.md",
-              "symbol": "Configuration"
-            },
-            {
-              "path": "docs/standalone-apps.md",
-              "symbol": "Entry Point"
             }
           ]
         },
@@ -560,16 +540,8 @@
               "symbol": "parameter-types"
             },
             {
-              "path": "docs/parameter-types.md",
-              "symbol": "Built-in Types Listing"
-            },
-            {
               "path": "docs/parameters.md",
               "symbol": "parameters"
-            },
-            {
-              "path": "docs/prompts.md",
-              "symbol": "Input Prompts"
             },
             {
               "path": "src/click/types.py",
@@ -578,6 +550,14 @@
             {
               "path": "src/click/types.py",
               "symbol": "convert"
+            },
+            {
+              "path": "tests/typing/typing_prompt.py",
+              "symbol": "SimpleType"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 8.4.0"
             }
           ]
         },
@@ -740,10 +720,6 @@
               "symbol": "options"
             },
             {
-              "path": "tests/test_options.py",
-              "symbol": "test_suggest_possible_options"
-            },
-            {
               "path": "tests/test_basic.py",
               "symbol": "test_flag_value_dual_options"
             },
@@ -770,6 +746,10 @@
             {
               "path": "docs/shell-completion.md",
               "symbol": "Custom Type Completion"
+            },
+            {
+              "path": "src/click/shell_completion.py",
+              "symbol": "_is_incomplete_option"
             }
           ]
         },
@@ -912,8 +892,8 @@
               "symbol": "test_envvar_container_type"
             },
             {
-              "path": "docs/why.md",
-              "symbol": "Why not Docopt etc.?"
+              "path": "src/click/core.py",
+              "symbol": "_complete_visible_commands"
             }
           ]
         },
@@ -1056,8 +1036,8 @@
               "symbol": "test_convert_type_from_container_default"
             },
             {
-              "path": "docs/why.md",
-              "symbol": "Why not Docopt etc.?"
+              "path": "src/click/__init__.py",
+              "symbol": "__init__"
             }
           ]
         },
@@ -1228,10 +1208,6 @@
               "symbol": "bug-report"
             },
             {
-              "path": "docs/advanced.md",
-              "symbol": "Callbacks and Eager Options"
-            },
-            {
               "path": "docs/utils.md",
               "symbol": "Launching Applications"
             },
@@ -1250,6 +1226,10 @@
             {
               "path": "docs/extending-click.md",
               "symbol": "Extending Click"
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "_termui_impl"
             }
           ]
         }
@@ -1258,7 +1238,7 @@
         {
           "query": "keep a closed pipe from raising an error when output is cut short",
           "kind": "code",
-          "file_rank": null,
+          "file_rank": 9,
           "chunk_rank": null,
           "hits": [
             {
@@ -1290,16 +1270,16 @@
               "symbol": "fail"
             },
             {
+              "path": "CHANGES.md",
+              "symbol": "Version 8.4.2"
+            },
+            {
+              "path": "src/click/utils.py",
+              "symbol": "open"
+            },
+            {
               "path": "src/click/_termui_impl.py",
-              "symbol": "_PagerWriter"
-            },
-            {
-              "path": "docs/exceptions.md",
-              "symbol": "Where are Errors Handled?"
-            },
-            {
-              "path": "src/click/testing.py",
-              "symbol": "_NamedTextIOWrapper"
+              "symbol": "close"
             }
           ]
         },
@@ -1486,12 +1466,12 @@
               "symbol": "test_command_to_info_dict_multiple_arguments"
             },
             {
-              "path": "src/click/core.py",
-              "symbol": "main"
-            },
-            {
               "path": "tests/test_arguments.py",
               "symbol": "test_argument_help_lists_undocumented_arguments"
+            },
+            {
+              "path": "docs/faqs.md",
+              "symbol": "Custom completions show the full value"
             }
           ]
         },
@@ -1583,11 +1563,11 @@
             },
             {
               "path": "docs/commands.md",
-              "symbol": "Overriding Defaults"
+              "symbol": "Command Return Values"
             },
             {
-              "path": "docs/commands.md",
-              "symbol": "Command Return Values"
+              "path": "tests/test_basic.py",
+              "symbol": "test_group_commands_dict"
             }
           ]
         }
@@ -1624,10 +1604,6 @@
             {
               "path": "examples/aliases/aliases.py",
               "symbol": "status"
-            },
-            {
-              "path": "docs/command-line-reference.md",
-              "symbol": "Exit Codes"
             }
           ]
         },
@@ -1668,8 +1644,8 @@
               "symbol": "Environment"
             },
             {
-              "path": "examples/complex/complex/commands/cmd_status.py",
-              "symbol": "cli"
+              "path": "docs/virtualenv.md",
+              "symbol": "virtualenv"
             }
           ]
         },
@@ -1952,10 +1928,6 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_length_hint"
-            },
-            {
-              "path": "tests/test_termui.py",
-              "symbol": "test_progressbar_is_iterator"
             }
           ]
         },
@@ -2374,8 +2346,8 @@
               "symbol": "test_forwarded_params_consistency"
             },
             {
-              "path": "tests/test_commands.py",
-              "symbol": "test_other_command_forward"
+              "path": "docs/advanced.md",
+              "symbol": "Invoking Other Commands"
             }
           ]
         },
@@ -2794,8 +2766,8 @@
               "symbol": "convert"
             },
             {
-              "path": "tests/test_arguments.py",
-              "symbol": "test_bad_defaults_for_nargs"
+              "path": "tests/test_termui.py",
+              "symbol": "convert"
             }
           ]
         },
@@ -3019,10 +2991,6 @@
             {
               "path": "src/click/testing.py",
               "symbol": "__init__"
-            },
-            {
-              "path": "src/click/types.py",
-              "symbol": "to_info_dict"
             }
           ]
         },
@@ -3095,10 +3063,6 @@
             {
               "path": "src/click/types.py",
               "symbol": "IntRange"
-            },
-            {
-              "path": "tests/test_types/test_IntRange.py",
-              "symbol": "test_range"
             },
             {
               "path": "docs/parameter-types.md",
@@ -3279,7 +3243,7 @@
             "path": "tests/conftest.py",
             "symbol": "runner"
           },
-          "rank": 10,
+          "rank": 9,
           "hits": [
             {
               "path": "tests/test_testing.py",
@@ -5166,10 +5130,6 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "FakeClock"
-            },
-            {
-              "path": "tests/test_termui.py",
-              "symbol": "test_progressbar_update"
             }
           ]
         },
@@ -5763,10 +5723,6 @@
             {
               "path": "tests/test_utils/test__detect_program_name.py",
               "symbol": "MockMain"
-            },
-            {
-              "path": "tests/test_utils/test__detect_program_name.py",
-              "symbol": "test_detect_program_name"
             }
           ]
         },
@@ -5980,12 +5936,12 @@
           "file": {
             "hits_at_1": 1,
             "hits_at_3": 3,
-            "mean_reciprocal_rank": 0.458
+            "mean_reciprocal_rank": 0.5
           },
           "chunk": {
             "hits_at_1": 1,
             "hits_at_3": 2,
-            "mean_reciprocal_rank": 0.333
+            "mean_reciprocal_rank": 0.375
           }
         }
       ],
@@ -6031,7 +5987,7 @@
         "far_questions": 8,
         "far_results": 0,
         "near_questions": 7,
-        "near_results": 9
+        "near_results": 1
       },
       "ranks": [
         {
@@ -6261,16 +6217,16 @@
               "symbol": "Features"
             },
             {
-              "path": "src/walk.rs",
-              "symbol": "WorkerState"
-            },
-            {
               "path": "src/dir_entry.rs",
               "symbol": "DirEntryInner"
             },
             {
               "path": "src/main.rs",
               "symbol": "run"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Using fd with `xargs` or `parallel`"
             }
           ]
         },
@@ -6541,16 +6497,16 @@
               "symbol": "Features"
             },
             {
-              "path": "src/filter/owner.rs",
-              "symbol": "from_string"
-            },
-            {
               "path": "tests/tests.rs",
               "symbol": "test_owner_ignore_all"
             },
             {
               "path": "README.md",
               "symbol": "Command-line options"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
             },
             {
               "path": "CHANGELOG.md",
@@ -6845,8 +6801,8 @@
               "symbol": "Features"
             },
             {
-              "path": "src/fmt/input.rs",
-              "symbol": "basename"
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
             }
           ]
         },
@@ -6873,10 +6829,6 @@
               "symbol": "Other"
             },
             {
-              "path": "CONTRIBUTING.md",
-              "symbol": "Pull Request Expectations"
-            },
-            {
               "path": "CHANGELOG.md",
               "symbol": "Other"
             },
@@ -6895,22 +6847,22 @@
             {
               "path": "README.md",
               "symbol": "On Arch Linux"
+            },
+            {
+              "path": "README.md",
+              "symbol": "On Mise"
             }
           ]
         },
         {
           "query": "how to tell the maintainers in private about a flaw that attackers could exploit",
           "kind": "documentation",
-          "file_rank": 3,
-          "chunk_rank": 3,
+          "file_rank": 2,
+          "chunk_rank": 2,
           "hits": [
             {
               "path": "src/sanitize.rs",
               "symbol": "strips_osc8_hyperlink_injection"
-            },
-            {
-              "path": "src/sanitize.rs",
-              "symbol": "maybe_sanitize_passthrough_when_not_terminal"
             },
             {
               "path": "SECURITY.md",
@@ -6921,20 +6873,8 @@
               "symbol": "SanitizeErr"
             },
             {
-              "path": "CHANGELOG.md",
-              "symbol": "Bugfixes"
-            },
-            {
-              "path": "CONTRIBUTING.md",
-              "symbol": "Pull Request Expectations"
-            },
-            {
               "path": "SECURITY.md",
               "symbol": "Notes"
-            },
-            {
-              "path": "src/sanitize.rs",
-              "symbol": "strips_osc52_clipboard_payload"
             },
             {
               "path": "SECURITY.md",
@@ -7215,10 +7155,6 @@
               "symbol": "Simple search"
             },
             {
-              "path": "README.md",
-              "symbol": "Deleting files"
-            },
-            {
               "path": "CHANGELOG.md",
               "symbol": "Changes"
             },
@@ -7229,6 +7165,10 @@
             {
               "path": "README.md",
               "symbol": "On Ubuntu"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Using fd with `emacs`"
             }
           ]
         },
@@ -7757,7 +7697,7 @@
             },
             {
               "path": "src/filter/owner.rs",
-              "symbol": "matches"
+              "symbol": "Check"
             }
           ]
         },
@@ -7830,10 +7770,6 @@
             {
               "path": "src/filter/time.rs",
               "symbol": "set"
-            },
-            {
-              "path": "src/regex_helper.rs",
-              "symbol": "visit_class_set_item_pre"
             }
           ]
         },
@@ -8863,16 +8799,16 @@
       "names": {
         "names": 68,
         "chunk": {
-          "hits_at_1": 48,
+          "hits_at_1": 49,
           "hits_at_3": 62,
-          "mean_reciprocal_rank": 0.813
+          "mean_reciprocal_rank": 0.82
         }
       },
       "off_topic": {
         "far_questions": 8,
         "far_results": 0,
         "near_questions": 7,
-        "near_results": 26
+        "near_results": 21
       },
       "ranks": [
         {
@@ -9010,12 +8946,12 @@
               "symbol": "index_service"
             },
             {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "LanceDBConnection"
+              "path": "src/semantic_code_mcp/services/search_service.py",
+              "symbol": "SearchService"
             },
             {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "ensure_table"
+              "path": "src/semantic_code_mcp/models/responses.py",
+              "symbol": "IndexResultSummary"
             }
           ]
         },
@@ -9146,20 +9082,20 @@
               "symbol": "Steps"
             },
             {
-              "path": "src/semantic_code_mcp/chunkers/base.py",
-              "symbol": "BaseTreeSitterChunker"
-            },
-            {
-              "path": "README.md",
-              "symbol": "How It Works"
-            },
-            {
               "path": "src/semantic_code_mcp/services/index_service.py",
               "symbol": "_parse_gitignore"
             },
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
               "symbol": "get_tracked_files"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/composite.py",
+              "symbol": "chunk_file"
+            },
+            {
+              "path": "tests/test_index_service.py",
+              "symbol": "test_scan_respects_gitignore"
             }
           ]
         },
@@ -9510,8 +9446,8 @@
               "symbol": "cache"
             },
             {
-              "path": "src/semantic_code_mcp/models/domain.py",
-              "symbol": "ScanPlan"
+              "path": "docs/decisions/002-agent-instruction-files.md",
+              "symbol": "Best Practices Discovered"
             }
           ]
         },
@@ -9775,19 +9711,11 @@
             },
             {
               "path": "docs/decisions/001-initial-architecture.md",
-              "symbol": "Decision"
-            },
-            {
-              "path": "docs/decisions/001-initial-architecture.md",
               "symbol": "Key Design Choices"
             },
             {
               "path": "TODO.md",
               "symbol": "Reduce Install Size (CPU-only PyTorch)"
-            },
-            {
-              "path": "TODO.md",
-              "symbol": "Services Layer & Strict Linting"
             }
           ]
         },
@@ -10028,8 +9956,8 @@
               "symbol": "MCP Tools"
             },
             {
-              "path": "tests/test_rust_chunker.py",
-              "symbol": "test_chunk_file_reads_from_disk"
+              "path": "tests/test_index_service.py",
+              "symbol": "test_scan_respects_ignore_patterns"
             }
           ]
         },
@@ -10172,10 +10100,6 @@
               "symbol": "Tech Stack"
             },
             {
-              "path": "src/semantic_code_mcp/config.py",
-              "symbol": "get_index_path"
-            },
-            {
               "path": "docs/decisions/001-initial-architecture.md",
               "symbol": "Tech Stack"
             },
@@ -10194,10 +10118,6 @@
             {
               "path": "docs/decisions/002-agent-instruction-files.md",
               "symbol": "Decision"
-            },
-            {
-              "path": "src/semantic_code_mcp/container.py",
-              "symbol": "get_store"
             }
           ]
         }
@@ -10334,12 +10254,8 @@
             "path": "src/semantic_code_mcp/cli.py",
             "symbol": "main"
           },
-          "rank": 2,
+          "rank": 1,
           "hits": [
-            {
-              "path": "src/semantic_code_mcp/__main__.py",
-              "symbol": "__main__"
-            },
             {
               "path": "src/semantic_code_mcp/cli.py",
               "symbol": "main"

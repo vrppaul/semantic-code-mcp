@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # 006, stage 6, holds the evidence)
     min_similarity: float = Field(default=0.35, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY)
     min_similarity_when_words_match: float = Field(
-        default=0.2, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY
+        default=0.25, ge=LOWEST_SIMILARITY, le=HIGHEST_SIMILARITY
     )
 
     @model_validator(mode="after")
