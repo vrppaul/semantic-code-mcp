@@ -87,8 +87,8 @@ class IndexStore(ABC):
 
     @abstractmethod
     def keep_up(self) -> None:
-        """Fold what was written into the index's own indexes now, as after a run of many
-        writes, rather than when enough writes have gathered."""
+        """Fold what was written into the index's own indexes, compact its tables and prune
+        their old versions; an index run asks for it once it has written."""
 
     @abstractmethod
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:

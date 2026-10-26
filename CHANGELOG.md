@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each model and its revision, chunker version and storage layout keeps an index of its own beside the others in the project's index directory: two sessions of different versions or models never build each other's index again, and switching back finds the old one. The first search after the upgrade builds a new index; one that no session read or wrote for a week is removed, 0.4's included, but never while a writer holds it
 - An index run writes a slice of files at a time: a forced re-index keeps every file searchable throughout, instead of emptying the index first, and a first index stopped midway keeps the files it wrote
 - An edit re-embeds only the chunks whose text it changed; a forced re-index embeds every chunk again
-- A write no longer rebuilds the full-text index; the index is compacted, its new rows indexed and old versions pruned once twenty versions have gathered, and at once after an index run of many writes or a forced one
+- A write no longer rebuilds the full-text index; every index run that wrote ends by compacting the index, folding its new rows into the full-text index and pruning old versions, and the full-text index is rebuilt whole at a session's first such run and once in twenty after
 - `index_status` of a project never indexed no longer creates its index directory
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project

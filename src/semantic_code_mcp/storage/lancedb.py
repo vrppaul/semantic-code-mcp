@@ -29,11 +29,11 @@ again from the write, its other files unrecorded so the next run indexes them.
 
 Reads take no lock: each opens its table again, at its latest version, so a long-lived
 connection still sees what another process wrote, and a table not yet made reads as
-empty. So old versions are pruned only once they are older than any
-read can last; the upkeep that compacts the tables, folds new rows into the full-text
-index and prunes runs after a write once a table has gathered enough versions, not on
-every write, where it would cost more than the write itself; after a run of many writes
-the run asks for it at once, so its rows are not searched unindexed until then.
+empty. So old versions are pruned only once they are older than any read can last. The
+upkeep that compacts the tables, folds new rows into the full-text index and prunes runs
+when an index run that wrote asks for it: rows the full-text index has not folded in
+score on another scale, so a run leaves none. Each upkeep adds the index a part that no
+later one merges, so now and then it rebuilds the index whole.
 
 The project's index directory holds a `.gitignore` of `*`, so a project-local index
 never shows in the project's own repository, nor what 0.4 left there.
@@ -116,11 +116,10 @@ IGNORE_EVERYTHING = "*\n"
 # Written beside its target, then renamed over it, so a crash never leaves half a file
 TEMPORARY_SUFFIX = ".tmp"
 
-# Upkeep runs once a table has more new versions than this: LanceDB's own rule of thumb
-# is to optimize after about twenty modifications
-VERSIONS_BEFORE_UPKEEP = 20
-# A table not kept up since the process started counts its versions from the first
-NEVER_KEPT_UP = 0
+# Each upkeep folds new rows into the full-text index as a part of their own, which no later
+# upkeep merges: a store rebuilds the index whole at its first upkeep and once in this many
+# after (on 0.30.2 a rebuild took 63-75 ms on click, 1.2-2.1 s at 100k chunks)
+UPKEEPS_PER_FULL_TEXT_REBUILD = 20
 # Versions older than this are pruned by upkeep; a read finishes in milliseconds
 OLD_VERSION_RETENTION = timedelta(seconds=10)
 
@@ -271,8 +270,9 @@ class LanceDBIndexStore(IndexStore):
         self._lock_timeout_seconds = lock_timeout_seconds
         self._connecting = threading.Lock()
         self._connection: lancedb.DBConnection | None = None
-        # The version each table had after its last upkeep; only a write changes it
-        self._kept_up_at: dict[str, int] = {}
+        # How many upkeeps this store runs before it rebuilds the full-text index; none
+        # before its first, as it does not know how many parts an earlier process left
+        self._upkeeps_until_rebuild = 0
 
     @property
     def directory(self) -> Path:
@@ -336,7 +336,12 @@ class LanceDBIndexStore(IndexStore):
     @override
     def keep_up(self) -> None:
         with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
-            self._keep_up(every_table=True)
+            for name in (CHUNKS_TABLE, FILES_TABLE):
+                table = self._open(name)
+                if table is not None:
+                    table.optimize(cleanup_older_than=OLD_VERSION_RETENTION)
+                    log.debug("table_kept_up", table=name)
+            self._rebuild_full_text_index_when_due()
 
     @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
@@ -357,7 +362,6 @@ class LanceDBIndexStore(IndexStore):
                 indexed_at=datetime.now(UTC),
             )
             write_atomically(self._directory / MANIFEST_FILE, manifest.model_dump_json())
-            self._keep_up(every_table=False)
         log.debug(
             "index_written",
             files=len(update.files),
@@ -396,7 +400,6 @@ class LanceDBIndexStore(IndexStore):
         for name in (FILES_TABLE, CHUNKS_TABLE):
             if self._open(name) is not None:
                 database.drop_table(name)
-                self._kept_up_at.pop(name, None)
 
     def _write_chunks(
         self, database: lancedb.DBConnection, update: IndexUpdate, vectors: VectorMatrix
@@ -426,7 +429,7 @@ class LanceDBIndexStore(IndexStore):
                 .execute(rows)
             )
         if not has_full_text_index(table):
-            table.create_fts_index(SEARCH_TEXT_COLUMN, remove_stop_words=REMOVE_STOP_WORDS)
+            make_full_text_index(table)
 
     def _write_records(self, database: lancedb.DBConnection, update: IndexUpdate) -> None:
         """Record the files written and drop the records of the files removed, after their
@@ -447,19 +450,18 @@ class LanceDBIndexStore(IndexStore):
                 .execute(files_table(update.files))
             )
 
-    def _keep_up(self, *, every_table: bool) -> None:
-        """Compact a table, fold its new rows into its indexes and prune its old versions:
-        every table when asked to keep up, else a table that has gathered more than
-        VERSIONS_BEFORE_UPKEEP versions since its last upkeep in this process."""
-        for name in (CHUNKS_TABLE, FILES_TABLE):
-            table = self._open(name)
-            if table is None:
-                continue
-            versions_since = table.version - self._kept_up_at.get(name, NEVER_KEPT_UP)
-            if every_table or versions_since > VERSIONS_BEFORE_UPKEEP:
-                table.optimize(cleanup_older_than=OLD_VERSION_RETENTION)
-                self._kept_up_at[name] = table.version
-                log.debug("table_kept_up", table=name)
+    def _rebuild_full_text_index_when_due(self) -> None:
+        """Rebuild the full-text index whole, which merges the parts upkeeps added, at this
+        store's first upkeep and once in UPKEEPS_PER_FULL_TEXT_REBUILD after it."""
+        if self._upkeeps_until_rebuild > 0:
+            self._upkeeps_until_rebuild -= 1
+            return
+        chunks = self._open(CHUNKS_TABLE)
+        if chunks is None:
+            return
+        make_full_text_index(chunks)
+        self._upkeeps_until_rebuild = UPKEEPS_PER_FULL_TEXT_REBUILD - 1
+        log.debug("full_text_index_rebuilt")
 
     def _note_use(self) -> None:
         """Mark this index as used, so another store leaves it, and remove the project's
@@ -641,6 +643,12 @@ def files_table(files: list[SourceFile]) -> pyarrow.Table:
         },
         schema=FILES_SCHEMA,
     )
+
+
+def make_full_text_index(table: lancedb.table.Table) -> None:
+    """Index the chunks' search text for full-text search, whole, in place of any index the
+    table has."""
+    table.create_fts_index(SEARCH_TEXT_COLUMN, replace=True, remove_stop_words=REMOVE_STOP_WORDS)
 
 
 def has_full_text_index(table: lancedb.table.Table) -> bool:

@@ -47,8 +47,6 @@ DURATION_DECIMALS = 3
 EMBEDDING_SLICE_SIZE = 256
 # The vectors of no chunks: no rows, and with no vector seen, no columns
 NO_VECTORS_SHAPE = (0, 0)
-# A run of more writes than this asks the store to fold them into its indexes at its end
-WRITES_KEPT_UP_AS_THEY_COME = 1
 
 
 class IndexPhase(Enum):
@@ -200,9 +198,9 @@ class IndexingService:
         force: bool,
         progress: ProgressReporter,
     ) -> int:
-        """Embed and write the slices one after another, the removals with the first; then,
-        after more than one write or a forced run, which rewrites every row, have the store
-        fold them into its indexes. The number of chunks written."""
+        """Embed and write the slices one after another, the removals with the first; then
+        have the store fold what they wrote into its indexes, as rows the full-text index has
+        not folded in score on another scale. The number of chunks written."""
         total = sum(len(write_slice.chunks) for write_slice in slices)
         done = 0
         removals = removed_paths
@@ -222,8 +220,7 @@ class IndexingService:
             await asyncio.to_thread(self._store.write, update, vectors)
             done += len(chunks)
             removals = []
-        if force or len(slices) > WRITES_KEPT_UP_AS_THEY_COME:
-            await asyncio.to_thread(self._store.keep_up)
+        await asyncio.to_thread(self._store.keep_up)
         return total
 
     async def _vectors(

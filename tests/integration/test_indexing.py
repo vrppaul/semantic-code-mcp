@@ -601,6 +601,23 @@ async def test_a_forced_run_of_a_small_project_leaves_every_chunk_in_the_full_te
     assert chunks_outside_the_full_text_index(store) == 0
 
 
+async def test_an_edit_leaves_every_chunk_in_the_full_text_index(
+    test_settings: Settings, sample_project: Path, tmp_path: Path
+):
+    """Rows the full-text index has not folded in score on another scale, so the edited
+    file's chunks, the ones an agent asks about next, would rank apart until upkeep."""
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    edited = sample_project / "main.py"
+    edited.write_text(edited.read_text() + ADDED_FUNCTION)
+    touch_later(edited)
+
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+
+    assert chunks_outside_the_full_text_index(store) == 0
+
+
 async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_index(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):

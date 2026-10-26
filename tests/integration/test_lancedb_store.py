@@ -32,12 +32,13 @@ from semantic_code_mcp.storage.lancedb import (
     NO_CANDIDATES,
     REMOVING_PREFIX,
     SCHEMA_VERSION,
+    UPKEEPS_PER_FULL_TEXT_REBUILD,
     USE_MARK_INTERVAL,
     USE_STAMP_FILE,
     LanceDBIndexStore,
 )
 from tests.fakes import EMBEDDING_DIMENSION
-from tests.helpers import chunks_outside_the_full_text_index
+from tests.helpers import chunks_outside_the_full_text_index, newest_full_text_index_files
 
 TOWARD_QUERY = [0.9] * EMBEDDING_DIMENSION
 QUERY = numpy.full(EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
@@ -319,7 +320,8 @@ def code_and_a_guide(store: LanceDBIndexStore, request: pytest.FixtureRequest) -
 def test_both_channels_find_within_the_scope_before_they_cut(
     code_and_a_guide: LanceDBIndexStore, scope: SearchScope
 ):
-    """The guide is further than every chunk a narrow channel would bring unfiltered."""
+    """The guide is further than every chunk a narrow channel would bring unfiltered by
+    vector, and by words too in the first case."""
     query = SearchQuery(text=GUIDE_QUESTION, limit=NARROW_CHANNEL, scope=scope)
 
     candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
@@ -736,3 +738,18 @@ def set_mode_of_tree(directory: Path, mode: int) -> None:
     """Set the mode of a directory, everything under it, and their directories."""
     for path in [directory, *directory.rglob("*")]:
         path.chmod(mode)
+
+
+def test_upkeep_rebuilds_the_full_text_index_before_its_parts_pile_up(
+    filled_store: LanceDBIndexStore,
+):
+    """Each upkeep folds new rows in as a part of their own, which no later upkeep merges."""
+    filled_store.keep_up()
+    rebuilt = newest_full_text_index_files(filled_store)
+
+    for edit in range(UPKEEPS_PER_FULL_TEXT_REBUILD):
+        near = function_chunk("near", "near.py", f"def near(): return {edit}")
+        filled_store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
+        filled_store.keep_up()
+
+    assert newest_full_text_index_files(filled_store) == rebuilt
