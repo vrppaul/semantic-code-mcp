@@ -345,8 +345,8 @@ class LanceDBIndexStore(IndexStore):
             .to_arrow()
         )
         matrix = vector_matrix(rows)
-        chunk_ids = rows.column(CHUNK_ID_COLUMN).to_pylist()
-        return dict(zip(chunk_ids, numpy.unstack(matrix), strict=True))
+        found_ids = rows.column(CHUNK_ID_COLUMN).to_pylist()
+        return dict(zip(found_ids, numpy.unstack(matrix), strict=True))
 
     @override
     def keep_up(self) -> None:
@@ -470,8 +470,8 @@ class LanceDBIndexStore(IndexStore):
         this store's first upkeep, once in UPKEEPS_PER_COMPACTION after it, and whenever the
         rows writes replaced weigh too much in the full-text index."""
         chunks = self._open(CHUNKS_TABLE)
-        weighing = chunks is not None and replaced_rows_weigh_too_much(chunks)
-        if self._upkeeps_until_compaction > 0 and not weighing:
+        replaced_rows_weigh = chunks is not None and replaced_rows_weigh_too_much(chunks)
+        if self._upkeeps_until_compaction > 0 and not replaced_rows_weigh:
             self._upkeeps_until_compaction -= 1
             return
         for name in (CHUNKS_TABLE, FILES_TABLE):

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, override
 
 import numpy
 import structlog
+from huggingface_hub.utils import disable_progress_bars
 
 from semantic_code_mcp.domain.interfaces import Embedder, Vector, VectorMatrix
 
@@ -86,6 +87,9 @@ class SentenceTransformerEmbedder(Embedder):
 def load_model(model_name: str, revision: str | None) -> SentenceTransformer:
     """Load a sentence-transformers model by name, at a revision if one is given, else as
     the hub or the path has it; imports torch on first call."""
+    # Before transformers is first imported, as it reads the switch then: else it draws a bar
+    # on stderr as the weights load, among the server's log lines
+    disable_progress_bars()
     # Deferred: importing sentence-transformers pulls in torch, seconds of start-up
     from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 

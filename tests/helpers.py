@@ -58,8 +58,7 @@ def commit_all(repository: Path) -> None:
 def chunks_outside_the_full_text_index(store: LanceDBIndexStore) -> int:
     """How many chunks of a store its full-text index does not hold yet."""
     chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
-    full_text_index = chunks_table.list_indices()[0]
-    return chunks_table.index_stats(full_text_index.name).num_unindexed_rows
+    return chunks_table.index_stats(FULL_TEXT_INDEX_NAME).num_unindexed_rows
 
 
 def chunks_fragments(store: LanceDBIndexStore) -> list[LanceFragment]:

@@ -34,6 +34,7 @@ from semantic_code_mcp.storage.lancedb import (
     MANIFEST_FILE,
     NO_CANDIDATES,
     REMOVING_PREFIX,
+    REPLACED_ROWS_SHARE_BEFORE_COMPACTION,
     ROWS_PER_FRAGMENT,
     SCHEMA_VERSION,
     UPKEEPS_PER_COMPACTION,
@@ -68,6 +69,10 @@ FIRST_VERSION = 1
 OFTEN_EDITED_FILE = "often_edited.py"
 OFTEN_EDITED_NAMES = ("often_first", "often_second")
 OTHER_CHUNKS = 98
+# How many edits of that file replace no more rows than upkeep lets weigh in the index
+EDITS_UNDER_THE_SHARE = int(
+    REPLACED_ROWS_SHARE_BEFORE_COMPACTION * (OTHER_CHUNKS + len(OFTEN_EDITED_NAMES))
+) // len(OFTEN_EDITED_NAMES)
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
 # Modes for a table's files: read and enter only, so a write to it fails; and writable again
@@ -760,10 +765,12 @@ def set_mode_of_tree(directory: Path, mode: int) -> None:
         path.chmod(mode)
 
 
-def write_an_edit(store: LanceDBIndexStore, number: int) -> None:
-    """Write the numbered edit of one chunk, which the full-text index has not folded in."""
-    near = function_chunk("near", "near.py", f"def near(): return {number}")
-    store.write(update_of([near], removed_paths=[]), vectors_of(TOWARD_QUERY))
+def write_a_new_file(store: LanceDBIndexStore, number: int) -> None:
+    """Write the numbered new file of one chunk, which the full-text index has not folded
+    in; it replaces no row, so only the countdown, not the rows replaced, calls for upkeep's
+    compaction."""
+    added = function_chunk(f"added_{number}", f"added_{number}.py", f"def added_{number}(): pass")
+    store.write(update_of([added], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
 
 def next_store_on(store: LanceDBIndexStore) -> LanceDBIndexStore:
@@ -774,18 +781,18 @@ def next_store_on(store: LanceDBIndexStore) -> LanceDBIndexStore:
 
 
 def same_store_after_its_upkeeps(store: LanceDBIndexStore) -> LanceDBIndexStore:
-    """The store, after an edit and an upkeep for each but the last of the upkeeps between
-    two compactions, and one more edit for the last to fold in."""
+    """The store, after a new file and an upkeep for each but the last of the upkeeps
+    between two compactions, and one more file for the last to fold in."""
     for number in range(UPKEEPS_PER_COMPACTION - 1):
-        write_an_edit(store, number)
+        write_a_new_file(store, number)
         store.keep_up()
-    write_an_edit(store, UPKEEPS_PER_COMPACTION - 1)
+    write_a_new_file(store, UPKEEPS_PER_COMPACTION - 1)
     return store
 
 
 def store_of_the_next_session(store: LanceDBIndexStore) -> LanceDBIndexStore:
     """A new store on the same index, after the earlier session's store folded in a part."""
-    write_an_edit(store, 0)
+    write_a_new_file(store, 0)
     store.keep_up()
     return next_store_on(store)
 
@@ -817,7 +824,7 @@ def test_an_upkeep_between_compactions_rewrites_no_fragment(filled_store: LanceD
     """LanceDB's own optimize compacts at every call, merging every fragment under a million
     rows into one, so at 100k chunks each edit rewrote the whole table, in about 0.67 s."""
     filled_store.keep_up()
-    write_an_edit(filled_store, 0)
+    write_a_new_file(filled_store, 0)
     filled_store.keep_up()
     kept = [fragment.fragment_id for fragment in chunks_fragments(filled_store)]
     later = function_chunk("later", "later.py", "def later(): pass")
@@ -842,8 +849,12 @@ def write_the_often_edited_file(store: LanceDBIndexStore, edit: int) -> None:
 @pytest.mark.parametrize(
     ("edits", "replaced_rows_counted"),
     [
-        pytest.param(2, 4, id="replaced rows under the share, kept"),
-        pytest.param(3, 0, id="replaced rows past the share, dropped"),
+        pytest.param(
+            EDITS_UNDER_THE_SHARE,
+            EDITS_UNDER_THE_SHARE * len(OFTEN_EDITED_NAMES),
+            id="replaced rows under the share, kept",
+        ),
+        pytest.param(EDITS_UNDER_THE_SHARE + 1, 0, id="replaced rows past the share, dropped"),
     ],
 )
 def test_upkeep_compacts_once_replaced_rows_weigh_in_the_full_text_index(
@@ -882,7 +893,7 @@ def test_compaction_merges_small_fragments_and_leaves_full_ones(store: LanceDBIn
     store.write(update_of(full, removed_paths=[]), vectors_of(*[TOWARD_QUERY] * len(full)))
     store.keep_up()
     full_fragment = chunks_fragments(store)[0].fragment_id
-    write_an_edit(store, 0)
+    write_a_new_file(store, 0)
     store.keep_up()
     later = function_chunk("later", "later.py", "def later(): pass")
     store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
@@ -921,7 +932,7 @@ def test_upkeep_prunes_the_versions_older_than_any_read_can_last(
     """Else each write would keep a copy of what it replaced, and the index grow for ever;
     a version younger than the retention stays, as a read may still be on it."""
     monkeypatch.setattr(lancedb_store, "OLD_VERSION_RETENTION", retention)
-    write_an_edit(filled_store, 0)
+    write_a_new_file(filled_store, 0)
 
     filled_store.keep_up()
 
