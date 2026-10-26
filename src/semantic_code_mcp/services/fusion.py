@@ -6,7 +6,7 @@ scale the other's can be put on: full-text scores move with the corpus and with 
 the full-text index has taken a row in yet, cosine similarities with the model. A chunk
 both channels rank within their first RRF_K + 1 comes before one only a single channel
 ranks first. Every kind of chunk is fused alike: on the harness, weighing prose down
-gained nothing once every right answer counted (ADR 006, stage 6, the prose prior).
+gained nothing once every right answer counted (ADR 006, stage 6: prose is fused as code is).
 """
 
 from semantic_code_mcp.domain.models import Candidate, SearchCandidates, SearchHit
