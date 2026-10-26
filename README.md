@@ -138,7 +138,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
 | `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS` | `10` | How long git may take to list the files before discovery walks the file system instead |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | How close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share. Below 0.2, lower `MIN_SIMILARITY_WHEN_WORDS_MATCH` with it, or the server refuses to start |
-| `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.2` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY` |
+| `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.2` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY`. A result named as the query comes back however far |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 
 Pass environment variables via the `env` field in your MCP config:

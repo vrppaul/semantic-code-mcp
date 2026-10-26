@@ -20,11 +20,9 @@ from semantic_code_mcp.domain.models import Candidate, ChunkKind, SearchCandidat
 # Büttcher, 2009): large enough that one channel's first few hits do not drown the rest
 RRF_K = 60
 FIRST_RANK = 1
-# What a kind's fused score is multiplied by. A section of a document ranks below code
-# fused alike: on the harness 0.9 lifted the code questions' file MRR from 0.539 / 0.698 /
-# 0.828 to 0.700 / 0.754 / 0.828 and cost the documentation questions 1.0 / 1.0 / 0.875 ->
-# 0.8 / 1.0 / 0.635; 0.95 gained less, 0.85 lost more than it gained (ADR 006, stage 6)
-KIND_WEIGHTS: Mapping[ChunkKind, float] = MappingProxyType({ChunkKind.section: 0.9})
+# What a kind's fused score is multiplied by: a section of a document ranks a little below
+# code fused alike, as the harness chose (ADR 006, stage 6, the prose prior)
+KIND_WEIGHTS: Mapping[ChunkKind, float] = MappingProxyType({ChunkKind.section: 0.95})
 # The weight of a kind the table leaves out
 UNWEIGHTED = 1.0
 

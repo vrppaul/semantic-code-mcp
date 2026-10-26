@@ -85,6 +85,27 @@ async def test_a_hit_far_in_meaning_is_dropped_and_one_whose_words_match_further
     )
 
 
+async def test_a_hit_named_as_the_query_stays_however_far_in_meaning(
+    test_settings: Settings, sample_project: Path
+):
+    """An agent that asks for an identifier it knows wants its definition, which a model
+    may find far from the bare name; a name the query is only part of gets no such pass."""
+    store = FakeIndexStore(
+        SearchCandidates(
+            by_vector=[],
+            by_keyword=[
+                candidate("main", BELOW_BOTH_FLOORS),
+                candidate("main_loop", BELOW_BOTH_FLOORS),
+            ],
+        )
+    )
+    service = search_service(store, test_settings, FakeEmbedder())
+
+    report = await service.search(query_of(" Main "), sample_project, progress=NO_PROGRESS)
+
+    assert [hit.chunk.name for hit in report.results] == ["main"]
+
+
 async def test_no_more_hits_than_the_limit(test_settings: Settings, sample_project: Path):
     store = FakeIndexStore(
         found_by_vector(*(candidate(f"function_{rank}", CLOSE) for rank in range(LIMIT)))

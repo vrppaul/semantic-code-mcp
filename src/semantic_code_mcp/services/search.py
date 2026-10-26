@@ -3,7 +3,8 @@
 Each channel of the store brings its candidates, the vector channel by meaning and the
 keyword channel by words, and fusion ranks them as one list, which the search returns
 as it stands: hits of one file are not grouped. A hit far in meaning from the query is
-noise and goes, and one whose words match the query's goes only further away.
+noise and goes, and one whose words match the query's goes only further away; one named
+as the query stays, as an agent that asks for an identifier it knows wants its definition.
 """
 
 import asyncio
@@ -124,7 +125,7 @@ class SearchService:
         hits = fuse(candidates)
         search_ms = elapsed_milliseconds(search_started)
 
-        kept = [hit for hit in hits if is_relevant(hit, self._floors)]
+        kept = [hit for hit in hits if is_relevant(hit, self._floors, query.text)]
         return SearchReport(
             results=kept[: query.limit],
             filtered_count=len(hits) - len(kept),
@@ -144,8 +145,16 @@ def indexing_message(status: IndexStatus) -> str:
     return f"Re-indexing {status.stale_files_count} stale files..."
 
 
-def is_relevant(hit: SearchHit, floors: SimilarityFloors) -> bool:
-    """Whether a hit stays: its meaning near enough the query's, and less near where its
-    words match the query's too."""
+def is_relevant(hit: SearchHit, floors: SimilarityFloors, query_text: str) -> bool:
+    """Whether a hit stays: one named as the query however far in meaning, which a model
+    may find far from a bare name; another when its meaning is near enough the query's,
+    and less near where its words match the query's too."""
+    if is_named_by(hit, query_text):
+        return True
     floor = floors.meaning_only if hit.keyword_rank is None else floors.words_match
     return hit.similarity >= floor
+
+
+def is_named_by(hit: SearchHit, query_text: str) -> bool:
+    """Whether the query is the hit's name, its case and the blanks around it aside."""
+    return hit.chunk.name.casefold() == query_text.strip().casefold()
