@@ -4,7 +4,8 @@ Reciprocal Rank Fusion scores a chunk by the sum, over the channels that found i
 1 / (RRF_K + its rank there). It reads only ranks, so neither channel's scores need a
 scale the other's can be put on: full-text scores move with the corpus and with whether
 the full-text index has taken a row in yet, cosine similarities with the model. A chunk
-both channels find comes before one only a single channel ranks first.
+both channels rank within their first RRF_K + 1 comes before one only a single channel
+ranks first.
 """
 
 from semantic_code_mcp.domain.models import Candidate, SearchCandidates, SearchHit

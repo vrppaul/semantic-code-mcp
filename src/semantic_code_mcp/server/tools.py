@@ -59,9 +59,10 @@ async def search_code(
         include_debug: Also return timings and counts of the search.
 
     Returns:
-        Matching chunks with the file's absolute path, line range, name, kind (module,
-        function, method, class, section), the class, impl or heading it belongs to, content
-        and similarity to the query.
+        Matching chunks, best first by meaning and words together, with the file's absolute
+        path, line range, name, kind (module, function, method, class, section), the class,
+        impl or heading it belongs to, content, and its similarity in meaning to the query
+        alone, which a hit its words found can show low.
     """
     with failures_as_tool_errors():
         project_root = existing_project_root(project_path)

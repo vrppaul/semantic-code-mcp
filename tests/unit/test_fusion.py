@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from hypothesis import given, strategies
 
 from semantic_code_mcp.domain.models import (
@@ -71,10 +72,19 @@ def test_a_chunk_both_channels_rank_second_comes_before_either_channel_s_first()
     assert fused_ids(["vector_first", "both"], ["keyword_first", "both"])[0] == "both"
 
 
-def test_chunks_ranked_alike_come_closest_in_meaning_first():
+@pytest.mark.parametrize(
+    ("vector_similarity", "keyword_similarity", "order"),
+    [
+        pytest.param(0.4, 0.6, ["keyword_first", "vector_first"], id="the keyword's closer"),
+        pytest.param(0.6, 0.4, ["vector_first", "keyword_first"], id="the vector's closer"),
+    ],
+)
+def test_chunks_ranked_alike_come_closest_in_meaning_first(
+    vector_similarity: float, keyword_similarity: float, order: list[str]
+):
     candidates = SearchCandidates(
-        by_vector=[candidate("vector_first", similarity=0.4)],
-        by_keyword=[candidate("keyword_first", similarity=0.6)],
+        by_vector=[candidate("vector_first", similarity=vector_similarity)],
+        by_keyword=[candidate("keyword_first", similarity=keyword_similarity)],
     )
 
-    assert [hit.chunk.chunk_id for hit in fuse(candidates)] == ["keyword_first", "vector_first"]
+    assert [hit.chunk.chunk_id for hit in fuse(candidates)] == order

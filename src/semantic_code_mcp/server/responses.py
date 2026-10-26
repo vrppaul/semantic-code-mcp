@@ -1,8 +1,15 @@
 """What the tools answer: the structured content an agent reads."""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from semantic_code_mcp.domain.models import ChunkKind
+
+# What an agent reads of a hit's similarity in the tool's output schema
+SIMILARITY_DESCRIPTION = (
+    "How close the chunk's meaning is to the query's alone, a cosine similarity from -1 to 1."
+    " Results come best first by meaning and words together, so a hit its words found can"
+    " show a low similarity."
+)
 
 
 class SearchResultView(BaseModel):
@@ -20,9 +27,7 @@ class SearchResultView(BaseModel):
     # The qualified name of what the chunk is defined in: a class, an impl, a heading
     parent: str | None
     content: str
-    # How close the chunk's meaning is to the query's, a cosine similarity in [-1, 1]; the
-    # hits come in the order fusing both channels' ranks gives, not by this
-    similarity: float
+    similarity: float = Field(description=SIMILARITY_DESCRIPTION)
     truncated: bool
 
 

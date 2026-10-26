@@ -14,7 +14,11 @@ from semantic_code_mcp.domain.models import (
     SearchCandidates,
 )
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.services.search import MIN_SIMILARITY, SearchService
+from semantic_code_mcp.services.search import (
+    MIN_KEYWORD_SIMILARITY,
+    MIN_SIMILARITY,
+    SearchService,
+)
 from semantic_code_mcp.storage.lancedb import NO_CANDIDATES
 from tests.fakes import FakeEmbedder, FakeIndexStore, ProgressRecorder
 from tests.helpers import indexing_service
@@ -22,7 +26,9 @@ from tests.helpers import indexing_service
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
 CLOSE = 0.9
-BELOW_MIN_SIMILARITY = MIN_SIMILARITY / 2
+# Too far in meaning for a hit no keyword matched, near enough for one whose words match
+BETWEEN_THE_FLOORS = (MIN_SIMILARITY + MIN_KEYWORD_SIMILARITY) / 2
+BELOW_BOTH_FLOORS = MIN_KEYWORD_SIMILARITY / 2
 # A file no project of these tests holds
 ELSEWHERE = "nowhere/old.py"
 
@@ -53,14 +59,14 @@ def search_service(
     return SearchService(store=store, embedder=embedder, indexing=indexing)
 
 
-async def test_a_hit_far_in_meaning_is_dropped_unless_its_words_match(
+async def test_a_hit_far_in_meaning_is_dropped_and_one_whose_words_match_further(
     test_settings: Settings, sample_project: Path
 ):
-    named = candidate("named", BELOW_MIN_SIMILARITY)
+    named = candidate("named", BETWEEN_THE_FLOORS)
     store = FakeIndexStore(
         SearchCandidates(
-            by_vector=[candidate("close", CLOSE), candidate("far", BELOW_MIN_SIMILARITY), named],
-            by_keyword=[named],
+            by_vector=[candidate("close", CLOSE), candidate("far", BETWEEN_THE_FLOORS), named],
+            by_keyword=[named, candidate("word_by_chance", BELOW_BOTH_FLOORS)],
         )
     )
     service = search_service(store, test_settings, FakeEmbedder())
@@ -69,7 +75,7 @@ async def test_a_hit_far_in_meaning_is_dropped_unless_its_words_match(
 
     assert ([hit.chunk.name for hit in report.results], report.filtered_count) == (
         ["named", "close"],
-        1,
+        2,
     )
 
 

@@ -142,16 +142,16 @@
               "symbol": "prompt_for_value"
             },
             {
-              "path": "docs/faqs.md",
-              "symbol": "General"
-            },
-            {
               "path": "src/click/termui.py",
               "symbol": "prompt"
             },
             {
               "path": "README.md",
               "symbol": "Contributing"
+            },
+            {
+              "path": "tests/test_types/test_Choice.py",
+              "symbol": "test_choice_get_invalid_choice_message"
             }
           ]
         },
@@ -228,10 +228,6 @@
               "symbol": "Building and Packaging"
             },
             {
-              "path": "docs/testing.md",
-              "symbol": "Running tests in parallel"
-            },
-            {
               "path": "examples/aliases/aliases.py",
               "symbol": "__init__"
             },
@@ -246,6 +242,10 @@
             {
               "path": "docs/complex.md",
               "symbol": "Complex Applications"
+            },
+            {
+              "path": "examples/complex/complex/cli.py",
+              "symbol": "__init__"
             }
           ]
         },
@@ -475,12 +475,12 @@
               "symbol": "test_option_with_optional_value"
             },
             {
-              "path": "src/click/core.py",
-              "symbol": "get_default"
-            },
-            {
               "path": "tests/test_options.py",
               "symbol": "test_option_names"
+            },
+            {
+              "path": "tests/test_compat.py",
+              "symbol": "test_truncate_visible"
             }
           ]
         },
@@ -949,8 +949,8 @@
               "symbol": "Handling Files"
             },
             {
-              "path": "docs/advanced.md",
-              "symbol": "Parameter Modifications"
+              "path": "src/click/utils.py",
+              "symbol": "open"
             }
           ]
         }
@@ -967,7 +967,7 @@
       "chunk": {
         "hits_at_1": 3,
         "hits_at_3": 6,
-        "mean_reciprocal_rank": 0.333
+        "mean_reciprocal_rank": 0.34
       },
       "ranks": [
         {
@@ -1302,7 +1302,7 @@
         {
           "query": "decide whether an entry has one of the requested file types",
           "file_rank": 1,
-          "chunk_rank": null,
+          "chunk_rank": 10,
           "hits": [
             {
               "path": "src/filetypes.rs",
@@ -1329,10 +1329,6 @@
               "symbol": "test_and_plus_type"
             },
             {
-              "path": "SECURITY.md",
-              "symbol": "Notes"
-            },
-            {
               "path": "CHANGELOG.md",
               "symbol": "Features"
             },
@@ -1343,6 +1339,10 @@
             {
               "path": "src/filetypes.rs",
               "symbol": "from_types"
+            },
+            {
+              "path": "src/filetypes.rs",
+              "symbol": "should_ignore"
             }
           ]
         },
@@ -1482,8 +1482,8 @@
               "symbol": "Features"
             },
             {
-              "path": "src/fmt/mod.rs",
-              "symbol": "replace_separator"
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
             }
           ]
         },
@@ -1968,8 +1968,8 @@
               "symbol": "Release Process"
             },
             {
-              "path": "CHANGELOG.md",
-              "symbol": "Changed"
+              "path": "src/semantic_code_mcp/services/index_service.py",
+              "symbol": "_parse_gitignore"
             }
           ]
         },
@@ -2289,16 +2289,16 @@
               "symbol": "clear"
             },
             {
-              "path": "src/semantic_code_mcp/storage/lancedb.py",
-              "symbol": "LanceDBVectorStore"
-            },
-            {
               "path": "src/semantic_code_mcp/protocols.py",
               "symbol": "clear"
             },
             {
-              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
-              "symbol": "Option B: Generic chunker with declarative config"
+              "path": "src/semantic_code_mcp/protocols.py",
+              "symbol": "delete_by_file"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "drop_table"
             }
           ]
         },

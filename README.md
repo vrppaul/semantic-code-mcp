@@ -18,7 +18,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
 2. **Embedding** — sentence-transformers encodes each chunk (all-MiniLM-L6-v2, 384d)
 3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
-4. **Search** — hybrid semantic + keyword search with recency boosting
+4. **Search** — a search by meaning and one by words, fused by rank
 
 Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each model, chunker version and storage layout keeps an index of its own, so a new version or another model builds a new index once, and switching back finds the old one; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
 
@@ -99,7 +99,7 @@ Search code by meaning, not just text matching. Auto-indexes on first search.
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 
-Returns ranked results with `file_path` (absolute), `line_start`, `line_end`, `name`, `kind` (`module`, `function`, `method`, `class`, `section`; Rust's structs, enums, traits and impls are classes), `parent` (the class, impl, module or heading the chunk sits in, as `Stack` for `Stack.push`), `content` (cut to 50 lines, `truncated` says so) and `score`. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
+Returns ranked results with `file_path` (absolute), `line_start`, `line_end`, `name`, `kind` (`module`, `function`, `method`, `class`, `section`; Rust's structs, enums, traits and impls are classes), `parent` (the class, impl, module or heading the chunk sits in, as `Stack` for `Stack.push`), `content` (cut to 50 lines, `truncated` says so) and `similarity`, how close the chunk's meaning is to the query's; results come best first by meaning and words together. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
 
 ### `index_codebase`
 

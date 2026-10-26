@@ -2,8 +2,8 @@
 
 Each channel of the store brings its candidates, the vector channel by meaning and the
 keyword channel by words, and fusion ranks them as one list, which the search returns
-as it stands: hits of one file are not grouped. A hit only the vector channel found, and
-far in meaning from the query, is noise and goes.
+as it stands: hits of one file are not grouped. A hit far in meaning from the query is
+noise and goes, and one whose words match the query's goes only further away.
 """
 
 import asyncio
@@ -28,6 +28,10 @@ from semantic_code_mcp.services.timing import elapsed_milliseconds
 # blended score's floor of 0.3 kept such a hit, which scored (1 + similarity) / 4, from
 # a similarity of 0.2
 MIN_SIMILARITY = 0.2
+# A hit whose words match the query's is kept from this lower similarity up: an
+# identifier's own chunk can sit at 0.2, while a word a query shares by chance, as the
+# "fresh" of a cake recipe, finds chunks at -0.1 to 0.05 (a review's probes)
+MIN_KEYWORD_SIMILARITY = 0.1
 # Each channel brings this many candidates per result asked for, so fusion can lift a
 # chunk one channel ranks below the limit
 CANDIDATES_PER_RESULT = 2
@@ -127,5 +131,7 @@ def indexing_message(status: IndexStatus) -> str:
 
 
 def is_relevant(hit: SearchHit) -> bool:
-    """Whether a hit stays: its words match the query's, or its meaning is near enough."""
-    return hit.keyword_rank is not None or hit.similarity >= MIN_SIMILARITY
+    """Whether a hit stays: its meaning near enough the query's, and less near where its
+    words match the query's too."""
+    floor = MIN_SIMILARITY if hit.keyword_rank is None else MIN_KEYWORD_SIMILARITY
+    return hit.similarity >= floor
