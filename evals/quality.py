@@ -185,7 +185,9 @@ async def measure_quality(
     chunks_by_path = chunks_by_file(chunks)
     missing_chunks = missing_answer_chunks(corpus, chunks_by_path)
     if missing_chunks:
-        message = f"{corpus.corpus.name}: answers name chunks no file holds: {missing_chunks}"
+        message = (
+            f"{corpus.corpus.name}: answers name chunks the server does not index: {missing_chunks}"
+        )
         raise CorpusMistakeError(message)
     ambiguous = ambiguous_answers(corpus, chunks_by_path)
     if ambiguous:
