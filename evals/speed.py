@@ -33,8 +33,13 @@ PERCENTILE_CUTS = 100
 MEDIAN_CUT = 49
 NINETY_FIFTH_CUT = 94
 REPORTED_DECIMALS = 2
-# What an edit appends to a file: enough to change its mtime and its content
-EDIT_SUFFIX = "\n"
+# What the numbered edit of a file appends, by its extension: a definition of its own, so
+# the edit adds one chunk and changes no other, as a small edit does
+EDIT_BY_EXTENSION = {
+    ".py": "\n\ndef edited_{number}():\n    return {number}\n",
+    ".rs": "\n\nfn edited_{number}() -> u32 {{\n    {number}\n}}\n",
+    ".md": "\n\n## Edited {number}\n\nEdit {number}.\n",
+}
 PROC_ROOT = Path("/proc")
 PEAK_RESIDENT_FIELD = "VmHWM:"
 SERVER_COMMAND_MARK = b"semantic_code_mcp"
@@ -201,18 +206,18 @@ async def edit_cost(
 ) -> EditCost:
     """What a number of single-file edits cost the index and the searches after them.
 
-    Each edit appends to the file that answers the corpus's first question, then asks
-    that question, which re-indexes the file. The checkout is restored afterwards,
-    whatever happens.
+    Each edit appends a definition to the file that answers the corpus's first question,
+    then asks that question, which re-indexes the file. The checkout is restored
+    afterwards, whatever happens.
     """
     edited_file = working_tree / corpus.queries[0].answers[0].path
     query = corpus.queries[0].text
     size_before = directory_bytes(index_directory)
     search_seconds: list[float] = []
     try:
-        for _ in range(edits):
+        for number in range(edits):
             with edited_file.open("a") as edited:
-                edited.write(EDIT_SUFFIX)
+                edited.write(edit_text(edited_file, number))
             search_seconds.append(await timed_search_seconds(connection, working_tree, query))
     finally:
         restore(working_tree)
@@ -220,6 +225,11 @@ async def edit_cost(
         growth_bytes=directory_bytes(index_directory) - size_before,
         search_seconds=tuple(search_seconds),
     )
+
+
+def edit_text(path: Path, number: int) -> str:
+    """What the numbered edit of a file appends: a definition in the file's language."""
+    return EDIT_BY_EXTENSION[path.suffix].format(number=number)
 
 
 def median_milliseconds(seconds: Sequence[float]) -> float:

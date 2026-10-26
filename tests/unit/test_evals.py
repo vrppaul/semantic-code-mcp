@@ -1,10 +1,14 @@
-"""Tests for the scoring of the search-quality harness."""
+"""Tests for the harness: the scoring of search quality, and the edits of the speed run."""
 
 from pathlib import Path
 
+import pytest
 from evals.corpus import Answer
 from evals.quality import RankScores, first_rank, relative_hit, score
 from evals.server import SearchHit
+from evals.speed import edit_text
+
+from semantic_code_mcp.app import build_chunker
 
 
 def test_first_rank_counts_from_one():
@@ -31,3 +35,46 @@ def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):
     )
 
     assert relative_hit(hit, tmp_path) == Answer(path="src/walk.rs", symbol="scan")
+
+
+PYTHON_SOURCE = '''"""A module."""
+
+
+def first():
+    return 1
+'''
+RUST_SOURCE = """/// A function.
+fn first() -> u32 {
+    1
+}
+"""
+MARKDOWN_SOURCE = """# Guide
+
+Intro.
+
+## Install
+
+Steps.
+"""
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        pytest.param("module.py", PYTHON_SOURCE, id="python"),
+        pytest.param("lib.rs", RUST_SOURCE, id="rust"),
+        pytest.param("guide.md", MARKDOWN_SOURCE, id="markdown"),
+    ],
+)
+def test_an_edit_of_the_speed_run_adds_one_chunk_and_changes_no_other(
+    tmp_path: Path, name: str, source: str
+):
+    """So the search after it re-embeds one chunk once vectors are reused."""
+    edited = tmp_path / name
+    edited.write_text(source)
+    before = build_chunker().chunk_file(tmp_path, Path(name))
+
+    edited.write_text(source + edit_text(edited, 1))
+    after = build_chunker().chunk_file(tmp_path, Path(name))
+
+    assert [chunk.chunk_id for chunk in after][:-1] == [chunk.chunk_id for chunk in before]
