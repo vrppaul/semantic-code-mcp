@@ -488,7 +488,8 @@ async def test_an_edited_file_embeds_only_its_chunks_whose_text_changed(
 async def test_a_forced_run_embeds_every_chunk_again(
     test_settings: Settings, sample_project: Path, tmp_path: Path
 ):
-    """A model swapped under its own name gives other vectors that nothing else can see."""
+    """A model replaced under a name nothing pins gives other vectors that nothing else
+    can see."""
     store = open_index_store(tmp_path / "index", IDENTITY)
     await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
         sample_project, force=False, progress=NO_PROGRESS

@@ -97,8 +97,8 @@ class IndexStore(ABC):
         reader finds a file's old chunks or its new ones; then their records; the manifest
         last. The vector of each chunk is in its row of `vectors`.
 
-        Vectors of another width than those the index holds (a model swapped under the same
-        name) start the index again from this write: the files it does not hold are left
+        Vectors of another width than those the index holds (a model replaced under a name
+        nothing pins) start the index again from this write: the files it does not hold are left
         unrecorded, so the next run indexes them."""
 
     @abstractmethod

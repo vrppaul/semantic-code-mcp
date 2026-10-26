@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The tools no longer send log notifications (`Searching for: ...`, `Found N results in X ms`); progress notifications remain, and now only move forward, the model load included
 - Progress moves while the chunks embed, 256 at a time, instead of standing at 70% until the whole embedding is done
 - The index keeps a record of each file and a manifest of what built it, in place of `file_mtimes.json`
-- The default model loads at a pinned revision, not whichever the hub's `main` holds when it is fetched
+- The default model loads at a pinned revision, not whichever the hub's `main` holds when it is fetched. A cache that holds only an older revision fetches the pinned one's small files once; with `HF_HUB_OFFLINE=1` the model does not load until it has
 - Each model and its revision, chunker version and storage layout keeps an index of its own beside the others in the project's index directory: two sessions of different versions or models never build each other's index again, and switching back finds the old one. The first search after the upgrade builds a new index; one that no session read or wrote for a week is removed, 0.4's included, but never while a writer holds it
 - An index run writes a slice of files at a time: a forced re-index keeps every file searchable throughout, instead of emptying the index first, and a first index stopped midway keeps the files it wrote
 - An edit re-embeds only the chunks whose text it changed; a forced re-index embeds every chunk again
@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `index_status` loaded the embedding model it never uses, blocking for seconds
 - Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
-- A status or search during a forced re-index could fail on a dropped table; it still can at the moment a model swapped under the same name changes the vectors' width
+- A status or search during a forced re-index could fail on a dropped table; it still can at the moment a model replaced under a name nothing pins (a local path) changes the vectors' width
 - A model of another dimension under a name nothing pins (a local path) crashed every index run; the index now starts again from that run's files, and the next run indexes the rest
 - A failure inside a tool reached the agent as `Error executing tool ...` without its cause
 - With `local_index`, two spellings of one project path got separate locks and stores

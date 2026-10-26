@@ -1,11 +1,11 @@
 """LanceDB storage of one project's index: the chunks with their vectors, the record of
 each file they came from, and the manifest of what built them.
 
-A project's index directory holds an index for each identity — the model, the chunker
-version — and layout, each in a directory of its own named after them, with its write
-lock beside it. So a session of another model or version, or a server upgraded or rolled
-back, uses an index of its own and never builds this one again; switching back finds the
-old one still there.
+A project's index directory holds an index for each identity — the model and its
+revision, the chunker version — and layout, each in a directory of its own named after
+them, with its write lock beside it. So a session of another model, revision or version,
+or a server upgraded or rolled back, uses an index of its own and never builds this one
+again; switching back finds the old one still there.
 
 An index nobody used for UNUSED_INDEX_RETENTION is removed, and so is what 0.4 kept
 directly in the project's directory. A write renames a new manifest into the index's
@@ -24,7 +24,7 @@ never write side by side. Its chunks take the place of the chunks of the files i
 and removes in one merge keyed by chunk id, so a reader finds a file's old chunks or its
 new ones; then their records; the manifest last. The chunks table is made by
 the first write that has vectors, as wide as they are; vectors of another width (a model
-swapped under the same name) drop the records, then the table, and the index starts
+replaced under a name nothing pins) drop the records, then the table, and the index starts
 again from the write, its other files unrecorded so the next run indexes them.
 
 Reads take no lock: each opens its table again, at its latest version, so a long-lived
@@ -388,7 +388,7 @@ class LanceDBIndexStore(IndexStore):
 
     def _fit_layout(self, database: lancedb.DBConnection, width: int) -> None:
         """Start the index again when its chunks table does not hold chunks of this width,
-        as a model swapped under the same name gives. The records go first, then the table:
+        as a model replaced under a name nothing pins gives. The records go first, then the table:
         a write stopped between the two never leaves records of chunks that are gone."""
         stored_chunks = self._open(CHUNKS_TABLE)
         if stored_chunks is None or stored_chunks.schema == chunks_schema(width):

@@ -1,16 +1,25 @@
 """Tests for what the tools answer, made from what the services report."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from semantic_code_mcp.domain.models import (
     Chunk,
     ChunkKind,
+    IndexIdentity,
+    IndexManifest,
+    IndexStatus,
     Language,
     SearchReport,
     SearchResult,
     SearchTimings,
 )
-from semantic_code_mcp.server.presenters import MAX_RESULT_LINES, present_hit, present_search
+from semantic_code_mcp.server.presenters import (
+    MAX_RESULT_LINES,
+    present_hit,
+    present_search,
+    present_status,
+)
 
 TIMINGS = SearchTimings(embedding_ms=1.0, search_ms=2.0, total_ms=3.0)
 PROJECT_ROOT = Path("/project")
@@ -65,3 +74,15 @@ def test_debug_details_only_when_asked():
 
     assert present_search(report, PROJECT_ROOT, include_debug=False).debug is None
     assert present_search(report, PROJECT_ROOT, include_debug=True).debug is not None
+
+
+def test_a_status_names_the_model_and_the_revision_that_built_the_index():
+    identity = IndexIdentity(model_name="model", model_revision="revision", chunker_version=3)
+    manifest = IndexManifest(
+        identity=identity, schema_version=2, indexed_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    status = IndexStatus(files_count=1, chunks_count=1, stale_files_count=0, manifest=manifest)
+
+    view = present_status(status).manifest
+
+    assert (view.model_name, view.model_revision) == ("model", "revision")

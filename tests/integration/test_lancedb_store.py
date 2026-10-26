@@ -224,7 +224,7 @@ def test_a_store_sees_what_another_store_on_its_directory_wrote(tmp_path: Path):
 def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_unrecorded(
     filled_store: LanceDBIndexStore,
 ):
-    """A model swapped under the same name gives vectors of another width: the index starts
+    """A model replaced under a name nothing pins gives vectors of another width: the index starts
     again from the files written, and the next run indexes the others, unrecorded now."""
     edited = function_chunk("near", "near.py", "def near(): return elapsed_time()")
 
