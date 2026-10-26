@@ -13,6 +13,7 @@ from evals.quality import (
     sample_names,
     score,
     scores_by_kind,
+    shares_answer_words,
 )
 from evals.server import SearchHit
 from evals.speed import edit_text
@@ -37,7 +38,12 @@ def test_score_counts_hits_and_averages_reciprocal_ranks_over_every_question():
 
 def ranks_of(kind: QuestionKind, file_rank: int | None, chunk_rank: int | None) -> QueryRanks:
     return QueryRanks(
-        query="a question", kind=kind, file_rank=file_rank, chunk_rank=chunk_rank, hits=()
+        query="a question",
+        kind=kind,
+        shares_answer_words=False,
+        file_rank=file_rank,
+        chunk_rank=chunk_rank,
+        hits=(),
     )
 
 
@@ -64,37 +70,74 @@ def test_scores_are_kept_apart_for_each_kind_of_question():
     )
 
 
-def defined(name: str, path: str, kind: ChunkKind = ChunkKind.function) -> Chunk:
+def defined(
+    name: str, path: str, kind: ChunkKind = ChunkKind.function, parent: str | None = None
+) -> Chunk:
     return Chunk(
         chunk_id=f"{path}:{name}",
         path=Path(path),
         language=Language.python,
         kind=kind,
         name=name,
-        parent=None,
+        parent=parent,
         line_start=1,
         line_end=1,
         content=f"def {name}(): ...",
     )
 
 
-def test_a_bare_name_is_asked_of_every_fifth_name_one_file_defines():
-    """A name defined in two files, or that is no identifier, has no one chunk to find;
-    each such name here sorts first, where the sample would take it."""
+def test_a_bare_name_is_asked_of_every_fifth_name_code_outside_its_tests_defines():
+    """A name of several files is asked once; a test's name, a name that is no identifier
+    and a heading are not asked. Each such name here sorts where the sample would take it."""
     chunks = [
         *(defined(f"name_{number:02}", "a.py") for number in range(12)),
         defined("name_03", "a.py", ChunkKind.method),
         defined("aaa", "a.py"),
         defined("aaa", "b.py"),
+        defined("aab", "tests/helpers.py"),
+        defined("aac", "src/lib.rs", parent="outer::tests"),
+        defined("aad", "src/a_test.py"),
+        defined("aae", "src/test_a.py"),
         defined("Display for Path", "a.py", ChunkKind.klass),
         defined("Install", "a.md", ChunkKind.section),
     ]
 
-    assert sample_names(chunks) == [
-        Answer(path="a.py", symbol="name_00"),
-        Answer(path="a.py", symbol="name_05"),
-        Answer(path="a.py", symbol="name_10"),
-    ]
+    assert sample_names(chunks) == ["aaa", "name_04", "name_09"]
+
+
+@pytest.mark.parametrize(
+    ("question", "answer", "shares"),
+    [
+        pytest.param(
+            "check if a regex pattern has an uppercase letter",
+            Answer(path="src/regex_helper.rs", symbol="pattern_has_uppercase_char"),
+            True,
+            id="a word of the name",
+        ),
+        pytest.param(
+            "make the search list hidden files",
+            Answer(path="README.md", symbol="Hidden and ignored files"),
+            True,
+            id="a word of the heading, plural",
+        ),
+        pytest.param(
+            "list the files",
+            Answer(path="src/reading.py", symbol="file_reader"),
+            True,
+            id="a word of the name, its plural",
+        ),
+        pytest.param(
+            "parse a size filter such as +10k",
+            Answer(path="src/filter/size.rs", symbol="from_string"),
+            False,
+            id="no word",
+        ),
+    ],
+)
+def test_a_question_shares_its_answer_s_words_when_a_stem_is_both_s(
+    question: str, answer: Answer, shares: bool
+):
+    assert shares_answer_words(question, (answer,)) is shares
 
 
 def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):

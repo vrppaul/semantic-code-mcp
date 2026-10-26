@@ -1,6 +1,6 @@
 """Measure search quality or speed on the pinned corpora, and compare with the baseline.
 
-    uv run python -m evals quality [--corpus NAME ...] [--save-baseline]
+    uv run python -m evals quality [--corpus NAME ...] [--save-baseline] [--held-out]
     uv run python -m evals speed [--corpus NAME ...] [--edits N] [--save-baseline]
 
 Each run indexes into a fresh temporary directory; checkouts of the corpora are kept
@@ -34,6 +34,7 @@ from evals.quality import (
     CorpusQuality,
     KindScores,
     RankScores,
+    WordingScores,
     measure_quality,
 )
 from evals.server import ToolCallFailedError, connect
@@ -81,7 +82,9 @@ def main() -> int:
     try:
         match arguments.command:
             case "quality":
-                run_quality(corpora, save_baseline=arguments.save_baseline)
+                run_quality(
+                    corpora, save_baseline=arguments.save_baseline, held_out=arguments.held_out
+                )
             case "speed":
                 run_speed(corpora, edits=arguments.edits, save_baseline=arguments.save_baseline)
     except (
@@ -105,6 +108,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
             "--corpus", action="append", default=[], choices=available_corpus_names()
         )
         command.add_argument("--save-baseline", action="store_true")
+    # The held-out questions are asked on every run but shown only once a choice is made
+    quality.add_argument("--held-out", action="store_true")
     speed.add_argument("--edits", type=positive_integer, default=DEFAULT_EDITS)
     return parser.parse_args(argv)
 
@@ -118,14 +123,14 @@ def positive_integer(text: str) -> int:
     return value
 
 
-def run_quality(corpora: list[Corpus], *, save_baseline: bool) -> None:
+def run_quality(corpora: list[Corpus], *, save_baseline: bool, held_out: bool) -> None:
     report = QualityReport(corpora=tuple(asyncio.run(collect_quality(corpora))))
     baseline = read_report(BASELINE_DIRECTORY / QUALITY_FILE, QualityReport)
     baseline_by_corpus: dict[str, CorpusQuality] = {}
     if baseline is not None:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
     for entry in report.corpora:
-        print(describe_quality(entry, baseline_by_corpus.get(entry.corpus)))
+        print(describe_quality(entry, baseline_by_corpus.get(entry.corpus), held_out=held_out))
     write_report(report, QUALITY_FILE, save_baseline=save_baseline)
 
 
@@ -178,26 +183,38 @@ def log_header(command: str, corpus: Corpus) -> str:
     return f"\n===== {command} {corpus.corpus.name} {datetime.now(tz=UTC).isoformat()} =====\n"
 
 
-def describe_quality(entry: CorpusQuality, baseline: CorpusQuality | None) -> str:
+def describe_quality(
+    entry: CorpusQuality, baseline: CorpusQuality | None, *, held_out: bool
+) -> str:
     """A line of file and chunk scores, and the baseline's under it."""
-    line = f"{entry.corpus}: {quality_summary(entry)}"
+    line = f"{entry.corpus}: {quality_summary(entry, held_out=held_out)}"
     if baseline is None:
         return line
-    return f"{line}\n  baseline: {quality_summary(baseline)}"
+    return f"{line}\n  baseline: {quality_summary(baseline, held_out=held_out)}"
 
 
-def quality_summary(entry: CorpusQuality) -> str:
-    """The scores of each kind of question, the names, the off-topic questions and, after
-    them, the questions held out."""
+def quality_summary(entry: CorpusQuality, *, held_out: bool) -> str:
+    """The scores of each kind of question and of its wordings, the names, the off-topic
+    questions and, when asked for, the questions held out."""
     kinds = " | ".join(kind_summary(scores) for scores in entry.kinds)
-    held_out = " | ".join(kind_summary(scores) for scores in entry.held_out)
+    wordings = ", ".join(wording_summary(scores) for scores in entry.wordings)
     off_topic = entry.off_topic
-    return (
-        f"{kinds} | names {entry.names.names}: "
+    summary = (
+        f"{kinds}\n    by wording: {wordings}\n    names {entry.names.names}: "
         f"chunk {rank_summary(entry.names.chunk, entry.names.names)} | "
         f"off-topic {off_topic.far_results} results for {off_topic.far_questions} far, "
         f"{off_topic.near_results} for {off_topic.near_questions} near questions"
-        f"\n    held out: {held_out}"
+    )
+    if not held_out:
+        return summary
+    held = " | ".join(kind_summary(scores) for scores in entry.held_out)
+    return f"{summary}\n    held out: {held}"
+
+
+def wording_summary(scores: WordingScores) -> str:
+    holding = "holding an answer's words" if scores.shares_answer_words else "without them"
+    return (
+        f"{scores.kind} {holding} {scores.queries}: chunk MRR {scores.chunk.mean_reciprocal_rank}"
     )
 
 

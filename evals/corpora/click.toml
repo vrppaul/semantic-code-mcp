@@ -10,6 +10,9 @@ text = "show a progress bar while iterating over a long list of items"
 answers = [
   { path = "src/click/termui.py", symbol = "progressbar" },
   { path = "src/click/_termui_impl.py", symbol = "ProgressBar" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/utils.md", symbol = "Showing Progress Bars" },
+  { path = "src/click/_termui_impl.py", symbol = "generator" },
 ]
 
 [[queries]]
@@ -18,12 +21,21 @@ text = "open the user's text editor to edit a message"
 answers = [
   { path = "src/click/termui.py", symbol = "edit" },
   { path = "src/click/_termui_impl.py", symbol = "Editor" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/utils.md", symbol = "Launching Editors" },
+  { path = "src/click/_termui_impl.py", symbol = "edit" },
 ]
 
 [[queries]]
 kind = "code"
 text = "ask the user a yes or no question"
-answers = [{ path = "src/click/termui.py", symbol = "confirm" }]
+answers = [
+  { path = "src/click/termui.py", symbol = "confirm" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/option-decorators.md", symbol = "Confirmation Option" },
+  { path = "docs/prompts.md", symbol = "Confirmation Prompts" },
+  { path = "src/click/decorators.py", symbol = "confirmation_option" },
+]
 
 [[queries]]
 kind = "code"
@@ -32,12 +44,18 @@ answers = [
   { path = "src/click/termui.py", symbol = "echo_via_pager" },
   { path = "src/click/_termui_impl.py", symbol = "_pipepager" },
   { path = "docs/utils.md", symbol = "Pager Support" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/click/_termui_impl.py", symbol = "_pager_contextmanager" },
 ]
 
 [[queries]]
 kind = "code"
 text = "find the directory where an application should keep its configuration on each operating system"
-answers = [{ path = "src/click/utils.py", symbol = "get_app_dir" }]
+answers = [
+  { path = "src/click/utils.py", symbol = "get_app_dir" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/utils.md", symbol = "Finding Application Folders" },
+]
 
 [[queries]]
 kind = "code"
@@ -47,12 +65,21 @@ answers = [{ path = "src/click/shell_completion.py", symbol = "split_arg_string"
 [[queries]]
 kind = "code"
 text = "completion support for the zsh shell"
-answers = [{ path = "src/click/shell_completion.py", symbol = "ZshComplete" }]
+answers = [
+  { path = "src/click/shell_completion.py", symbol = "ZshComplete" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/shell-completion.md", symbol = "Enabling Completion" },
+]
 
 [[queries]]
 kind = "code"
 text = "wrap paragraphs of help text to fit the terminal width"
-answers = [{ path = "src/click/formatting.py", symbol = "wrap_text" }]
+answers = [
+  { path = "src/click/formatting.py", symbol = "wrap_text" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/documentation.md", symbol = "Click's Wrapping Behavior" },
+  { path = "src/click/formatting.py", symbol = "HelpFormatter" },
+]
 
 [[queries]]
 kind = "code"
@@ -61,6 +88,9 @@ answers = [
   { path = "src/click/testing.py", symbol = "invoke" },
   # Added after a run, rightly: the class a test makes to invoke a command and capture it
   { path = "src/click/testing.py", symbol = "CliRunner" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/testing.md", symbol = "Basic Example" },
+  { path = "docs/testing.md", symbol = "`capture=\"sys\"` (default)" },
 ]
 
 [[queries]]
@@ -74,12 +104,22 @@ answers = [
 [[queries]]
 kind = "code"
 text = "an integer parameter type limited to a minimum and a maximum"
-answers = [{ path = "src/click/types.py", symbol = "IntRange" }]
+answers = [
+  { path = "src/click/types.py", symbol = "IntRange" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/parameter-types.md", symbol = "Int and Float Ranges" },
+  { path = "src/click/types.py", symbol = "convert" },
+]
 
 [[queries]]
 kind = "code"
 text = "write a file atomically by renaming a temporary file into place"
-answers = [{ path = "src/click/_compat.py", symbol = "_AtomicFile" }]
+answers = [
+  { path = "src/click/_compat.py", symbol = "_AtomicFile" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/handling-files.md", symbol = "File Opening Behaviors" },
+  { path = "src/click/_compat.py", symbol = "open_stream" },
+]
 
 [[queries]]
 kind = "code"
@@ -93,7 +133,11 @@ answers = [
 [[queries]]
 kind = "code"
 text = "color text with foreground and background colors and make it bold"
-answers = [{ path = "src/click/termui.py", symbol = "style" }]
+answers = [
+  { path = "src/click/termui.py", symbol = "style" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/utils.md", symbol = "ANSI Colors" },
+]
 
 [[queries]]
 kind = "code"
@@ -109,6 +153,9 @@ text = "read a parameter's value from an environment variable"
 answers = [
   { path = "src/click/core.py", symbol = "resolve_envvar_value" },
   { path = "docs/options.md", symbol = "Values from Environment Variables" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/arguments.md", symbol = "Environment Variables" },
+  { path = "src/click/core.py", symbol = "value_from_envvar" },
 ]
 
 [[queries]]
@@ -117,17 +164,29 @@ text = "the object that holds state while a command runs"
 answers = [
   { path = "src/click/core.py", symbol = "Context" },
   { path = "docs/complex.md", symbol = "Contexts" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/commands-and-groups.md", symbol = "Context Object" },
+  { path = "docs/commands.md", symbol = "Nested Handling and Contexts" },
 ]
 
 [[queries]]
 kind = "code"
 text = "a command that contains subcommands and dispatches to them"
-answers = [{ path = "src/click/core.py", symbol = "Group" }]
+answers = [
+  { path = "src/click/core.py", symbol = "Group" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/click/core.py", symbol = "invoke" },
+]
 
 [[queries]]
 kind = "code"
 text = "a file that is opened only when it is first used"
-answers = [{ path = "src/click/utils.py", symbol = "_LazyFile" }]
+answers = [
+  { path = "src/click/utils.py", symbol = "_LazyFile" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/handling-files.md", symbol = "File Opening Behaviors" },
+  { path = "src/click/utils.py", symbol = "open" },
+]
 
 [[queries]]
 kind = "code"
@@ -146,7 +205,11 @@ answers = [{ path = "docs/why.md", symbol = "Why No Auto Correction?" }]
 [[queries]]
 kind = "documentation"
 text = "give each test of a command its own directory so the files it writes go away"
-answers = [{ path = "docs/testing.md", symbol = "File System Isolation" }]
+answers = [
+  { path = "docs/testing.md", symbol = "File System Isolation" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "tests/test_testing.py", symbol = "test_tempdir_replacement_pattern" },
+]
 
 [[queries]]
 kind = "documentation"
@@ -163,6 +226,8 @@ answers = [
   { path = "docs/entry-points.md", symbol = "Packaging Entry Points" },
   { path = "docs/entry-points.md", symbol = "Project Files" },
   { path = "docs/quickstart.md", symbol = "Switching to Entry Points" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/entry-points.md", symbol = "Installation" },
 ]
 
 [[queries]]
@@ -190,6 +255,9 @@ text = "turn text such as yes, on or 1 into a boolean value"
 answers = [
   { path = "src/click/types.py", symbol = "BoolParamType" },
   { path = "src/click/types.py", symbol = "str_to_bool" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/parameter-types.md", symbol = "Built-in Types Listing" },
+  { path = "src/click/types.py", symbol = "convert" },
 ]
 
 [[held_out]]
@@ -207,12 +275,20 @@ answers = [
   { path = "src/click/decorators.py", symbol = "make_pass_decorator" },
   { path = "src/click/decorators.py", symbol = "pass_obj" },
   { path = "docs/complex.md", symbol = "Ensuring Object Creation" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/commands.md", symbol = "Nested Handling and Contexts" },
+  { path = "docs/commands.md", symbol = "Command Pipelines" },
+  { path = "src/click/core.py", symbol = "Context" },
 ]
 
 [[held_out]]
 kind = "code"
 text = "expand wildcards and the home directory in arguments on Windows"
-answers = [{ path = "src/click/utils.py", symbol = "_expand_args" }]
+answers = [
+  { path = "src/click/utils.py", symbol = "_expand_args" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/faqs.md", symbol = "Answer" },
+]
 
 [[held_out]]
 kind = "documentation"
@@ -226,4 +302,6 @@ answers = [
   { path = "docs/complex.md", symbol = "Lazily Loading Subcommands" },
   { path = "docs/complex.md", symbol = "Defining the Lazy Group" },
   { path = "docs/complex.md", symbol = "What triggers Lazy Loading?" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/complex.md", symbol = "Using LazyGroup To Define a CLI" },
 ]

@@ -2,13 +2,13 @@
 
 Two scores for each kind of question, as issue #3 measured them: whether the right file
 comes back, and whether the right chunk does. Each as hits@1, hits@3 and mean reciprocal
-rank, apart for the questions held out. Then whether a search for a bare name finds the
-chunk that defines it, and how many results questions no corpus answers get, which a good
+rank, apart for the questions held out, and the chunk score again for the questions that
+hold a word of an answer's name or heading and those that do not, as the keyword channel
+finds the first more easily. Then whether a search for a bare name of the code finds a
+chunk of that name, and how many results questions no corpus answers get, which a good
 search keeps at none.
 """
 
-import subprocess  # nosec B404
-from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -24,7 +24,10 @@ from evals.corpus import (
 )
 from evals.server import SearchHit, ServerConnection
 from semantic_code_mcp.app import build_chunker
+from semantic_code_mcp.config import Settings
+from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
+from semantic_code_mcp.storage.search_text import words_of
 
 # How many results each question asks for, as an agent's default call does
 RESULTS_PER_QUERY = 10
@@ -32,16 +35,28 @@ FIRST_RANK = 1
 TOP_ONE = 1
 TOP_THREE = 3
 MRR_DECIMALS = 3
-# A bare name is asked of every this many names, in the order of their files and names
+# A bare name is asked of every this many names, in their order
 NAME_SAMPLE_STEP = 5
 # What code defines under a name an agent could search for
 NAMED_KINDS = frozenset({ChunkKind.function, ChunkKind.method, ChunkKind.klass})
-# A name defined in this many files has one chunk to find
-ONE_FILE = 1
-# `git ls-files -z` separates paths with NUL
-GIT_PATH_SEPARATOR = "\0"
+# How a test is told by its path or by what it sits in: a directory or a module of tests,
+# a file named for them
+TEST_DIRECTORIES = frozenset({"test", "tests"})
+TEST_FILE_PREFIX = "test_"
+TEST_FILE_SUFFIX = "_test"
+RUST_PATH_SEPARATOR = "::"
 # How many hits a name's rank keeps, to read what came instead of its chunk
 NAME_HITS_KEPT = 3
+# Words a question and an answer's name or heading share, compared by a crude stem: a
+# plural's `s` dropped, then the first five letters; words shorter than four letters skipped
+PLURAL_ENDING = "s"
+STEM_LENGTH = 5
+SHORTEST_WORD = 4
+# The groups of wording, in the order the report gives them: questions that hold an
+# answer's words first
+WORDINGS = (True, False)
+# A discovery for the harness alone: no home directory holds the corpora's checkouts
+HOME_OF_NO_CORPUS = Path("/home-of-no-corpus")
 
 
 class QueryRanks(BaseModel):
@@ -51,6 +66,8 @@ class QueryRanks(BaseModel):
 
     query: str
     kind: QuestionKind
+    # Whether the question holds a word of an answer's name or heading
+    shares_answer_words: bool
     file_rank: int | None
     chunk_rank: int | None
     # What came back, best first, so a miss can be read without running the model again
@@ -58,12 +75,12 @@ class QueryRanks(BaseModel):
 
 
 class NameRank(BaseModel):
-    """Where the chunk that defines a name landed, the name alone asked, and the first
-    hits, which a miss can be read from."""
+    """Where the first chunk of a name landed, the name alone asked, and the first hits,
+    which a miss can be read from."""
 
     model_config = ConfigDict(frozen=True)
 
-    name: Answer
+    name: str
     rank: int | None
     hits: tuple[Answer, ...]
 
@@ -86,6 +103,18 @@ class KindScores(BaseModel):
     kind: QuestionKind
     queries: int
     file: RankScores
+    chunk: RankScores
+
+
+class WordingScores(BaseModel):
+    """The chunk score of the questions of one kind that do, or do not, hold a word of an
+    answer's name or heading."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: QuestionKind
+    shares_answer_words: bool
+    queries: int
     chunk: RankScores
 
 
@@ -116,6 +145,7 @@ class CorpusQuality(BaseModel):
 
     corpus: str
     kinds: tuple[KindScores, ...]
+    wordings: tuple[WordingScores, ...]
     held_out: tuple[KindScores, ...]
     names: NameScores
     off_topic: OffTopicResults
@@ -150,6 +180,7 @@ async def measure_quality(
     return CorpusQuality(
         corpus=corpus.corpus.name,
         kinds=scores_by_kind(ranks),
+        wordings=scores_by_wording(ranks),
         held_out=scores_by_kind(held_out_ranks),
         names=NameScores(
             names=len(name_ranks), chunk=score([name_rank.rank for name_rank in name_ranks])
@@ -174,19 +205,20 @@ async def rank_query(query: Query, working_tree: Path, connection: ServerConnect
     return QueryRanks(
         query=query.text,
         kind=query.kind,
+        shares_answer_words=shares_answer_words(query.text, query.answers),
         file_rank=first_rank([hit.path in answer_paths for hit in relative_hits]),
         chunk_rank=first_rank([hit in query.answers for hit in relative_hits]),
         hits=tuple(relative_hits),
     )
 
 
-async def rank_name(name: Answer, working_tree: Path, connection: ServerConnection) -> NameRank:
-    """Ask a bare name and find where the chunk that defines it landed."""
-    answer = await connection.search(working_tree, name.symbol, RESULTS_PER_QUERY)
+async def rank_name(name: str, working_tree: Path, connection: ServerConnection) -> NameRank:
+    """Ask a bare name and find where the first chunk of that name landed, in any file."""
+    answer = await connection.search(working_tree, name, RESULTS_PER_QUERY)
     relative_hits = [relative_hit(hit, working_tree) for hit in answer.results]
     return NameRank(
         name=name,
-        rank=first_rank([hit == name for hit in relative_hits]),
+        rank=first_rank([hit.symbol == name for hit in relative_hits]),
         hits=tuple(relative_hits[:NAME_HITS_KEPT]),
     )
 
@@ -212,6 +244,43 @@ def scores_by_kind(ranks: Sequence[QueryRanks]) -> tuple[KindScores, ...]:
     )
 
 
+def scores_by_wording(ranks: Sequence[QueryRanks]) -> tuple[WordingScores, ...]:
+    """The chunk score of each kind's questions that hold an answer's words, then of those
+    that do not, for each group the ranks hold."""
+    groups = {(query_ranks.kind, query_ranks.shares_answer_words) for query_ranks in ranks}
+    asked = [
+        (kind, shares) for kind in QuestionKind for shares in WORDINGS if (kind, shares) in groups
+    ]
+    return tuple(wording_scores(kind, ranks, shares=shares) for kind, shares in asked)
+
+
+def wording_scores(
+    kind: QuestionKind, ranks: Sequence[QueryRanks], *, shares: bool
+) -> WordingScores:
+    """The chunk score of one kind's questions that do, or do not, hold an answer's words."""
+    group = [
+        query_ranks.chunk_rank
+        for query_ranks in ranks
+        if query_ranks.kind == kind and query_ranks.shares_answer_words == shares
+    ]
+    return WordingScores(
+        kind=kind, shares_answer_words=shares, queries=len(group), chunk=score(group)
+    )
+
+
+def shares_answer_words(question: str, answers: Sequence[Answer]) -> bool:
+    """Whether the question holds a word of an answer's name or heading, by stem."""
+    asked = stems_of(question)
+    return any(asked & stems_of(answer.symbol) for answer in answers)
+
+
+def stems_of(text: str) -> set[str]:
+    """The crude stems of a text's words, identifiers split: `pattern_has_uppercase_char`
+    gives patte, upper (from uppercase), char."""
+    words = [word.lower().removesuffix(PLURAL_ENDING) for word in words_of(text)]
+    return {word[:STEM_LENGTH] for word in words if len(word) >= SHORTEST_WORD}
+
+
 def kind_scores(kind: QuestionKind, ranks: Sequence[QueryRanks]) -> KindScores:
     """Both scores of the questions of one kind."""
     return KindScores(
@@ -222,39 +291,48 @@ def kind_scores(kind: QuestionKind, ranks: Sequence[QueryRanks]) -> KindScores:
     )
 
 
-def sample_names(chunks: Sequence[Chunk]) -> list[Answer]:
-    """Every NAME_SAMPLE_STEP-th name an agent could search for whose chunk is one file's:
-    of a function, a method or a class, an identifier (not Rust's `Display for Path`),
-    defined in no other file, as a name in many files has no one chunk to find."""
+def sample_names(chunks: Sequence[Chunk]) -> list[str]:
+    """Every NAME_SAMPLE_STEP-th name an agent could search for, in their order: of a
+    function, a method or a class outside the tests, an identifier (not Rust's `Display
+    for Path`); a name several files define is one name, which a chunk of any of them
+    answers."""
     named = {
-        Answer(path=chunk.path.as_posix(), symbol=chunk.name)
+        chunk.name
         for chunk in chunks
-        if chunk.kind in NAMED_KINDS and chunk.name.isidentifier()
+        if chunk.kind in NAMED_KINDS and chunk.name.isidentifier() and not is_test(chunk)
     }
-    files_defining = Counter(answer.symbol for answer in named)
-    defined_once = sorted(
-        (answer for answer in named if files_defining[answer.symbol] == ONE_FILE),
-        key=lambda answer: (answer.path, answer.symbol),
+    return sorted(named)[::NAME_SAMPLE_STEP]
+
+
+def is_test(chunk: Chunk) -> bool:
+    """Whether a chunk is a test's, by a directory or a file named for tests, or a Rust
+    module of tests it sits in."""
+    stem = chunk.path.stem
+    enclosing = (chunk.parent or "").split(RUST_PATH_SEPARATOR)
+    return (
+        bool(TEST_DIRECTORIES & set(chunk.path.parts[:-1]))
+        or stem.startswith(TEST_FILE_PREFIX)
+        or stem.endswith(TEST_FILE_SUFFIX)
+        or bool(TEST_DIRECTORIES & set(enclosing))
     )
-    return defined_once[::NAME_SAMPLE_STEP]
 
 
 def chunks_of(working_tree: Path) -> list[Chunk]:
-    """Every chunk the server's chunker gives the checkout's tracked files, without the model."""
+    """Every chunk of the files the server indexes in the checkout, by its own discovery
+    with the default settings and its chunker, without the model."""
     chunker = build_chunker()
-    listing = subprocess.run(  # nosec B603, B607
-        ["git", "-C", str(working_tree), "ls-files", "-z"],
-        check=True,
-        capture_output=True,
-        text=True,
+    settings = Settings(cache_dir=working_tree)
+    discovery = SourceDiscovery(
+        extensions=chunker.supported_extensions,
+        ignore_patterns=settings.ignore_patterns,
+        use_gitignore=settings.use_gitignore,
+        git_timeout_seconds=settings.git_timeout_seconds,
+        home_directory=HOME_OF_NO_CORPUS,
     )
-    paths = [path for path in listing.stdout.split(GIT_PATH_SEPARATOR) if path]
-    supported = tuple(chunker.supported_extensions)
     return [
         chunk
-        for path in paths
-        if path.endswith(supported)
-        for chunk in chunker.chunk_file(working_tree, Path(path))
+        for source in discovery.discover(working_tree)
+        for chunk in chunker.chunk_file(working_tree, source.path)
     ]
 
 

@@ -8,7 +8,11 @@ commit = "46e1562fcd1ea823620b92ee2fbab2c298b4fa73"
 [[queries]]
 kind = "code"
 text = "dependency injection container that shares the embedding model across requests"
-answers = [{ path = "src/semantic_code_mcp/container.py", symbol = "Container" }]
+answers = [
+  { path = "src/semantic_code_mcp/container.py", symbol = "Container" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/semantic_code_mcp/container.py", symbol = "container" },
+]
 
 [[queries]]
 kind = "code"
@@ -20,6 +24,9 @@ answers = [
   { path = "src/semantic_code_mcp/storage/cache.py", symbol = "get_stale_files" },
   { path = "src/semantic_code_mcp/storage/cache.py", symbol = "has_changes" },
   { path = "src/semantic_code_mcp/services/index_service.py", symbol = "detect_changes" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/semantic_code_mcp/storage/cache.py", symbol = "cache" },
+  { path = "src/semantic_code_mcp/storage/cache.py", symbol = "FileChangeCache" },
 ]
 
 [[queries]]
@@ -35,7 +42,13 @@ answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "_merge
 [[queries]]
 kind = "code"
 text = "split a markdown document into sections by heading"
-answers = [{ path = "src/semantic_code_mcp/chunkers/markdown.py", symbol = "_extract_section" }]
+answers = [
+  { path = "src/semantic_code_mcp/chunkers/markdown.py", symbol = "_extract_section" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/decisions/005-markdown-chunking.md", symbol = "Chunking strategy: recursive section walking" },
+  { path = "src/semantic_code_mcp/chunkers/markdown.py", symbol = "markdown" },
+  { path = "src/semantic_code_mcp/chunkers/markdown.py", symbol = "MarkdownChunker" },
+]
 
 [[queries]]
 kind = "code"
@@ -55,7 +68,11 @@ answers = [{ path = "src/semantic_code_mcp/server.py", symbol = "search_code" }]
 [[queries]]
 kind = "code"
 text = "detect the module docstring as the first statement of a file"
-answers = [{ path = "src/semantic_code_mcp/chunkers/python.py", symbol = "_extract_module_docstring" }]
+answers = [
+  { path = "src/semantic_code_mcp/chunkers/python.py", symbol = "_extract_module_docstring" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "Decision" },
+]
 
 [[queries]]
 kind = "code"
@@ -63,6 +80,8 @@ text = "application settings loaded from environment variables"
 answers = [
   { path = "src/semantic_code_mcp/config.py", symbol = "Settings" },
   { path = "README.md", symbol = "Configuration" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/semantic_code_mcp/config.py", symbol = "config" },
 ]
 
 [[queries]]
@@ -83,7 +102,11 @@ answers = [{ path = "src/semantic_code_mcp/storage/lancedb.py", symbol = "delete
 [[queries]]
 kind = "documentation"
 text = "what to write so the indexer understands Go or JavaScript files"
-answers = [{ path = "README.md", symbol = "Adding a New Language" }]
+answers = [
+  { path = "README.md", symbol = "Adding a New Language" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "TODO.md", symbol = "Multi-language Support" },
+]
 
 [[queries]]
 kind = "code"
@@ -93,7 +116,13 @@ answers = [{ path = "src/semantic_code_mcp/chunkers/rust.py", symbol = "_get_imp
 [[queries]]
 kind = "code"
 text = "dispatch a file to the chunker registered for its extension"
-answers = [{ path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "chunk_file" }]
+answers = [
+  { path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "chunk_file" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "docs/decisions/004-multi-language-chunker-architecture.md", symbol = "Architecture" },
+  { path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "composite" },
+  { path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "CompositeChunker" },
+]
 
 [[queries]]
 kind = "documentation"
@@ -113,6 +142,8 @@ text = "how to change where the indexes are stored or which model embeds the cod
 answers = [
   { path = "README.md", symbol = "Configuration" },
   { path = "src/semantic_code_mcp/config.py", symbol = "Settings" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/semantic_code_mcp/config.py", symbol = "get_index_path" },
 ]
 
 [[queries]]
@@ -132,6 +163,10 @@ answers = [
   { path = "README.md", symbol = "Releasing" },
   { path = "CLAUDE.md", symbol = "Releases" },
   { path = "AGENTS.md", symbol = "Releases" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = ".claude/commands/ship.md", symbol = "If releasing (`$ARGUMENTS` contains \"release\")" },
+  { path = ".claude/rules/publishing.md", symbol = "Key Constraints" },
+  { path = "TODO.md", symbol = "Publish to PyPI for `uvx` Distribution" },
 ]
 
 [[queries]]
@@ -179,4 +214,9 @@ answers = [{ path = "README.md", symbol = "Updating" }]
 [[held_out]]
 kind = "documentation"
 text = "the libraries the project is built with"
-answers = [{ path = "README.md", symbol = "Tech Stack" }]
+answers = [
+  { path = "README.md", symbol = "Tech Stack" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = ".claude/rules/development-process.md", symbol = "Dependencies" },
+  { path = "docs/decisions/001-initial-architecture.md", symbol = "Tech Stack" },
+]

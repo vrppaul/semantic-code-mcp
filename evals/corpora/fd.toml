@@ -7,7 +7,11 @@ commit = "c44735ec0f130c2486afe9c976937c03b57a8c62"
 [[queries]]
 kind = "code"
 text = "parse a size filter such as +10k or -1M"
-answers = [{ path = "src/filter/size.rs", symbol = "from_string" }]
+answers = [
+  { path = "src/filter/size.rs", symbol = "from_string" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/filter/size.rs", symbol = "parse_opt" },
+]
 
 [[queries]]
 kind = "code"
@@ -25,6 +29,10 @@ answers = [
   # Added after a run, rightly: runs the command set on one result
   { path = "src/exec/mod.rs", symbol = "execute" },
   { path = "README.md", symbol = "Command execution" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "README.md", symbol = "Examples" },
+  { path = "src/cli.rs", symbol = "Args for Exec" },
+  { path = "src/cli.rs", symbol = "augment_args" },
 ]
 
 [[queries]]
@@ -36,17 +44,30 @@ answers = [
   # `new_batch`, added with it, only builds the command set and runs nothing: not an answer
   { path = "src/exec/mod.rs", symbol = "execute_batch" },
   { path = "README.md", symbol = "Command execution" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "README.md", symbol = "Examples" },
+  { path = "README.md", symbol = "Using fd with `xargs` or `parallel`" },
+  { path = "src/cli.rs", symbol = "Args for Exec" },
+  { path = "src/cli.rs", symbol = "augment_args" },
 ]
 
 [[queries]]
 kind = "code"
 text = "walk directories in parallel and collect the matching entries"
-answers = [{ path = "src/walk.rs", symbol = "scan" }]
+answers = [
+  { path = "src/walk.rs", symbol = "scan" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/walk.rs", symbol = "spawn_senders" },
+]
 
 [[queries]]
 kind = "code"
 text = "print a path in color"
-answers = [{ path = "src/output.rs", symbol = "print_entry_colorized" }]
+answers = [
+  { path = "src/output.rs", symbol = "print_entry_colorized" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "README.md", symbol = "Colorized output" },
+]
 
 [[queries]]
 kind = "code"
@@ -74,6 +95,8 @@ text = "filter files by the user and group that own them"
 answers = [
   { path = "src/filter/owner.rs", symbol = "OwnerFilter" },
   { path = "src/filter/owner.rs", symbol = "matches" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/filter/owner.rs", symbol = "from_string" },
 ]
 
 [[queries]]
@@ -94,22 +117,37 @@ text = "escape control characters before printing a file name to the terminal"
 answers = [
   { path = "src/sanitize.rs", symbol = "sanitize_for_term" },
   { path = "src/sanitize.rs", symbol = "write_sanitized" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/sanitize.rs", symbol = "sanitize" },
 ]
 
 [[queries]]
 kind = "code"
 text = "check if a regex pattern has an uppercase letter to choose case sensitivity"
-answers = [{ path = "src/regex_helper.rs", symbol = "pattern_has_uppercase_char" }]
+answers = [
+  { path = "src/regex_helper.rs", symbol = "pattern_has_uppercase_char" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/regex_helper.rs", symbol = "Visitor for UppercaseVisitor" },
+  { path = "src/regex_helper.rs", symbol = "visit_pre" },
+]
 
 [[queries]]
 kind = "code"
 text = "strip the leading ./ from a path"
-answers = [{ path = "src/filesystem.rs", symbol = "strip_current_dir" }]
+answers = [
+  { path = "src/filesystem.rs", symbol = "strip_current_dir" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/dir_entry.rs", symbol = "stripped_path" },
+]
 
 [[queries]]
 kind = "documentation"
 text = "make the search also list dotfiles and what .gitignore patterns leave out"
-answers = [{ path = "README.md", symbol = "Hidden and ignored files" }]
+answers = [
+  { path = "README.md", symbol = "Hidden and ignored files" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "README.md", symbol = "`fd` does not find my file!" },
+]
 
 [[queries]]
 kind = "documentation"
@@ -172,6 +210,10 @@ text = "buffer results to sort them when the search finishes quickly"
 answers = [
   { path = "src/walk.rs", symbol = "ReceiverBuffer" },
   { path = "src/walk.rs", symbol = "ReceiverMode" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "src/walk.rs", symbol = "poll" },
+  { path = "src/walk.rs", symbol = "recv" },
+  { path = "src/walk.rs", symbol = "stop" },
 ]
 
 [[held_out]]
@@ -182,4 +224,8 @@ answers = [{ path = "README.md", symbol = "Using fd with `fzf`" }]
 [[held_out]]
 kind = "documentation"
 text = "leave some directories out of the search"
-answers = [{ path = "README.md", symbol = "Excluding specific files or directories" }]
+answers = [
+  { path = "README.md", symbol = "Excluding specific files or directories" },
+  # Judged blind from the first tens of the sweep's rules (ADR 006, stage 6)
+  { path = "CHANGELOG.md", symbol = "Features" },
+]
