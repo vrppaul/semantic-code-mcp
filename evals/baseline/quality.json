@@ -2,16 +2,16 @@
   "corpora": [
     {
       "corpus": "click",
-      "queries": 20,
+      "queries": 25,
       "file": {
-        "hits_at_1": 6,
-        "hits_at_3": 16,
-        "mean_reciprocal_rank": 0.539
+        "hits_at_1": 11,
+        "hits_at_3": 21,
+        "mean_reciprocal_rank": 0.631
       },
       "chunk": {
-        "hits_at_1": 3,
-        "hits_at_3": 14,
-        "mean_reciprocal_rank": 0.411
+        "hits_at_1": 8,
+        "hits_at_3": 19,
+        "mean_reciprocal_rank": 0.529
       },
       "ranks": [
         {
@@ -909,6 +909,233 @@
               "symbol": "open"
             }
           ]
+        },
+        {
+          "query": "why click will not guess an option the user abbreviated or mistyped",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/why.md",
+              "symbol": "Why No Auto Correction?"
+            },
+            {
+              "path": "docs/why.md",
+              "symbol": "Why not Argparse?"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 8.1.5"
+            },
+            {
+              "path": "CHANGES.md",
+              "symbol": "Version 6.4"
+            },
+            {
+              "path": ".github/ISSUE_TEMPLATE/bug-report.md",
+              "symbol": "bug-report"
+            },
+            {
+              "path": "docs/why.md",
+              "symbol": "Why Hardcoded Behaviors?"
+            },
+            {
+              "path": "src/click/parser.py",
+              "symbol": "parser"
+            },
+            {
+              "path": "tests/test_options.py",
+              "symbol": "test_option_name_check_applies_when_not_exposed"
+            },
+            {
+              "path": "docs/index.md",
+              "symbol": "Conceptual Guides"
+            },
+            {
+              "path": "docs/wincmd.md",
+              "symbol": "Unicode Arguments"
+            }
+          ]
+        },
+        {
+          "query": "give each test of a command its own directory so the files it writes go away",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/testing.md",
+              "symbol": "File System Isolation"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_tempdir_replacement_pattern"
+            },
+            {
+              "path": "docs/handling-files.md",
+              "symbol": "File Path Arguments"
+            },
+            {
+              "path": "tests/test_basic.py",
+              "symbol": "test_path_option"
+            },
+            {
+              "path": "docs/testing.md",
+              "symbol": "Running tests in parallel"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_tempdir_isolation_is_thread_safe"
+            },
+            {
+              "path": "tests/test_basic.py",
+              "symbol": "test_file_lazy_mode"
+            },
+            {
+              "path": "docs/faqs.md",
+              "symbol": "Custom completions show the full value"
+            },
+            {
+              "path": "tests/test_testing.py",
+              "symbol": "test_isolated_runner_custom_tempdir"
+            },
+            {
+              "path": "docs/exceptions.md",
+              "symbol": "What if I Don't Want That?"
+            }
+          ]
+        },
+        {
+          "query": "in what order the callbacks of a command's parameters run",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/click-concepts.md",
+              "symbol": "Callback Evaluation Order"
+            },
+            {
+              "path": "docs/advanced.md",
+              "symbol": "Callbacks and Eager Options"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "iter_params_for_processing"
+            },
+            {
+              "path": "docs/advanced.md",
+              "symbol": "Parameter Modifications"
+            },
+            {
+              "path": "docs/commands.md",
+              "symbol": "Callback Invocation"
+            },
+            {
+              "path": "tests/test_context.py",
+              "symbol": "test_multiple_eager_callbacks"
+            },
+            {
+              "path": "docs/commands-and-groups.md",
+              "symbol": "Group Separation"
+            },
+            {
+              "path": "src/click/core.py",
+              "symbol": "invoke"
+            },
+            {
+              "path": "src/click/decorators.py",
+              "symbol": "command"
+            },
+            {
+              "path": "docs/complex.md",
+              "symbol": "What triggers Lazy Loading?"
+            }
+          ]
+        },
+        {
+          "query": "install a click program as a console script declared in pyproject.toml",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/entry-points.md",
+              "symbol": "Project Files"
+            },
+            {
+              "path": "docs/standalone-apps.md",
+              "symbol": "Configuration"
+            },
+            {
+              "path": "docs/entry-points.md",
+              "symbol": "Packaging Entry Points"
+            },
+            {
+              "path": "docs/quickstart.md",
+              "symbol": "Switching to Entry Points"
+            },
+            {
+              "path": "docs/shell-completion.md",
+              "symbol": "Adding Support for a Shell"
+            },
+            {
+              "path": "docs/index.md",
+              "symbol": "Welcome to Click"
+            },
+            {
+              "path": "docs/quickstart.md",
+              "symbol": "Basic Concepts - Creating a Command"
+            },
+            {
+              "path": "src/click/__init__.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "docs/entry-points.md",
+              "symbol": "Installation"
+            },
+            {
+              "path": "docs/virtualenv.md",
+              "symbol": "How to Use Virtualenv"
+            }
+          ]
+        },
+        {
+          "query": "what an application must change when it moves from click 8.3 to 9.0",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/upgrade-guides.md",
+              "symbol": "Upgrading 8.3.X to 9.0"
+            },
+            {
+              "path": "docs/support-multiple-versions.md",
+              "symbol": "Supporting Multiple Versions"
+            },
+            {
+              "path": "docs/utils.md",
+              "symbol": "Launching Applications"
+            },
+            {
+              "path": "docs/support-multiple-versions.md",
+              "symbol": "Changes in 8.2"
+            },
+            {
+              "path": "docs/contrib.md",
+              "symbol": "Third-party projects"
+            },
+            {
+              "path": ".github/ISSUE_TEMPLATE/bug-report.md",
+              "symbol": "bug-report"
+            },
+            {
+              "path": ".github/ISSUE_TEMPLATE/feature-request.md",
+              "symbol": "feature-request"
+            },
+            {
+              "path": "docs/quickstart.md",
+              "symbol": "Quickstart"
+            }
+          ]
         }
       ],
       "off_topic_questions": 8,
@@ -916,16 +1143,16 @@
     },
     {
       "corpus": "fd",
-      "queries": 15,
+      "queries": 19,
       "file": {
-        "hits_at_1": 8,
-        "hits_at_3": 12,
-        "mean_reciprocal_rank": 0.698
+        "hits_at_1": 12,
+        "hits_at_3": 16,
+        "mean_reciprocal_rank": 0.762
       },
       "chunk": {
-        "hits_at_1": 3,
-        "hits_at_3": 6,
-        "mean_reciprocal_rank": 0.34
+        "hits_at_1": 6,
+        "hits_at_3": 10,
+        "mean_reciprocal_rank": 0.452
       },
       "ranks": [
         {
@@ -1632,6 +1859,170 @@
               "symbol": "test_full_path"
             }
           ]
+        },
+        {
+          "query": "make the search include hidden files and the files gitignore excludes",
+          "file_rank": 1,
+          "chunk_rank": 2,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Excluding specific files or directories"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Hidden and ignored files"
+            },
+            {
+              "path": "README.md",
+              "symbol": "`fd` does not find my file!"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Using fd with `fzf`"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "test_error_if_hidden_not_set_and_pattern_starts_with_dot"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Command-line options"
+            },
+            {
+              "path": "src/config.rs",
+              "symbol": "Config"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changes"
+            },
+            {
+              "path": "src/cli.rs",
+              "symbol": "Opts"
+            }
+          ]
+        },
+        {
+          "query": "remove every file and directory that a search matches",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Deleting files"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Excluding specific files or directories"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Hidden and ignored files"
+            },
+            {
+              "path": "README.md",
+              "symbol": "`fd` does not find my file!"
+            },
+            {
+              "path": "README.md",
+              "symbol": "Command-line options"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "ensure_search_pattern_is_not_a_path"
+            },
+            {
+              "path": "src/main.rs",
+              "symbol": "ensure_use_hidden_option_for_leading_dot_pattern"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            },
+            {
+              "path": "tests/tests.rs",
+              "symbol": "remove_symlink"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Features"
+            }
+          ]
+        },
+        {
+          "query": "the steps of publishing a new release",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "doc/release-checklist.md",
+              "symbol": "Release"
+            },
+            {
+              "path": "doc/release-checklist.md",
+              "symbol": "Post-release"
+            },
+            {
+              "path": "doc/release-checklist.md",
+              "symbol": "Pre-release checks and updates"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Upcoming Release"
+            },
+            {
+              "path": "doc/release-checklist.md",
+              "symbol": "Release checklist"
+            },
+            {
+              "path": "doc/release-checklist.md",
+              "symbol": "Version bump"
+            },
+            {
+              "path": "CONTRIBUTING.md",
+              "symbol": "Add an entry to the changelog"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "v0.1.0"
+            },
+            {
+              "path": "SECURITY.md",
+              "symbol": "Notes"
+            },
+            {
+              "path": "README.md",
+              "symbol": "From binaries"
+            }
+          ]
+        },
+        {
+          "query": "where to report a security vulnerability privately",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "SECURITY.md",
+              "symbol": "Security Reporting"
+            },
+            {
+              "path": "SECURITY.md",
+              "symbol": "Reporting"
+            },
+            {
+              "path": "SECURITY.md",
+              "symbol": "Notes"
+            },
+            {
+              "path": "SECURITY.md",
+              "symbol": "Confidentiality"
+            }
+          ]
         }
       ],
       "off_topic_questions": 8,
@@ -1639,16 +2030,16 @@
     },
     {
       "corpus": "semantic-code-mcp",
-      "queries": 16,
+      "queries": 22,
       "file": {
-        "hits_at_1": 12,
-        "hits_at_3": 14,
-        "mean_reciprocal_rank": 0.828
+        "hits_at_1": 17,
+        "hits_at_3": 19,
+        "mean_reciprocal_rank": 0.841
       },
       "chunk": {
-        "hits_at_1": 9,
-        "hits_at_3": 12,
-        "mean_reciprocal_rank": 0.682
+        "hits_at_1": 14,
+        "hits_at_3": 17,
+        "mean_reciprocal_rank": 0.735
       },
       "ranks": [
         {
@@ -2360,6 +2751,272 @@
             {
               "path": "src/semantic_code_mcp/chunkers/composite.py",
               "symbol": "__init__"
+            }
+          ]
+        },
+        {
+          "query": "why the index is kept in LanceDB rather than FAISS",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/decisions/001-initial-architecture.md",
+              "symbol": "FAISS instead of LanceDB"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "LanceDBConnection"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "lancedb"
+            },
+            {
+              "path": "tests/test_storage.py",
+              "symbol": "test_storage"
+            },
+            {
+              "path": "src/semantic_code_mcp/storage/lancedb.py",
+              "symbol": "__init__"
+            },
+            {
+              "path": "tests/test_indexer.py",
+              "symbol": "indexer"
+            },
+            {
+              "path": "tests/test_index_service.py",
+              "symbol": "TestIndexServiceIntegration"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "ChunkType extension"
+            },
+            {
+              "path": "tests/test_index_service.py",
+              "symbol": "index_service"
+            },
+            {
+              "path": "tests/test_indexer.py",
+              "symbol": "TestIndexer"
+            }
+          ]
+        },
+        {
+          "query": "why the code blocks inside a markdown document are not chunks of their own",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "C: Extract fenced code blocks as separate chunks"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_heading_with_code_block"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_no_headings_produces_module_chunk"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_heading_immediately_before_subheading"
+            },
+            {
+              "path": "docs/decisions/005-markdown-chunking.md",
+              "symbol": "Spike findings (tree-sitter-markdown AST)"
+            },
+            {
+              "path": "src/semantic_code_mcp/chunkers/markdown.py",
+              "symbol": "MarkdownChunker"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_markdown_chunker"
+            },
+            {
+              "path": "docs/decisions/004-multi-language-chunker-architecture.md",
+              "symbol": "Why structural differences prevent a pure config approach"
+            },
+            {
+              "path": "tests/test_markdown_chunker.py",
+              "symbol": "test_content_boundaries_exclude_subsections"
+            }
+          ]
+        },
+        {
+          "query": "the environment variables that configure the server",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Configuration"
+            },
+            {
+              "path": "tests/test_config.py",
+              "symbol": "test_settings_from_env"
+            },
+            {
+              "path": "src/semantic_code_mcp/config.py",
+              "symbol": "config"
+            },
+            {
+              "path": "src/semantic_code_mcp/config.py",
+              "symbol": "configure_settings"
+            },
+            {
+              "path": "src/semantic_code_mcp/container.py",
+              "symbol": "configure"
+            },
+            {
+              "path": "tests/test_config.py",
+              "symbol": "test_config"
+            },
+            {
+              "path": "src/semantic_code_mcp/profiling.py",
+              "symbol": "configure_profiling"
+            },
+            {
+              "path": "src/semantic_code_mcp/app.py",
+              "symbol": "app"
+            },
+            {
+              "path": "src/semantic_code_mcp/config.py",
+              "symbol": "get_settings"
+            }
+          ]
+        },
+        {
+          "query": "install the server on linux without the large CUDA build of torch",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Linux"
+            },
+            {
+              "path": ".claude/rules/publishing.md",
+              "symbol": "Platform-Specific Install"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Reduce Install Size (CPU-only PyTorch)"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Changed"
+            },
+            {
+              "path": "docs/decisions/001-initial-architecture.md",
+              "symbol": "Negative"
+            },
+            {
+              "path": "README.md",
+              "symbol": "macOS / Windows"
+            },
+            {
+              "path": "CHANGELOG.md",
+              "symbol": "Added"
+            }
+          ]
+        },
+        {
+          "query": "how a release of the package reaches PyPI",
+          "file_rank": 1,
+          "chunk_rank": 1,
+          "hits": [
+            {
+              "path": "README.md",
+              "symbol": "Releasing"
+            },
+            {
+              "path": ".claude/rules/publishing.md",
+              "symbol": "How It Works"
+            },
+            {
+              "path": "AGENTS.md",
+              "symbol": "Releases"
+            },
+            {
+              "path": "CLAUDE.md",
+              "symbol": "Releases"
+            },
+            {
+              "path": ".claude/rules/publishing.md",
+              "symbol": "Release Process"
+            },
+            {
+              "path": ".claude/commands/ship.md",
+              "symbol": "If releasing (`$ARGUMENTS` contains \"release\")"
+            },
+            {
+              "path": ".claude/rules/publishing.md",
+              "symbol": "Key Constraints"
+            },
+            {
+              "path": "TODO.md",
+              "symbol": "Publish to PyPI for `uvx` Distribution"
+            },
+            {
+              "path": ".claude/rules/publishing.md",
+              "symbol": "Publishing & Releases"
+            },
+            {
+              "path": ".claude/commands/ship.md",
+              "symbol": "ship"
+            }
+          ]
+        },
+        {
+          "query": "why a module's docstring gets a chunk of its own",
+          "file_rank": 4,
+          "chunk_rank": 4,
+          "hits": [
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_docstring_after_import_not_extracted"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_module_docstring_name_from_file_stem"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_file_with_only_docstring"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Decision"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_module_docstring_with_function"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Consequences"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "003: Module Docstring Chunking"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_comments_before_docstring_still_extracted"
+            },
+            {
+              "path": "tests/test_chunker.py",
+              "symbol": "test_no_module_docstring_starts_with_import"
+            },
+            {
+              "path": "docs/decisions/003-module-docstring-chunking.md",
+              "symbol": "Alternatives Considered"
             }
           ]
         }

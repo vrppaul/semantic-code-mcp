@@ -106,3 +106,35 @@ answers = [
   { path = "src/click/termui.py", symbol = "launch" },
   { path = "src/click/_termui_impl.py", symbol = "open_url" },
 ]
+
+# Questions whose answer is the documentation, so the harness weighs prose against code
+
+[[queries]]
+text = "why click will not guess an option the user abbreviated or mistyped"
+answers = [{ path = "docs/why.md", symbol = "Why No Auto Correction?" }]
+
+[[queries]]
+text = "give each test of a command its own directory so the files it writes go away"
+answers = [{ path = "docs/testing.md", symbol = "File System Isolation" }]
+
+[[queries]]
+text = "in what order the callbacks of a command's parameters run"
+answers = [{ path = "docs/click-concepts.md", symbol = "Callback Evaluation Order" }]
+
+[[queries]]
+text = "install a click program as a console script declared in pyproject.toml"
+answers = [
+  { path = "docs/entry-points.md", symbol = "Packaging Entry Points" },
+  { path = "docs/entry-points.md", symbol = "Project Files" },
+  { path = "docs/quickstart.md", symbol = "Switching to Entry Points" },
+]
+
+[[queries]]
+text = "what an application must change when it moves from click 8.3 to 9.0"
+answers = [
+  { path = "docs/upgrade-guides.md", symbol = "Upgrading 8.3.X to 9.0" },
+  { path = "docs/upgrade-guides.md", symbol = "Deprecations" },
+  { path = "docs/upgrade-guides.md", symbol = "Removals with prior deprecation" },
+  { path = "docs/upgrade-guides.md", symbol = "Removals with no prior deprecation" },
+  { path = "docs/upgrade-guides.md", symbol = "Changes" },
+]

@@ -75,3 +75,44 @@ answers = [{ path = "src/semantic_code_mcp/chunkers/rust.py", symbol = "_get_imp
 [[queries]]
 text = "dispatch a file to the chunker registered for its extension"
 answers = [{ path = "src/semantic_code_mcp/chunkers/composite.py", symbol = "chunk_file" }]
+
+# Questions whose answer is the documentation, so the harness weighs prose against code
+
+[[queries]]
+text = "why the index is kept in LanceDB rather than FAISS"
+answers = [{ path = "docs/decisions/001-initial-architecture.md", symbol = "FAISS instead of LanceDB" }]
+
+[[queries]]
+text = "why the code blocks inside a markdown document are not chunks of their own"
+answers = [
+  { path = "docs/decisions/005-markdown-chunking.md", symbol = "C: Extract fenced code blocks as separate chunks" },
+]
+
+[[queries]]
+text = "the environment variables that configure the server"
+answers = [{ path = "README.md", symbol = "Configuration" }]
+
+[[queries]]
+text = "install the server on linux without the large CUDA build of torch"
+answers = [
+  { path = "README.md", symbol = "Linux" },
+  { path = ".claude/rules/publishing.md", symbol = "Platform-Specific Install" },
+]
+
+[[queries]]
+text = "how a release of the package reaches PyPI"
+answers = [
+  { path = ".claude/rules/publishing.md", symbol = "Release Process" },
+  { path = ".claude/rules/publishing.md", symbol = "How It Works" },
+  { path = "README.md", symbol = "Releasing" },
+  { path = "CLAUDE.md", symbol = "Releases" },
+  { path = "AGENTS.md", symbol = "Releases" },
+]
+
+[[queries]]
+text = "why a module's docstring gets a chunk of its own"
+answers = [
+  { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "003: Module Docstring Chunking" },
+  { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "Context" },
+  { path = "docs/decisions/003-module-docstring-chunking.md", symbol = "Decision" },
+]

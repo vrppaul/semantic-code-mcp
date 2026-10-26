@@ -88,3 +88,29 @@ answers = [{ path = "src/regex_helper.rs", symbol = "pattern_has_uppercase_char"
 [[queries]]
 text = "strip the leading ./ from a path"
 answers = [{ path = "src/filesystem.rs", symbol = "strip_current_dir" }]
+
+# Questions whose answer is the documentation, so the harness weighs prose against code
+
+[[queries]]
+text = "make the search include hidden files and the files gitignore excludes"
+answers = [{ path = "README.md", symbol = "Hidden and ignored files" }]
+
+[[queries]]
+text = "remove every file and directory that a search matches"
+answers = [{ path = "README.md", symbol = "Deleting files" }]
+
+[[queries]]
+text = "the steps of publishing a new release"
+answers = [
+  { path = "doc/release-checklist.md", symbol = "Release checklist" },
+  { path = "doc/release-checklist.md", symbol = "Version bump" },
+  { path = "doc/release-checklist.md", symbol = "Pre-release checks and updates" },
+  { path = "doc/release-checklist.md", symbol = "Release" },
+]
+
+[[queries]]
+text = "where to report a security vulnerability privately"
+answers = [
+  { path = "SECURITY.md", symbol = "Security Reporting" },
+  { path = "SECURITY.md", symbol = "Reporting" },
+]
