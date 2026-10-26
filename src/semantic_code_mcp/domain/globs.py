@@ -72,7 +72,8 @@ def spelling_of(glob: str) -> str | None:
     named = [part for part in parts if part not in NAMELESS_PARTS]
     if not named:
         return None
-    # A slash makes a path when a named part follows it, as it does a leading one here
+    # A slash makes a path when a named part follows it; one always follows a leading
+    # slash here, as `named` is not empty
     is_path = any(part not in NAMELESS_PARTS for part in parts[1:])
     joined = PATH_SEPARATOR.join(named)
     return PATH_SEPARATOR + joined if is_path else joined
