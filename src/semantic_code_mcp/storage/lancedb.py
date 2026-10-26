@@ -74,11 +74,12 @@ from semantic_code_mcp.domain.models import (
     SearchCandidates,
     SourceFile,
 )
+from semantic_code_mcp.storage.search_text import search_text
 
 log = structlog.get_logger()
 
 # Bumped by any change to the tables' columns; each version keeps an index of its own
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # An index's directory, under the project's, named by its layout and its identity's digest;
 # its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
@@ -128,6 +129,8 @@ PARENT_COLUMN = "parent"
 LINE_START_COLUMN = "line_start"
 LINE_END_COLUMN = "line_end"
 CONTENT_COLUMN = "content"
+# What the full-text index holds of a chunk, which only it reads (`search_text.py`)
+SEARCH_TEXT_COLUMN = "search_text"
 MTIME_COLUMN = "mtime_ns"
 SIZE_COLUMN = "size_bytes"
 # The axis of a vector matrix along one vector: rows are chunks, columns components
@@ -137,6 +140,19 @@ NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
 COSINE_METRIC = "cosine"
+# What a search reads of each candidate: the chunk and its vector, not its search text
+CANDIDATE_COLUMNS = [
+    CHUNK_ID_COLUMN,
+    VECTOR_COLUMN,
+    PATH_COLUMN,
+    LANGUAGE_COLUMN,
+    KIND_COLUMN,
+    NAME_COLUMN,
+    PARENT_COLUMN,
+    LINE_START_COLUMN,
+    LINE_END_COLUMN,
+    CONTENT_COLUMN,
+]
 # What a search finds when the index holds no chunks yet
 NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 # How a single quote is written inside a quoted SQL string
@@ -166,6 +182,7 @@ def chunks_schema(dimension: int) -> pyarrow.Schema:
             pyarrow.field(LINE_START_COLUMN, pyarrow.int32()),
             pyarrow.field(LINE_END_COLUMN, pyarrow.int32()),
             pyarrow.field(CONTENT_COLUMN, pyarrow.utf8()),
+            pyarrow.field(SEARCH_TEXT_COLUMN, pyarrow.utf8()),
         ]
     )
 
@@ -346,7 +363,12 @@ class LanceDBIndexStore(IndexStore):
         # An open table reads the version it was opened at, so both channels see one index
         query = table.search(query_vector)
         # lancedb's stubs type search() as the base builder, which lacks metric()
-        nearest = query.metric(COSINE_METRIC).limit(per_channel).to_arrow()  # ty: ignore[unresolved-attribute]
+        nearest = (
+            query.metric(COSINE_METRIC)  # ty: ignore[unresolved-attribute]
+            .select(CANDIDATE_COLUMNS)
+            .limit(per_channel)
+            .to_arrow()
+        )
         return SearchCandidates(
             by_vector=candidates_of(nearest, query_vector),
             by_keyword=keyword_candidates(table, query_text, query_vector, per_channel),
@@ -393,7 +415,7 @@ class LanceDBIndexStore(IndexStore):
                 .execute(rows)
             )
         if not has_full_text_index(table):
-            table.create_fts_index(CONTENT_COLUMN)
+            table.create_fts_index(SEARCH_TEXT_COLUMN)
 
     def _write_records(self, database: lancedb.DBConnection, update: IndexUpdate) -> None:
         """Record the files written and drop the records of the files removed, after their
@@ -592,6 +614,7 @@ def chunks_table(chunks: list[Chunk], vectors: VectorMatrix) -> pyarrow.Table:
             LINE_START_COLUMN: [chunk.line_start for chunk in chunks],
             LINE_END_COLUMN: [chunk.line_end for chunk in chunks],
             CONTENT_COLUMN: [chunk.content for chunk in chunks],
+            SEARCH_TEXT_COLUMN: [search_text(chunk) for chunk in chunks],
         },
         schema=chunks_schema(width),
     )
@@ -639,7 +662,12 @@ def keyword_candidates(
     has no full-text index, as after a write stopped between the table and its index."""
     if not has_full_text_index(table):
         return []
-    rows = table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE).limit(limit).to_arrow()
+    rows = (
+        table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE)
+        .select(CANDIDATE_COLUMNS)
+        .limit(limit)
+        .to_arrow()
+    )
     return candidates_of(rows, query_vector)
 
 
