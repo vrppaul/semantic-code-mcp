@@ -286,6 +286,29 @@ class TestMarkdownChunker:
         assert chunks[0].content == "# Title\n\nLine one.\nLine two."
 
 
+def test_an_empty_heading_adds_nothing_to_the_names_of_the_sections_below_it():
+    markdown_text = """# Guide
+
+Intro.
+
+##
+
+Text.
+
+### Deep
+
+More.
+"""
+
+    chunks = MarkdownChunker().chunk_string(markdown_text, Path("guide.md"))
+
+    assert owners_of(chunks) == [
+        ChunkOwner(name="Guide", parent=None),
+        ChunkOwner(name="guide", parent="Guide"),
+        ChunkOwner(name="Deep", parent="Guide"),
+    ]
+
+
 def test_a_section_names_the_sections_it_is_under():
     markdown_text = """# Guide
 

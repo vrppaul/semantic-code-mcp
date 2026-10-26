@@ -25,7 +25,8 @@ MAX_SOURCE_BYTES = 1_000_000
 # A file without definitions is indexed in windows of this many lines.
 FALLBACK_WINDOW_LINES = 100
 # A chunk's id is this many hex digits of a digest of what identifies it, those parts
-# joined by a character no path or text holds
+# joined by NUL: the path and the occurrence never hold one and the text comes last, so
+# no two keys read alike
 CHUNK_ID_LENGTH = 32
 CHUNK_ID_SEPARATOR = "\0"
 

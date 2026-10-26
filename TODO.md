@@ -18,6 +18,9 @@ A search after a large change waits for the whole re-index. Answering from the o
 ### More tools: find_symbol, find_similar, list_indexed_files
 "Where is X defined" across languages, "code like this", and "what is indexed" are cheap given the index, and Grep answers the first only with every usage mixed in. ADR 006 defers them until the search surface settles.
 
+### Indexes of projects nobody uses
+With the global cache (`~/.cache/semantic-code-mcp/`), a project moved or deleted, or one of the many worktrees Claude Code makes, keeps its whole index there for good: a store looks for unused indexes only inside its own project's directory. Sweep the sibling project directories by the same rule, an index nobody used for a week, under the same lock. A project directory keeps its lock files, which are never deleted while a writer may wait on one, so it needs a rule for when the directory itself may go.
+
 ### LanceDB index tuning
 A flat cosine scan answers in 23–36 ms at 11.5k chunks. IVF or PQ indexes pay off only on much larger corpora; revisit when one over 100k chunks shows the need.
 

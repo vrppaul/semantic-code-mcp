@@ -13,7 +13,7 @@ log = structlog.get_logger()
 
 # The version of the chunks the chunkers make: bumped by any change to what a file
 # gives, so each version keeps an index of its own
-CHUNKER_VERSION = 2
+CHUNKER_VERSION = 3
 
 
 class CompositeChunker(Chunker):

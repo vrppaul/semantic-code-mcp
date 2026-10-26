@@ -38,12 +38,20 @@ def ids_by_name(chunks: list[Chunk]) -> dict[str, str]:
     return {chunk.name: chunk.chunk_id for chunk in chunks}
 
 
-def test_a_chunk_keeps_its_id_when_lines_move_and_an_edited_one_gets_a_new_id():
+def test_a_chunk_keeps_its_id_when_lines_are_inserted_above_it():
     before = ids_by_name(PythonChunker().chunk_string(MODULE, Path("module.py")))
 
     after = ids_by_name(PythonChunker().chunk_string(MODULE_EDITED, Path("module.py")))
 
-    assert (after["unchanged"], after["edited"] == before["edited"]) == (before["unchanged"], False)
+    assert after["unchanged"] == before["unchanged"]
+
+
+def test_an_edited_chunk_gets_a_new_id():
+    before = ids_by_name(PythonChunker().chunk_string(MODULE, Path("module.py")))
+
+    after = ids_by_name(PythonChunker().chunk_string(MODULE_EDITED, Path("module.py")))
+
+    assert after["edited"] != before["edited"]
 
 
 def test_identical_chunks_in_one_file_get_ids_of_their_own():

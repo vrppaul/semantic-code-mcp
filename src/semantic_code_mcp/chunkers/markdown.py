@@ -82,8 +82,9 @@ class MarkdownChunker(BaseTreeSitterChunker):
                 return child
         return None
 
-    def _heading_text(self, heading: Node) -> str:
-        """Extract the heading text from an atx_heading or setext_heading node.
+    def _heading_text(self, heading: Node) -> str | None:
+        """Extract the heading text from an atx_heading or setext_heading node; None for a
+        heading without text, as a bare `##`.
 
         atx_heading: text is in a direct `inline` child.
         setext_heading: text is in `paragraph` → `inline`.
@@ -98,4 +99,4 @@ class MarkdownChunker(BaseTreeSitterChunker):
                     for grandchild in child.children:
                         if grandchild.type == NodeType.inline and grandchild.text:
                             return grandchild.text.decode("utf-8")
-        return ""
+        return None

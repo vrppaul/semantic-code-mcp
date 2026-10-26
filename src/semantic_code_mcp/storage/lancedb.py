@@ -41,6 +41,7 @@ never shows in the project's own repository, nor what 0.4 left there.
 
 import contextlib
 import hashlib
+import math
 import os
 import shutil
 import tempfile
@@ -247,9 +248,6 @@ class LanceDBIndexStore(IndexStore):
         self._connection: lancedb.DBConnection | None = None
         # The version each table had after its last upkeep; only a write changes it
         self._kept_up_at: dict[str, int] = {}
-        self._noting_use = threading.Lock()
-        # When this store last marked its index as used, by the monotonic clock
-        self._noted_use_at: float | None = None
 
     @property
     def directory(self) -> Path:
@@ -290,8 +288,9 @@ class LanceDBIndexStore(IndexStore):
             message = f"{len(update.chunks)} chunks but {len(vectors)} vectors"
             raise ValueError(message)
         self._note_use()
-        database = self._created_database()
+        self._project_directory.mkdir(parents=True, exist_ok=True)
         with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
+            database = self._created_database()
             if update.chunks:
                 self._fit_layout(database, vectors.shape[VECTOR_LENGTH_AXIS])
             match update.scope:
@@ -446,17 +445,18 @@ class LanceDBIndexStore(IndexStore):
 
     def _note_use(self) -> None:
         """Mark this index as used, so another store leaves it, and remove the project's
-        indexes nobody used for UNUSED_INDEX_RETENTION; at most once per USE_MARK_INTERVAL.
-        Neither can fail a read: what cannot be done now is left for the next time."""
-        with self._noting_use:
-            now = time.monotonic()
-            interval = USE_MARK_INTERVAL.total_seconds()
-            if self._noted_use_at is not None and now - self._noted_use_at < interval:
-                return
-            self._noted_use_at = now
+        indexes nobody used for UNUSED_INDEX_RETENTION, once its stamp is USE_MARK_INTERVAL
+        old. The stamp's own mtime keeps that time, on the clock the remover reads, so a
+        session whose machine slept for a week marks its index at its first read; and every
+        process of one index shares the one stamp. An index not made yet has nothing to
+        mark. Neither can fail a read: what cannot be done now is left for the next time."""
+        stamp = self._directory / USE_STAMP_FILE
+        if not self._directory.is_dir():
+            return
+        if seconds_since_change(stamp) < USE_MARK_INTERVAL.total_seconds():
+            return
         try:
-            if self._directory.is_dir():
-                (self._directory / USE_STAMP_FILE).touch()
+            stamp.touch()
         except OSError as error:
             log.debug("index_use_not_marked", directory=str(self._directory), error=str(error))
         remove_unused_indexes(self._project_directory, self._directory)
@@ -481,7 +481,8 @@ class LanceDBIndexStore(IndexStore):
 
     def _created_database(self) -> lancedb.DBConnection:
         """The connection, for a writer, making the directory and the project's
-        `.gitignore` first."""
+        `.gitignore` first. Called under the write lock: a removal renames an index only
+        under that lock, so it cannot take the directory between its making and the write."""
         self._directory.mkdir(parents=True, exist_ok=True)
         ignore_file = self._project_directory / GITIGNORE_FILE
         if not ignore_file.exists():
@@ -570,6 +571,14 @@ def last_change(left: LeftIndex) -> float:
         *(child for part in left.parts if part.is_dir() for child in part.iterdir()),
     ]
     return max(entry.lstat().st_mtime for entry in entries)
+
+
+def seconds_since_change(path: Path) -> float:
+    """How long ago a file last changed, by the wall clock; for ever if it cannot be read."""
+    try:
+        return time.time() - path.stat().st_mtime
+    except OSError:
+        return math.inf
 
 
 def delete_entry(entry: Path) -> None:

@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict
 
+from semantic_code_mcp.domain.models import ChunkKind
+
 
 class SearchResultView(BaseModel):
     """One hit as the agent sees it; `content` is cut to a line limit, `truncated` says so."""
@@ -13,7 +15,8 @@ class SearchResultView(BaseModel):
     line_start: int
     line_end: int
     name: str
-    kind: str
+    # Its values are in the tool's output schema, where a filter's will be
+    kind: ChunkKind
     # The qualified name of what the chunk is defined in: a class, an impl, a heading
     parent: str | None
     content: str

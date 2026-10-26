@@ -25,6 +25,8 @@ from semantic_code_mcp.storage.lancedb import (
     MANIFEST_FILE,
     REMOVING_PREFIX,
     SCHEMA_VERSION,
+    USE_MARK_INTERVAL,
+    USE_STAMP_FILE,
     LanceDBIndexStore,
 )
 from tests.fakes import EMBEDDING_DIMENSION
@@ -319,12 +321,16 @@ def read_own_index(store: LanceDBIndexStore) -> None:
     "use_own_index",
     [pytest.param(write_own_index, id="written"), pytest.param(read_own_index, id="read")],
 )
-def test_an_index_nobody_used_for_a_week_is_removed_when_another_is_first_used(
+def test_an_index_nobody_used_for_a_week_is_removed_when_another_is_used(
     store: LanceDBIndexStore,
     tmp_path: Path,
     leave_index: Callable[[Path], list[str]],
     use_own_index: Callable[[LanceDBIndexStore], None],
 ):
+    """A week after both were last used, a session of this store's index reads or writes it."""
+    write_own_index(
+        LanceDBIndexStore(tmp_path / "index", IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
+    )
     left = leave_index(tmp_path / "index")
     set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
 
@@ -350,6 +356,20 @@ def read_as_another_session(project_directory: Path) -> None:
     LanceDBIndexStore(
         project_directory, OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
     ).counts()
+
+
+def test_a_store_marks_its_index_again_once_its_stamp_is_older_than_the_interval(
+    filled_store: LanceDBIndexStore,
+):
+    """However long the machine slept since this store last looked: the stamp tells."""
+    stamp = filled_store.directory / USE_STAMP_FILE
+    filled_store.counts()
+    long_before = stamp.stat().st_mtime - 2 * USE_MARK_INTERVAL.total_seconds()
+    os.utime(stamp, (long_before, long_before))
+
+    filled_store.counts()
+
+    assert stamp.stat().st_mtime > long_before + USE_MARK_INTERVAL.total_seconds()
 
 
 def test_an_unused_index_that_another_process_is_writing_is_left_alone(
