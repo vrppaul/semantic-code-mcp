@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
+- Every dependency is bounded below its next breaking release, so `uvx` installs the versions the tests ran on, not whatever is newest: 0.4.0 broke on mcp 2.x that way
 - Requires LanceDB 0.40: 0.27's filtered keyword search could drop a matching chunk from a search narrowed by `chunk_kinds`, `languages` or a glob
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper

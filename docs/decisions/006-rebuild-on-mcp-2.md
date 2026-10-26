@@ -257,6 +257,7 @@ CI and release:
 - **`publish.yml`** calls `ci.yml` and publishes only after it passes, with `uv publish --check-url https://pypi.org/simple/`, so a re-run is safe (shape: `../claude-review/.github/workflows/release.yml`).
 - **The `pypi` GitHub environment** gets the owner as a required reviewer: today `protection_rules` is empty (verified). This is the PyPI counterpart of livereel's npm staging approval. It is a repository setting the owner applies.
 - **Versioning** stays with `hatch-vcs`.
+- **Dependencies are bounded below their next breaking release** (next major; for a 0.x, next minor), from the version the suite and the harness ran on. `uvx` resolves a fresh environment and ignores `uv.lock`, so an open bound ships whatever is newest: 0.4.0 broke on mcp 2.x that way, and on 2026-10-26 a fresh install would have taken lancedb 0.40, sentence-transformers 6, filelock 4 and pyarrow 26 against the 0.27, 5, 3 and 23 the tests ran on. The package is an application in an environment of its own, so a bound costs no user a conflict. Before a release the lock moves to the newest versions within the bounds and the suite and both evals run again; a bound moves only with a run on the new line.
 
 ### D15. Agent docs, rules, repo hygiene
 
@@ -317,7 +318,7 @@ The project rules say to ask before changing the storage schema, the tool signat
 3. **Dependencies:**
    - added: `filelock` and `numpy` (runtime; numpy was already installed through sentence-transformers and LanceDB, and is declared once the domain names the vector's type); `import-linter` and `hypothesis` (dev); vulture, deptry and typos as pre-commit hooks;
    - removed: `pandas`;
-   - moved: lancedb from 0.27 to 0.40, whose filtered full-text search keeps a narrowed search's matches (stage 6);
+   - moved: lancedb from 0.27 to 0.40, whose filtered full-text search keeps a narrowed search's matches (stage 6); every runtime dependency bounded below its next breaking release (D14);
    - decided on measurements in stage 7: ONNX runtime as default or extra, and torch as optional.
 4. **Nothing is released until every stage is done** (the owner, 2026-10-26), the hotfix 0.4.1 included: one release ships the whole rebuild, and its version is settled then.
 
