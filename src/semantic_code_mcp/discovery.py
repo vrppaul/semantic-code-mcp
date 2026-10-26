@@ -121,20 +121,17 @@ class SourceDiscovery:
             candidates = self._walk(root)
         return self._indexable(candidates, root)
 
+    def project_root_of(self, directory: Path) -> Path:
+        """The root of the project a directory belongs to: of the git work tree it lies
+        in, so a repository has one index whichever of its directories a search names; the
+        directory itself outside a work tree, or where the repository around it ignores
+        it. Asked of git whether or not it lists the files."""
+        repository_root = self._repository_of(directory)
+        return directory if repository_root is None else repository_root
+
     def _list_with_git(self, root: Path) -> list[Path] | None:
         """Ask git which files to index; None when git cannot or should not answer."""
-        toplevel = self._run_git(["rev-parse", "--show-toplevel"], root)
-        if toplevel is None or toplevel.returncode != SUCCESS_EXIT_CODE:
-            log.debug("not_a_git_work_tree", project=str(root))
-            return None
-
-        repository_root = Path(os.fsdecode(toplevel.stdout.strip())).resolve()
-        if repository_root != root and self._is_ignored_by_git(root):
-            log.info(
-                "project_ignored_by_enclosing_repository",
-                project=str(root),
-                repository=str(repository_root),
-            )
+        if self._repository_of(root) is None:
             return None
 
         pathspecs = [f"*{extension}" for extension in sorted(self._extensions)]
@@ -151,6 +148,23 @@ class SourceDiscovery:
 
         entries = b"".join(listing.stdout for listing in listings if listing is not None)
         return [root / os.fsdecode(entry) for entry in entries.split(GIT_PATH_SEPARATOR) if entry]
+
+    def _repository_of(self, root: Path) -> Path | None:
+        """The root of the git work tree root lies in; None outside one, when git cannot
+        answer, or when that repository ignores root itself."""
+        toplevel = self._run_git(["rev-parse", "--show-toplevel"], root)
+        if toplevel is None or toplevel.returncode != SUCCESS_EXIT_CODE:
+            log.debug("not_a_git_work_tree", project=str(root))
+            return None
+        repository_root = Path(os.fsdecode(toplevel.stdout.strip())).resolve()
+        if repository_root != root and self._is_ignored_by_git(root):
+            log.info(
+                "project_ignored_by_enclosing_repository",
+                project=str(root),
+                repository=str(repository_root),
+            )
+            return None
+        return repository_root
 
     def _is_ignored_by_git(self, root: Path) -> bool:
         """Whether the repository around root ignores root itself."""

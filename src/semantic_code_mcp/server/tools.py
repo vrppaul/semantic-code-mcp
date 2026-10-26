@@ -5,6 +5,7 @@ A tool fails with a `ToolError`, whose message reaches the agent; anything else 
 escapes is a crash, and the agent hears only that the tool failed.
 """
 
+import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,7 +24,11 @@ from semantic_code_mcp.server.responses import (
     SearchCodeResponse,
 )
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.services.projects import ProjectRegistry, ProjectServices
+from semantic_code_mcp.services.projects import (
+    ProjectLocation,
+    ProjectRegistry,
+    ProjectServices,
+)
 
 log = structlog.get_logger()
 
@@ -71,7 +76,8 @@ async def search_code(  # noqa: PLR0913
 
     Args:
         query: Natural language description of what you're looking for.
-        project_path: Absolute path to the project's root directory (the repository root).
+        project_path: Absolute path to the project, or to a directory inside its git
+            repository, which keeps the search to that directory.
         limit: Maximum number of results to return (default 10, at most 50).
         chunk_kinds: Only chunks of these kinds.
         languages: Only chunks of files in these languages.
@@ -86,20 +92,21 @@ async def search_code(  # noqa: PLR0913
         alone, which a hit its words found can show low.
     """
     with failures_as_tool_errors():
-        project_root = existing_project_root(project_path)
-        services = project_services(ctx, project_root)
+        location = await located_project(ctx, project_path)
+        services = project_services(ctx, location.root)
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
             languages=tuple(languages or ()),
             path_glob=path_glob,
             exclude_glob=exclude_glob,
+            directory=location.directory,
         )
         report = await services.search.search(
             SearchQuery(text=query, limit=limit, scope=scope),
-            project_root,
+            location.root,
             progress=ProgressReporter(ctx.report_progress),
         )
-        return present_search(report, project_root, include_debug=include_debug)
+        return present_search(report, location.root, include_debug=include_debug)
 
 
 async def index_codebase(
@@ -118,17 +125,18 @@ async def index_codebase(
     Otherwise, only new and modified files are indexed (incremental).
 
     Args:
-        project_path: Absolute path to the project's root directory (the repository root).
+        project_path: Absolute path to the project; a directory inside a git repository
+            indexes the whole repository.
         force: If True, re-index all files regardless of changes.
 
     Returns:
         Statistics about the indexing operation.
     """
     with failures_as_tool_errors():
-        project_root = existing_project_root(project_path)
-        services = project_services(ctx, project_root)
+        location = await located_project(ctx, project_path)
+        services = project_services(ctx, location.root)
         report = await services.indexing.index(
-            project_root, force=force, progress=ProgressReporter(ctx.report_progress)
+            location.root, force=force, progress=ProgressReporter(ctx.report_progress)
         )
         return present_index(report)
 
@@ -148,15 +156,24 @@ async def index_status(
     so there is no need to check or act on staleness manually.
 
     Args:
-        project_path: Absolute path to the project's root directory (the repository root).
+        project_path: Absolute path to the project; a directory inside a git repository
+            reports the whole repository's index.
 
     Returns:
         Index status including files count and chunks count.
     """
     with failures_as_tool_errors():
-        project_root = existing_project_root(project_path)
-        services = project_services(ctx, project_root)
-        return present_status(await services.indexing.status(project_root))
+        location = await located_project(ctx, project_path)
+        services = project_services(ctx, location.root)
+        return present_status(await services.indexing.status(location.root))
+
+
+async def located_project(ctx: Context[ProjectRegistry], project_path: str) -> ProjectLocation:
+    """Where the directory a tool was asked about lies: its project's root and the
+    directory under it, git asked in a worker thread."""
+    directory = existing_directory(project_path)
+    registry = ctx.request_context.lifespan_context
+    return await asyncio.to_thread(registry.locate, directory)
 
 
 def project_services(ctx: Context[ProjectRegistry], project_root: Path) -> ProjectServices:
@@ -176,8 +193,9 @@ def failures_as_tool_errors() -> Generator[None]:
         raise ToolError(message) from error
 
 
-def existing_project_root(project_path: str) -> Path:
-    """The project path, resolved, as a directory that exists; or a tool error saying why not."""
+def existing_directory(project_path: str) -> Path:
+    """The path a tool was given, resolved, as a directory that exists; or a tool error
+    saying why not."""
     path = Path(project_path)
     if not path.is_absolute():
         message = f"Project path must be absolute: {project_path}"

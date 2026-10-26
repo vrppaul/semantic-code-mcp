@@ -338,3 +338,34 @@ def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: 
     files = make_discovery(use_gitignore=use_gitignore).discover(repository)
 
     assert relative_names(files) == {"kept.py"}
+
+
+@pytest.fixture
+def directories(tmp_path: Path) -> Path:
+    """A repository with a package two levels down, a directory outside any repository,
+    and a home directory under git for dotfiles that ignores the project inside it."""
+    repository = make_repository(tmp_path / "repo")
+    (repository / "pkg" / "sub").mkdir(parents=True)
+    (tmp_path / "plain").mkdir()
+    home = make_repository(tmp_path / "home")
+    (home / ".gitignore").write_text("*\n!.gitignore\n")
+    (home / "projects" / "app").mkdir(parents=True)
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("asked", "root"),
+    [
+        pytest.param("repo/pkg/sub", "repo", id="a directory inside a repository"),
+        pytest.param("repo", "repo", id="a repository's root"),
+        pytest.param("plain", "plain", id="a directory outside any repository"),
+        pytest.param("home/projects/app", "home/projects/app", id="a project the repo ignores"),
+    ],
+)
+def test_a_project_is_the_whole_repository_a_directory_lies_in(
+    directories: Path, asked: str, root: str
+):
+    """One index per repository: a directory inside one is a part of its project."""
+    found = make_discovery().project_root_of((directories / asked).resolve())
+
+    assert found == (directories / root).resolve()

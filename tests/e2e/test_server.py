@@ -16,6 +16,7 @@ from semantic_code_mcp.server.responses import (
     IndexStatusResponse,
     SearchCodeResponse,
 )
+from tests.helpers import make_repository
 
 GREETING_MODULE = '''def greet(name: str) -> str:
     """Greet a person by their name."""
@@ -201,3 +202,36 @@ async def test_two_spellings_of_one_project_share_its_local_index(
 
     # One lock for both spellings: the two runs do not store the chunks twice
     assert IndexStatusResponse.model_validate(structured(result)).chunks_count == 2
+
+
+@pytest.fixture
+def repository(tmp_path: Path) -> Path:
+    """A git repository with a module at its root and another in a package."""
+    root = make_repository(tmp_path / "repository")
+    (root / "greeting.py").write_text(GREETING_MODULE)
+    (root / "package").mkdir()
+    (root / "package" / "config.py").write_text(CONFIG_MODULE)
+    return root
+
+
+async def test_a_search_from_a_directory_of_a_repository_finds_only_what_lies_in_it(
+    repository: Path, client: Client
+):
+    async with client:
+        result = await client.call_tool(
+            "search_code",
+            {"query": "say hello to someone", "project_path": str(repository / "package")},
+        )
+
+    names = [hit.name for hit in SearchCodeResponse.model_validate(structured(result)).results]
+    assert "greet" not in names
+
+
+async def test_a_directory_of_a_repository_is_indexed_as_the_whole_repository(
+    repository: Path, client: Client
+):
+    async with client:
+        await client.call_tool("index_codebase", {"project_path": str(repository / "package")})
+        status = await client.call_tool("index_status", {"project_path": str(repository)})
+
+    assert IndexStatusResponse.model_validate(structured(status)).files_count == 2

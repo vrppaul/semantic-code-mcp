@@ -218,7 +218,11 @@ async def test_a_search_keeps_what_the_floors_of_the_settings_let_through(
 async def test_a_search_hands_its_scope_to_the_store(test_settings: Settings, sample_project: Path):
     store = FakeIndexStore(NO_CANDIDATES)
     scope = SearchScope(
-        kinds=[ChunkKind.klass], languages=[], path_glob="src/**", exclude_glob=None
+        kinds=[ChunkKind.klass],
+        languages=[],
+        path_glob="src/**",
+        exclude_glob=None,
+        directory=Path("src"),
     )
     service = search_service(store, test_settings, FakeEmbedder())
 

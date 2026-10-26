@@ -254,20 +254,40 @@ def code_and_a_guide(store: LanceDBIndexStore) -> LanceDBIndexStore:
     "scope",
     [
         pytest.param(
-            SearchScope(kinds=[ChunkKind.section], languages=[], path_glob=None, exclude_glob=None),
+            SearchScope(
+                kinds=[ChunkKind.section],
+                languages=[],
+                path_glob=None,
+                exclude_glob=None,
+                directory=None,
+            ),
             id="by kind",
         ),
         pytest.param(
-            SearchScope(kinds=[], languages=[Language.markdown], path_glob=None, exclude_glob=None),
+            SearchScope(
+                kinds=[],
+                languages=[Language.markdown],
+                path_glob=None,
+                exclude_glob=None,
+                directory=None,
+            ),
             id="by language",
         ),
         pytest.param(
-            SearchScope(kinds=[], languages=[], path_glob="docs/**", exclude_glob=None),
+            SearchScope(
+                kinds=[], languages=[], path_glob="docs/**", exclude_glob=None, directory=None
+            ),
             id="by a glob",
         ),
         pytest.param(
-            SearchScope(kinds=[], languages=[], path_glob=None, exclude_glob="src"),
+            SearchScope(kinds=[], languages=[], path_glob=None, exclude_glob="src", directory=None),
             id="by a glob left out",
+        ),
+        pytest.param(
+            SearchScope(
+                kinds=[], languages=[], path_glob=None, exclude_glob=None, directory=Path("docs")
+            ),
+            id="by a directory",
         ),
     ],
 )

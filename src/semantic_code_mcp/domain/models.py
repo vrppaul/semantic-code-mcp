@@ -114,8 +114,9 @@ class SearchCandidates(BaseModel):
 
 class SearchScope(BaseModel):
     """Which chunks a search looks among: of these kinds and languages, under the paths
-    one glob names and outside those another names (as `storage/globs.py` reads them); an
-    empty list or None leaves that part of the project in."""
+    one glob names and outside those another names (as `storage/globs.py` reads them), in
+    the directory of the repository a search was asked from; an empty list or None leaves
+    that part of the project in."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -123,10 +124,19 @@ class SearchScope(BaseModel):
     languages: tuple[Language, ...]
     path_glob: str | None
     exclude_glob: str | None
+    # From the project root
+    directory: Path | None
+
+    @field_validator("directory")
+    @classmethod
+    def directory_must_be_relative(cls, directory: Path | None) -> Path | None:
+        return None if directory is None else relative_path(directory)
 
 
 # A scope that leaves nothing of the project out
-WHOLE_PROJECT = SearchScope(kinds=(), languages=(), path_glob=None, exclude_glob=None)
+WHOLE_PROJECT = SearchScope(
+    kinds=(), languages=(), path_glob=None, exclude_glob=None, directory=None
+)
 
 
 class SearchQuery(BaseModel):

@@ -77,7 +77,7 @@ from semantic_code_mcp.domain.models import (
     SearchScope,
     SourceFile,
 )
-from semantic_code_mcp.storage.globs import glob_pattern
+from semantic_code_mcp.storage.globs import directory_pattern, glob_pattern
 from semantic_code_mcp.storage.search_text import search_text
 
 log = structlog.get_logger()
@@ -690,6 +690,8 @@ def scope_filter(scope: SearchScope) -> str | None:
         conditions.append(glob_filter(scope.path_glob))
     if scope.exclude_glob is not None:
         conditions.append(SQL_NOT + glob_filter(scope.exclude_glob))
+    if scope.directory is not None:
+        conditions.append(regex_filter(directory_pattern(scope.directory)))
     return SQL_AND.join(conditions) or None
 
 
@@ -701,7 +703,12 @@ def values_filter(column: str, values: Sequence[str]) -> str:
 
 def glob_filter(glob: str) -> str:
     """A filter matching the rows whose path the glob names."""
-    return f"{REGEX_MATCH_FUNCTION}({PATH_COLUMN}, {quote_sql(glob_pattern(glob))})"
+    return regex_filter(glob_pattern(glob))
+
+
+def regex_filter(pattern: str) -> str:
+    """A filter matching the rows whose path the regular expression matches."""
+    return f"{REGEX_MATCH_FUNCTION}({PATH_COLUMN}, {quote_sql(pattern)})"
 
 
 def candidates_of(rows: pyarrow.Table, query_vector: Vector) -> list[Candidate]:

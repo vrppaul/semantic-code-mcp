@@ -3,6 +3,8 @@
 from collections.abc import Callable
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
+
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
@@ -13,6 +15,16 @@ from semantic_code_mcp.services.search import SearchService, SimilarityFloors
 # Opens the store of a project's index of one identity, kept under the project's index
 # directory; the composition root says which store
 type StoreOpener = Callable[[Path, IndexIdentity], IndexStore]
+
+
+class ProjectLocation(BaseModel):
+    """Where a directory a tool was asked about lies: the root of its project, which keeps
+    the one index, and the directory under that root, None when it is the root."""
+
+    model_config = ConfigDict(frozen=True)
+
+    root: Path
+    directory: Path | None
 
 
 class ProjectServices:
@@ -49,6 +61,14 @@ class ProjectRegistry:
         self._discovery = discovery
         self._open_store = open_store
         self._services_by_index: dict[Path, ProjectServices] = {}
+
+    def locate(self, directory: Path) -> ProjectLocation:
+        """Where a directory lies: in the git work tree around it, whose root is its
+        project's, so a repository keeps one index whichever directory a tool names. Asks
+        git: called off the event loop."""
+        root = self._discovery.project_root_of(directory)
+        below = None if directory == root else directory.relative_to(root)
+        return ProjectLocation(root=root, directory=below)
 
     def services_for(self, project_root: Path) -> ProjectServices:
         """The services of a project, built on its first request."""

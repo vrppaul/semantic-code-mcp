@@ -1,6 +1,7 @@
 """Tests for what a search's scope becomes in the store's filter."""
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -36,7 +37,7 @@ def test_a_glob_takes_the_paths_it_names(glob: str, path: str, matches: bool):
 
 
 def test_a_scope_that_takes_every_chunk_needs_no_filter():
-    scope = SearchScope(kinds=[], languages=[], path_glob=None, exclude_glob=None)
+    scope = SearchScope(kinds=[], languages=[], path_glob=None, exclude_glob=None, directory=None)
 
     assert scope_filter(scope) is None
 
@@ -47,10 +48,12 @@ def test_a_scope_becomes_one_condition_for_each_thing_it_names():
         languages=[Language.rust],
         path_glob="src/*.rs",
         exclude_glob="it's.rs",
+        directory=Path("crates/core.d"),
     )
 
     assert scope_filter(scope) == (
         "kind IN ('class', 'method') AND language IN ('rust')"
         r" AND regexp_like(path, '^src/[^/]*\.rs(?:/.*)?$')"
         r" AND NOT regexp_like(path, '^(?:.*/)?it''s\.rs(?:/.*)?$')"
+        r" AND regexp_like(path, '^crates/core\.d/')"
     )

@@ -10,6 +10,7 @@ directory, `**` crosses any number of them, and a directory named takes everythi
 """
 
 import re
+from pathlib import Path
 
 PATH_SEPARATOR = "/"
 # The glob's wildcards, longest first, and what each reads as
@@ -87,3 +88,9 @@ def character_class(inside: str) -> str:
     )
     negation = REGEX_CLASS_NEGATION if negated else ""
     return CLASS_START + negation + escaped + CLASS_END
+
+
+def directory_pattern(directory: Path) -> str:
+    """The regular expression that matches the paths a directory holds, its name taken
+    as it is written, wildcards and all."""
+    return WHOLE_PATH_START + re.escape(directory.as_posix()) + PATH_SEPARATOR
