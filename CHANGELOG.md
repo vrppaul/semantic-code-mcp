@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Requires mcp 2.x: the server is an `MCPServer`, its state lives in the lifespan instead of module globals
 - Every direct dependency is bounded below its next breaking release, so none reaches a fresh `uvx` install untested, as mcp 2.x reached 0.4.0; what they pull in follows their own bounds
-- Requires LanceDB 0.30.2 or a later 0.30, and pylance 4.0, the Lance library it is built on, for that upkeep
+- Requires LanceDB 0.30.2 exactly, and pylance 4.0, the Lance library it is built on, for that upkeep: another LanceDB may bundle another Lance
 - A tool that fails answers as an MCP error (`isError`) with its message, instead of a successful result holding `{"error": ...}`
 - Each tool answers one model, without FastMCP's `{"result": ...}` wrapper
 - `search_code` refuses a `limit` above 50, and every tool refuses a relative `project_path`

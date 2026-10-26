@@ -243,9 +243,8 @@ async def edit_cost(
 
 def edits_in_turn(queries: Sequence[Query], count: int) -> list[Edit]:
     """`count` edits of the files that answer the questions, one file after another in turn,
-    each followed by the first question its file answers. An edit of a file other than the
-    last is what makes upkeep compact what the last edit left, which edits of one file never
-    show."""
+    each followed by the first question its file answers: edits of one file would replace
+    and fold the same rows over and over, where an agent's edits spread over files."""
     first_question_of_file: dict[str, str] = {}
     for query in queries:
         first_question_of_file.setdefault(query.answers[0].path, query.text)

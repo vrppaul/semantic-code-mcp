@@ -56,8 +56,10 @@ LIMIT = 10
 # A text no chunk's words match, so a search finds by vector alone
 NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
-# A retention no version is young enough for, so upkeep prunes every one but the latest
+# Retentions no version is young enough for, and every version a test makes is: with the
+# first, upkeep prunes every version but the latest; with the second, none
 NO_RETENTION = timedelta(0)
+AN_HOUR = timedelta(hours=1)
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
 # Modes for a table's files: read and enter only, so a write to it fails; and writable again
@@ -843,16 +845,27 @@ def test_compaction_merges_small_fragments_and_leaves_full_ones(store: LanceDBIn
     assert (fragments[0].fragment_id, len(fragments)) == (full_fragment, 2)
 
 
+@pytest.mark.parametrize(
+    ("retention", "only_the_latest_left"),
+    [
+        pytest.param(NO_RETENTION, True, id="none young enough to keep"),
+        pytest.param(AN_HOUR, False, id="all young enough to keep"),
+    ],
+)
 def test_upkeep_prunes_the_versions_older_than_any_read_can_last(
-    filled_store: LanceDBIndexStore, monkeypatch: pytest.MonkeyPatch
+    filled_store: LanceDBIndexStore,
+    monkeypatch: pytest.MonkeyPatch,
+    retention: timedelta,
+    only_the_latest_left: bool,
 ):
     """Else each write would keep a copy of what it replaced, and the index grow for ever;
-    with no version old enough, every one but the latest goes."""
-    monkeypatch.setattr(lancedb_store, "OLD_VERSION_RETENTION", NO_RETENTION)
+    a version younger than the retention stays, as a read may still be on it."""
+    monkeypatch.setattr(lancedb_store, "OLD_VERSION_RETENTION", retention)
     write_an_edit(filled_store, 0)
 
     filled_store.keep_up()
 
     database = lancedb.connect(str(filled_store.directory))
     tables = (CHUNKS_TABLE, FILES_TABLE)
-    assert [len(database.open_table(name).list_versions()) for name in tables] == [1, 1]
+    versions = [len(database.open_table(name).list_versions()) for name in tables]
+    assert [count == 1 for count in versions] == [only_the_latest_left, only_the_latest_left]
