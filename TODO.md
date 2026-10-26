@@ -13,7 +13,7 @@ The published 0.4.0 does not start on mcp 2.x, the index dropped code without a 
 Web and systems projects are invisible to search today. Tree-sitter has the grammars. Wait for ADR 006's chunker base (span helper, fallback chunk, `CHUNKER_VERSION`) so new languages do not inherit its old holes, and spike tree-sitter tags queries as the per-language definition of a symbol first.
 
 ### Background re-indexing
-A search after a large change waits for the whole re-index. Answering from the old index while a new one builds would hide that wait. It needs the per-project lock and the files table of ADR 006 first.
+A search after a large change waits for the whole re-index. Answering from the old index while a new one builds would hide that wait. The per-project lock and the files table it needed came with ADR 006's stage 5; a new index for another identity could be built beside the old one the same way.
 
 ### More tools: find_symbol, find_similar, list_indexed_files
 "Where is X defined" across languages, "code like this", and "what is indexed" are cheap given the index, and Grep answers the first only with every usage mixed in. ADR 006 defers them until the search surface settles.
