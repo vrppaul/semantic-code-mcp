@@ -15,6 +15,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from evals.corpus import (
+    TOP_LEVEL,
     Answer,
     Corpus,
     OffTopicQuestions,
@@ -47,8 +48,6 @@ TEST_FILE_SUFFIX = "_test"
 RUST_PATH_SEPARATOR = "::"
 # Chunks of one name under more parents than this need an answer that names its parent
 ONE_PARENT = 1
-# How an answer names the parent of a chunk that sits in nothing
-TOP_LEVEL = ""
 # How many hits a name's rank keeps, to read what came instead of its chunk
 NAME_HITS_KEPT = 3
 # Words a question and an answer's name or heading share, compared by a crude stem: a
@@ -170,11 +169,12 @@ async def measure_quality(
     if missing_files:
         message = f"{corpus.corpus.name}: answers name files the checkout lacks: {missing_files}"
         raise CorpusMistakeError(message)
-    missing_chunks = missing_answer_chunks(corpus, working_tree)
+    chunks_by_path = answer_files(corpus, working_tree)
+    missing_chunks = missing_answer_chunks(corpus, chunks_by_path)
     if missing_chunks:
         message = f"{corpus.corpus.name}: answers name chunks no file holds: {missing_chunks}"
         raise CorpusMistakeError(message)
-    ambiguous = ambiguous_answers(corpus, working_tree)
+    ambiguous = ambiguous_answers(corpus, chunks_by_path)
     if ambiguous:
         message = f"{corpus.corpus.name}: answers must name a parent of their chunk: {ambiguous}"
         raise CorpusMistakeError(message)
@@ -216,7 +216,7 @@ async def rank_query(query: Query, working_tree: Path, connection: ServerConnect
         shares_answer_words=shares_answer_words(query.text, query.answers),
         file_rank=first_rank([hit.path in answer_paths for hit in relative_hits]),
         chunk_rank=first_rank(
-            [any(answers(expected, hit) for expected in query.answers) for hit in relative_hits]
+            [any(hit_answers(hit, expected) for expected in query.answers) for hit in relative_hits]
         ),
         hits=tuple(relative_hits),
     )
@@ -352,13 +352,12 @@ def chunks_of(working_tree: Path) -> list[Chunk]:
     ]
 
 
-def missing_answer_chunks(corpus: Corpus, working_tree: Path) -> list[Answer]:
+def missing_answer_chunks(corpus: Corpus, chunks_by_path: dict[str, list[Chunk]]) -> list[Answer]:
     """Answers that no chunk the server's chunker gives that file matches.
 
     Answers name chunks as the chunker names them, so a mistyped name would score as a
     miss forever; this asks the chunker itself, without the model.
     """
-    chunks_by_path = answer_files(corpus, working_tree)
     return sorted(
         (
             answer
@@ -369,9 +368,9 @@ def missing_answer_chunks(corpus: Corpus, working_tree: Path) -> list[Answer]:
     )
 
 
-def ambiguous_answers(corpus: Corpus, working_tree: Path) -> list[Answer]:
-    """Answers that name no parent where chunks of several parents share their name."""
-    chunks_by_path = answer_files(corpus, working_tree)
+def ambiguous_answers(corpus: Corpus, chunks_by_path: dict[str, list[Chunk]]) -> list[Answer]:
+    """Answers that name no parent where chunks of several parents share their name; chunks
+    of one name under one parent (overloads, a Rust type and its impl) all count."""
     return sorted(
         (
             answer
@@ -384,7 +383,7 @@ def ambiguous_answers(corpus: Corpus, working_tree: Path) -> list[Answer]:
 
 def is_held(answer: Answer, chunks: Sequence[Chunk]) -> bool:
     """Whether a chunk of the answer's file is the answer."""
-    return any(answers(answer, chunk_answer(chunk)) for chunk in chunks)
+    return any(hit_answers(chunk_answer(chunk), answer) for chunk in chunks)
 
 
 def is_ambiguous(answer: Answer, chunks: Sequence[Chunk]) -> bool:
@@ -394,12 +393,13 @@ def is_ambiguous(answer: Answer, chunks: Sequence[Chunk]) -> bool:
     return answer.parent is None and len(parents) > ONE_PARENT
 
 
-def answers(answer: Answer, hit: Answer) -> bool:
-    """Whether a hit is the answer: its file and name, and its parent where one is named."""
+def hit_answers(hit: Answer, expected: Answer) -> bool:
+    """Whether a hit is the expected answer: its file and name, and its parent where the
+    answer names one."""
     return (
-        hit.path == answer.path
-        and hit.symbol == answer.symbol
-        and answer.parent in (None, hit.parent or TOP_LEVEL)
+        hit.path == expected.path
+        and hit.symbol == expected.symbol
+        and expected.parent in (None, hit.parent)
     )
 
 
@@ -418,7 +418,7 @@ def every_answer(corpus: Corpus) -> set[Answer]:
 
 def chunk_answer(chunk: Chunk) -> Answer:
     """A chunk as an answer names it."""
-    return Answer(path=chunk.path.as_posix(), symbol=chunk.name, parent=chunk.parent)
+    return Answer(path=chunk.path.as_posix(), symbol=chunk.name, parent=chunk.parent or TOP_LEVEL)
 
 
 def answer_order(answer: Answer) -> tuple[str, str, str]:
@@ -426,9 +426,10 @@ def answer_order(answer: Answer) -> tuple[str, str, str]:
 
 
 def relative_hit(hit: SearchHit, working_tree: Path) -> Answer:
-    """A hit as an answer is written: its path from the corpus root and its chunk name."""
+    """A hit as an answer is written: its path from the corpus root, its chunk name, and its
+    parent, TOP_LEVEL where it sits in nothing."""
     path = Path(hit.file_path).resolve().relative_to(working_tree.resolve()).as_posix()
-    return Answer(path=path, symbol=hit.name, parent=hit.parent)
+    return Answer(path=path, symbol=hit.name, parent=hit.parent or TOP_LEVEL)
 
 
 def first_rank(matches: Sequence[bool]) -> int | None:

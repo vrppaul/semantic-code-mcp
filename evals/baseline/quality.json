@@ -129,7 +129,7 @@
             {
               "path": "src/click/termui.py",
               "symbol": "progressbar",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -139,12 +139,12 @@
             {
               "path": "examples/termui/termui.py",
               "symbol": "progress",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "ProgressBar",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -154,22 +154,22 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_update_with_item_show_func",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "progressbar",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_item_show_func",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_yields_all_items",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -193,22 +193,22 @@
             {
               "path": "src/click/termui.py",
               "symbol": "edit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/termui/termui.py",
               "symbol": "edit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "edit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "edit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -223,7 +223,7 @@
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "Editor",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/faqs.md",
@@ -247,12 +247,12 @@
             {
               "path": "docs/prompts.md",
               "symbol": "User Input Prompts",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "confirm",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/prompts.md",
@@ -262,7 +262,7 @@
             {
               "path": "src/click/decorators.py",
               "symbol": "confirmation_option",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -281,47 +281,47 @@
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_pager_contextmanager",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_less_uses_raw_mode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_pipepager",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "_get_real_pager_command",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "_run_get_pager_file_with_real_pager",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "_page_with_get_pager_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_pipepager_less_detection_matches_stem",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_get_pager_file_nullpager_keeps_stringio_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_get_pager_file_close_does_not_close_borrowed_stream",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -340,7 +340,7 @@
             {
               "path": "src/click/utils.py",
               "symbol": "get_app_dir",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/standalone-apps.md",
@@ -369,7 +369,7 @@
             {
               "path": "src/click/shell_completion.py",
               "symbol": "PowerShellComplete",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/shell-completion.md",
@@ -379,12 +379,12 @@
             {
               "path": "src/click/shell_completion.py",
               "symbol": "split_arg_string",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/shell_completion.py",
               "symbol": "FishComplete",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/faqs.md",
@@ -399,7 +399,7 @@
             {
               "path": "docs/shell-completion.md",
               "symbol": "shell-completion",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/shell-completion.md",
@@ -414,7 +414,7 @@
             {
               "path": "src/click/parser.py",
               "symbol": "__getattr__",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -428,17 +428,17 @@
             {
               "path": "src/click/shell_completion.py",
               "symbol": "ZshComplete",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/shell-completion.md",
               "symbol": "Shell Completion",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/shell_completion.py",
               "symbol": "get_completion_class",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/shell-completion.md",
@@ -458,7 +458,7 @@
             {
               "path": "CHANGES.md",
               "symbol": "Version 8.4.1",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -468,7 +468,7 @@
             {
               "path": "docs/shell-completion.md",
               "symbol": "shell-completion",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/shell-completion.md",
@@ -487,7 +487,7 @@
             {
               "path": "src/click/formatting.py",
               "symbol": "HelpFormatter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/documentation.md",
@@ -497,7 +497,7 @@
             {
               "path": "src/click/formatting.py",
               "symbol": "wrap_text",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/documentation.md",
@@ -507,17 +507,17 @@
             {
               "path": "tests/test_formatting.py",
               "symbol": "test_truncating_docstring",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_formatting.py",
               "symbol": "test_basic_functionality",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
               "symbol": "_make_default_short_help",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -532,7 +532,7 @@
             {
               "path": "tests/test_formatting.py",
               "symbol": "test_truncating_docstring_no_help",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -546,32 +546,32 @@
             {
               "path": "tests/test_stream_lifecycle.py",
               "symbol": "test_output_isolation_across_invokes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_fd_stderr_separation",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_fd_faulthandler",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_fd_os_write",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_pytest_matrix",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_file_stdin_attrs",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/testing.md",
@@ -581,17 +581,17 @@
             {
               "path": "tests/test_testing.py",
               "symbol": "test_runner",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_fd_logging_handler",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_context.py",
               "symbol": "test_pass_obj",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -610,17 +610,17 @@
             {
               "path": "tests/test_commands.py",
               "symbol": "test_group_parse_args_collects_base_option_prefixes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_options.py",
               "symbol": "test_flag_group_competition_four_flags",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_options.py",
               "symbol": "test_envvar_string_flag_value",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/options.md",
@@ -630,7 +630,7 @@
             {
               "path": "tests/test_shell_completion.py",
               "symbol": "test_flag_option_with_nargs_option",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/options.md",
@@ -640,17 +640,17 @@
             {
               "path": "tests/test_options.py",
               "symbol": "test_option_with_optional_value",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_compat.py",
               "symbol": "test_truncate_visible",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_options.py",
               "symbol": "test_option_names",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -669,37 +669,37 @@
             {
               "path": "src/click/types.py",
               "symbol": "ParamType",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "IntRange",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGES.md",
               "symbol": "Version 8.4.0",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/parameter-types.md",
               "symbol": "parameter-types",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "IntParamType",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/parameters.md",
               "symbol": "parameters",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "_NumberParamTypeBase",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -723,22 +723,22 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "open_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_file_atomics",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_utils/test_open_file.py",
               "symbol": "test_open_file_atomic_permissions_existing_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/testing.py",
               "symbol": "_FDCapture",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/handling-files.md",
@@ -753,12 +753,12 @@
             {
               "path": "src/click/utils.py",
               "symbol": "open_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "_AtomicFile",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -768,7 +768,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "File",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -782,7 +782,7 @@
             {
               "path": "src/click/termui.py",
               "symbol": "unstyle",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -792,32 +792,32 @@
             {
               "path": "tests/test_compat.py",
               "symbol": "test_strip_ansi_leaves_plain_text",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_PagerWriter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_get_pager_file_nullpager_wraps_textio_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "style",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/colors/colors.py",
               "symbol": "cli",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_compat.py",
               "symbol": "test_strip_ansi_mixed_content",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -827,7 +827,7 @@
             {
               "path": "tests/test_formatting.py",
               "symbol": "test_help_formatter_write_usage_without_args_styled_prefix",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -841,17 +841,17 @@
             {
               "path": "src/click/termui.py",
               "symbol": "style",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/termui/termui.py",
               "symbol": "colordemo",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/colors/colors.py",
               "symbol": "cli",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -861,22 +861,22 @@
             {
               "path": "tests/test_utils/test_style.py",
               "symbol": "test_styling_invalid_color",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_custom_classes.py",
               "symbol": "test_context_formatter_class",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_with_color_errors",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "echo_via_pager",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -890,7 +890,7 @@
             {
               "path": "src/click/exceptions.py",
               "symbol": "NoSuchOption",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/options.md",
@@ -900,7 +900,7 @@
             {
               "path": "docs/options.md",
               "symbol": "options",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/parameter-types.md",
@@ -915,17 +915,17 @@
             {
               "path": "src/click/exceptions.py",
               "symbol": "BadOptionUsage",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_basic.py",
               "symbol": "test_flag_value_dual_options",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_options.py",
               "symbol": "test_option_name_case_variants_share_one_parameter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/prompts.md",
@@ -989,7 +989,7 @@
             {
               "path": "examples/completion/completion.py",
               "symbol": "show_env",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/commands.md",
@@ -1033,7 +1033,7 @@
             {
               "path": "tests/test_context.py",
               "symbol": "test_global_context_object",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/parser.py",
@@ -1048,7 +1048,7 @@
             {
               "path": "tests/typing/typing_aliased_group.py",
               "symbol": "push",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/parser.py",
@@ -1077,12 +1077,12 @@
             {
               "path": "src/click/core.py",
               "symbol": "Group",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "process_commands",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/commands.md",
@@ -1112,7 +1112,7 @@
             {
               "path": "src/click/core.py",
               "symbol": "_complete_visible_commands",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1131,17 +1131,17 @@
             {
               "path": "src/click/utils.py",
               "symbol": "_LazyFile",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
               "symbol": "open_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "File",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -1156,7 +1156,7 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "open_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
@@ -1185,12 +1185,12 @@
             {
               "path": "examples/termui/termui.py",
               "symbol": "open",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/termui/termui.py",
               "symbol": "locate",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -1200,12 +1200,12 @@
             {
               "path": "src/click/termui.py",
               "symbol": "launch",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "open_url",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -1215,7 +1215,7 @@
             {
               "path": "src/click/utils.py",
               "symbol": "open_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -1225,12 +1225,12 @@
             {
               "path": "tests/test_options.py",
               "symbol": "test_file_type_help_default",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/handling-files.md",
               "symbol": "Handling Files",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1254,17 +1254,17 @@
             {
               "path": "CHANGES.md",
               "symbol": "Version 8.1.5",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGES.md",
               "symbol": "Version 6.4",
-              "parent": null
+              "parent": ""
             },
             {
               "path": ".github/ISSUE_TEMPLATE/bug-report.md",
               "symbol": "bug-report",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/click-concepts.md",
@@ -1274,12 +1274,12 @@
             {
               "path": "src/click/parser.py",
               "symbol": "parser",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_options.py",
               "symbol": "test_option_name_check_applies_when_not_exposed",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/wincmd.md",
@@ -1308,12 +1308,12 @@
             {
               "path": "tests/test_testing.py",
               "symbol": "test_tempdir_replacement_pattern",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_basic.py",
               "symbol": "test_path_option",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/testing.md",
@@ -1328,27 +1328,27 @@
             {
               "path": "tests/test_basic.py",
               "symbol": "test_file_lazy_mode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_tempdir_isolation_is_thread_safe",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_isolated_runner_custom_tempdir",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_get_pager_file_close_does_not_close_borrowed_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_file_atomics",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1362,7 +1362,7 @@
             {
               "path": "src/click/core.py",
               "symbol": "iter_params_for_processing",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/commands-and-groups.md",
@@ -1377,7 +1377,7 @@
             {
               "path": "src/click/decorators.py",
               "symbol": "command",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -1392,7 +1392,7 @@
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_resolve_pager_command",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/testing.py",
@@ -1407,7 +1407,7 @@
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "process_commands",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1431,7 +1431,7 @@
             {
               "path": "docs/entry-points.md",
               "symbol": "Packaging Entry Points",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/quickstart.md",
@@ -1446,12 +1446,12 @@
             {
               "path": "docs/index.md",
               "symbol": "Welcome to Click",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/__init__.py",
               "symbol": "__init__",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/entry-points.md",
@@ -1461,7 +1461,7 @@
             {
               "path": "tests/test_utils/test__expand_args.py",
               "symbol": "test_expand_args",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/virtualenv.md",
@@ -1480,27 +1480,27 @@
             {
               "path": "docs/support-multiple-versions.md",
               "symbol": "Supporting Multiple Versions",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/contrib.md",
               "symbol": "click-contrib",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGES.md",
               "symbol": "Version 4.0",
-              "parent": null
+              "parent": ""
             },
             {
               "path": ".github/ISSUE_TEMPLATE/feature-request.md",
               "symbol": "feature-request",
-              "parent": null
+              "parent": ""
             },
             {
               "path": ".github/ISSUE_TEMPLATE/bug-report.md",
               "symbol": "bug-report",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -1520,12 +1520,12 @@
             {
               "path": "docs/contributing.md",
               "symbol": "Contributing",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/extending-click.md",
               "symbol": "Extending Click",
-              "parent": null
+              "parent": ""
             }
           ]
         }
@@ -1541,27 +1541,27 @@
             {
               "path": "tests/test_abort_interrupt.py",
               "symbol": "test_interrupt_while_reporting_error",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
               "symbol": "_echo_aborted",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_stream_lifecycle.py",
               "symbol": "test_mixer_buffers_survive_wrapper_gc",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_stream_lifecycle.py",
               "symbol": "test_sys_streams_restored_after_exception",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/testing.py",
               "symbol": "_pause_echo",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
@@ -1571,7 +1571,7 @@
             {
               "path": "CHANGES.md",
               "symbol": "Version 8.4.2",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -1586,7 +1586,7 @@
             {
               "path": "src/click/_textwrap.py",
               "symbol": "_truncate_visible",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1600,7 +1600,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "BoolParamType",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -1610,7 +1610,7 @@
             {
               "path": "tests/test_basic.py",
               "symbol": "test_boolean_conversion",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -1664,7 +1664,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "DateTime",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -1674,12 +1674,12 @@
             {
               "path": "tests/test_basic.py",
               "symbol": "test_datetime_option_custom",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_basic.py",
               "symbol": "test_datetime_option_default",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -1694,7 +1694,7 @@
             {
               "path": "tests/test_basic.py",
               "symbol": "test_datetime_argument_optional_metavar",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -1704,7 +1704,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "DateTimeInfoDict",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1723,7 +1723,7 @@
             {
               "path": "CHANGES.md",
               "symbol": "Version 3.1",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/complex.md",
@@ -1743,7 +1743,7 @@
             {
               "path": "examples/completion/completion.py",
               "symbol": "group",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/complex.md",
@@ -1763,7 +1763,7 @@
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_nested_subcommand_help",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1777,7 +1777,7 @@
             {
               "path": "src/click/utils.py",
               "symbol": "_expand_args",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/faqs.md",
@@ -1792,17 +1792,17 @@
             {
               "path": "src/click/utils.py",
               "symbol": "get_app_dir",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/complex/complex/cli.py",
               "symbol": "cli",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_utils/test__expand_args.py",
               "symbol": "test_expand_args",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/faqs.md",
@@ -1812,12 +1812,12 @@
             {
               "path": "examples/completion/completion.py",
               "symbol": "ls",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_info_dict.py",
               "symbol": "test_command_to_info_dict_multiple_arguments",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/arguments.md",
@@ -1836,17 +1836,17 @@
             {
               "path": "src/click/termui.py",
               "symbol": "_readline_prompt",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "confirm",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_commands.py",
               "symbol": "test_auto_shorthelp",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/testing.md",
@@ -1856,7 +1856,7 @@
             {
               "path": "tests/test_utils/test_prompt.py",
               "symbol": "test_prompts_eof",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/faqs.md",
@@ -1866,7 +1866,7 @@
             {
               "path": "tests/test_testing.py",
               "symbol": "test_echo_stdin_prompts",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -1876,12 +1876,12 @@
             {
               "path": "tests/test_command_decorators.py",
               "symbol": "test_command_no_parens",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_options.py",
               "symbol": "test_string_show_default_shows_custom_string_in_prompt",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1910,12 +1910,12 @@
             {
               "path": "src/click/core.py",
               "symbol": "CommandCollection",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
               "symbol": "Group",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -1925,7 +1925,7 @@
             {
               "path": "examples/completion/completion.py",
               "symbol": "group",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/commands.md",
@@ -1935,12 +1935,12 @@
             {
               "path": "tests/test_basic.py",
               "symbol": "test_group_from_list",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
               "symbol": "_check_nested_chain",
-              "parent": null
+              "parent": ""
             }
           ]
         }
@@ -1958,12 +1958,12 @@
             {
               "path": "src/click/exceptions.py",
               "symbol": "Abort",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
               "symbol": "_echo_aborted",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -1979,12 +1979,12 @@
             {
               "path": "examples/validation/validation.py",
               "symbol": "validate_count",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/exceptions.py",
               "symbol": "BadParameter",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2000,12 +2000,12 @@
             {
               "path": "tests/test_testing.py",
               "symbol": "test_pdb_explicit_streams_honored",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/conftest.py",
               "symbol": "runner",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2016,17 +2016,17 @@
             {
               "path": "examples/complex/complex/cli.py",
               "symbol": "ComplexCLI",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/complex/complex/cli.py",
               "symbol": "cli",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/complex.md",
               "symbol": "complex",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2042,12 +2042,12 @@
             {
               "path": "tests/test_basic.py",
               "symbol": "test_datetime_option_custom",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "DateTime",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2063,7 +2063,7 @@
             {
               "path": "src/click/exceptions.py",
               "symbol": "Exit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -2079,17 +2079,17 @@
             {
               "path": "src/click/types.py",
               "symbol": "FloatParamType",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "FloatRange",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/typing/typing_prompt.py",
               "symbol": "to_float",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2100,17 +2100,17 @@
             {
               "path": "src/click/types.py",
               "symbol": "IntParamType",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/parameter-types.md",
               "symbol": "parameter-types",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "IntRange",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2121,7 +2121,7 @@
             {
               "path": "src/click/exceptions.py",
               "symbol": "NoSuchOption",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/parser.py",
@@ -2142,7 +2142,7 @@
             {
               "path": "docs/parameters.md",
               "symbol": "parameters",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -2152,7 +2152,7 @@
             {
               "path": "docs/parameter-types.md",
               "symbol": "parameter-types",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2163,17 +2163,17 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_yields_all_items",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "progressbar",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_iter_outside_with_exceptions",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2184,17 +2184,17 @@
             {
               "path": "src/click/testing.py",
               "symbol": "StreamMixer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_stream_lifecycle.py",
               "symbol": "test_no_streammixer_del",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_stream_lifecycle.py",
               "symbol": "test_stream_lifecycle",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2205,12 +2205,12 @@
             {
               "path": "examples/validation/validation.py",
               "symbol": "URL",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/termui/termui.py",
               "symbol": "locate",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/validation/validation.py",
@@ -2226,17 +2226,17 @@
             {
               "path": "src/click/decorators.py",
               "symbol": "argument",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_when_argument_decorator_is_used_multiple_times_cls_is_preserved",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_argument_help_undocumented_arguments_only_no_section",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2252,12 +2252,12 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "_FixupStream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "_NonClosingTextIOWrapper",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2268,17 +2268,17 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "_NonClosingTextIOWrapper",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "_make_text_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_get_text_stderr",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2289,12 +2289,12 @@
             {
               "path": "src/click/utils.py",
               "symbol": "_PacifyFlushWrapper",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
               "symbol": "__getattr__",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2305,17 +2305,17 @@
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_WindowsConsoleReader",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_WindowsConsoleRawIOBase",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_WindowsConsoleWriter",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2331,7 +2331,7 @@
             {
               "path": "tests/test_stream_lifecycle.py",
               "symbol": "test_no_streammixer_del",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/testing.py",
@@ -2352,7 +2352,7 @@
             {
               "path": "src/click/core.py",
               "symbol": "_FakeSubclassCheck",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -2399,7 +2399,7 @@
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_argument_normalizes_an_identifier_decl",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2436,12 +2436,12 @@
             {
               "path": "src/click/core.py",
               "symbol": "_echo_aborted",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_utils/test_echo.py",
               "symbol": "test_echo_custom_file",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2452,17 +2452,17 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "_force_correct_text_reader",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "_force_correct_text_writer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "get_text_stdin",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2473,17 +2473,17 @@
             {
               "path": "src/click/core.py",
               "symbol": "_format_deprecated_suffix",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
               "symbol": "_format_deprecated_label",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_commands.py",
               "symbol": "test_deprecated_in_invocation",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2494,17 +2494,17 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "get_text_stdin",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_get_text_stdin",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
               "symbol": "_get_text_stream",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2515,12 +2515,12 @@
             {
               "path": "src/click/types.py",
               "symbol": "convert_type",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
               "symbol": "_guess_type",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -2536,17 +2536,17 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "get_binary_stdin",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "_is_binary_reader",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "_find_binary_reader",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2557,12 +2557,12 @@
             {
               "path": "src/click/types.py",
               "symbol": "_is_file_like",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
               "symbol": "_LazyFile",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/types.py",
@@ -2578,17 +2578,17 @@
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_less_uses_raw_mode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_pipepager_less_raw_mode_detection",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
               "symbol": "_pipepager",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2599,7 +2599,7 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "_make_text_stream",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
@@ -2609,7 +2609,7 @@
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_get_text_stderr",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2688,12 +2688,12 @@
             {
               "path": "src/click/shell_completion.py",
               "symbol": "_resolve_incomplete",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/shell_completion.py",
               "symbol": "_resolve_context",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2704,12 +2704,12 @@
             {
               "path": "src/click/shell_completion.py",
               "symbol": "_start_of_option",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/shell_completion.py",
               "symbol": "_is_incomplete_option",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/parser.py",
@@ -2735,7 +2735,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "DateTime",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2751,12 +2751,12 @@
             {
               "path": "src/click/exceptions.py",
               "symbol": "Abort",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
               "symbol": "_echo_aborted",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2798,7 +2798,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "CompositeParamType",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2809,12 +2809,12 @@
             {
               "path": "examples/termui/termui.py",
               "symbol": "clear",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "clear",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -2840,7 +2840,7 @@
             {
               "path": "src/click/types.py",
               "symbol": "Path",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2851,17 +2851,17 @@
             {
               "path": "examples/aliases/aliases.py",
               "symbol": "commit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/repo/repo.py",
               "symbol": "commit",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/shell-completion.md",
               "symbol": "Shell Completion",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2893,17 +2893,17 @@
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "copy_filename",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "emboss_cmd",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/repo/repo.py",
               "symbol": "copy",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2914,17 +2914,17 @@
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "display_cmd",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_arguments.py",
               "symbol": "test_argument_metavar_renders_what_a_declaration_may_not",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_false_show_default_cause_no_default_display_in_prompt",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2935,7 +2935,7 @@
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "emboss_cmd",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -2945,7 +2945,7 @@
             {
               "path": "tests/test_formatting.py",
               "symbol": "test_formatting_usage_error",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -2966,7 +2966,7 @@
             {
               "path": "tests/test_utils/test_echo_via_pager.py",
               "symbol": "_test_gen_func_yields_then_fails",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3040,12 +3040,12 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_format_progress_line",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_format_progress_line_with_show_func",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_termui_impl.py",
@@ -3061,7 +3061,7 @@
             {
               "path": "src/click/utils.py",
               "symbol": "get_app_dir",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -3071,7 +3071,7 @@
             {
               "path": "examples/completion/completion.py",
               "symbol": "ls",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3155,7 +3155,7 @@
             {
               "path": "tests/test_options.py",
               "symbol": "test_help_spec",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3171,7 +3171,7 @@
             {
               "path": "tests/test_defaults.py",
               "symbol": "test_parameter_source_on_parse_result_bypass",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/commands-and-groups.md",
@@ -3187,17 +3187,17 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "get_text_stdout",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_winconsole.py",
               "symbol": "_get_text_stdout",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/utils.py",
               "symbol": "_get_text_stream",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3208,7 +3208,7 @@
             {
               "path": "tests/test_custom_classes.py",
               "symbol": "test_group_group_class",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -3218,7 +3218,7 @@
             {
               "path": "tests/test_custom_classes.py",
               "symbol": "test_group_group_class_self",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3271,12 +3271,12 @@
             {
               "path": "src/click/formatting.py",
               "symbol": "iter_rows",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/formatting.py",
               "symbol": "measure_table",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/formatting.py",
@@ -3292,7 +3292,7 @@
             {
               "path": "examples/termui/termui.py",
               "symbol": "locate",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3308,7 +3308,7 @@
             {
               "path": "tests/test_custom_classes.py",
               "symbol": "test_command_context_class",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -3345,7 +3345,7 @@
             {
               "path": "examples/termui/termui.py",
               "symbol": "menu",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3372,7 +3372,7 @@
             {
               "path": "src/click/utils.py",
               "symbol": "open_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/utils.md",
@@ -3382,7 +3382,7 @@
             {
               "path": "tests/test_utils/test_open_file.py",
               "symbol": "test_open_file_respects_ignore",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3393,17 +3393,17 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "_page_with_get_pager_file",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "_write_pager_from_multiple_sites",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "_run_get_pager_file_with_real_pager",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3419,12 +3419,12 @@
             {
               "path": "src/click/decorators.py",
               "symbol": "password_option",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/typing/typing_password_option.py",
               "symbol": "encrypt",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3440,12 +3440,12 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "_FakePagerProcess",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/imagepipe/imagepipe.py",
               "symbol": "process_commands",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3456,17 +3456,17 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_yields_all_items",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "progressbar",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_termui.py",
               "symbol": "test_progressbar_iter_outside_with_exceptions",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3477,17 +3477,17 @@
             {
               "path": "examples/aliases/aliases.py",
               "symbol": "push",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/typing/typing_aliased_group.py",
               "symbol": "push",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/globals.py",
               "symbol": "push_context",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3498,7 +3498,7 @@
             {
               "path": "examples/aliases/aliases.py",
               "symbol": "read_config",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/aliases/aliases.py",
@@ -3508,7 +3508,7 @@
             {
               "path": "examples/aliases/aliases.py",
               "symbol": "Config",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3561,17 +3561,17 @@
             {
               "path": "tests/test_termui.py",
               "symbol": "test_secho",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/termui.py",
               "symbol": "secho",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGES.md",
               "symbol": "Version 3.2",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3603,17 +3603,17 @@
             {
               "path": "examples/naval/naval.py",
               "symbol": "ship_move",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/naval/naval.py",
               "symbol": "ship_shoot",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "examples/naval/naval.py",
               "symbol": "ship",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3624,7 +3624,7 @@
             {
               "path": "examples/completion/completion.py",
               "symbol": "show_env",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/core.py",
@@ -3634,7 +3634,7 @@
             {
               "path": "tests/test_testing.py",
               "symbol": "test_env",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3645,12 +3645,12 @@
             {
               "path": "src/click/shell_completion.py",
               "symbol": "split_arg_string",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_parser.py",
               "symbol": "test_split_arg_string",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/shell_completion.py",
@@ -3666,17 +3666,17 @@
             {
               "path": "src/click/_compat.py",
               "symbol": "get_text_stdout",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/click/_compat.py",
               "symbol": "get_binary_stdout",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_testing.py",
               "symbol": "test_capture_fd_os_write",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -3906,7 +3906,7 @@
             {
               "path": "src/filter/size.rs",
               "symbol": "SizeFilter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/size.rs",
@@ -3926,17 +3926,17 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_size",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/owner.rs",
               "symbol": "OwnerFilter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/size.rs",
               "symbol": "SizeFilter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/size.rs",
@@ -3970,17 +3970,17 @@
             {
               "path": "src/main.rs",
               "symbol": "extract_time_constraints",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/time.rs",
               "symbol": "TimeFilter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "change_file_modified",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/time.rs",
@@ -3990,7 +3990,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_modified_absolute",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4010,7 +4010,7 @@
             {
               "path": "src/filter/time.rs",
               "symbol": "TimeFilter",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4029,12 +4029,12 @@
             {
               "path": "src/exec/mod.rs",
               "symbol": "ExecutionMode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
               "symbol": "Args for Exec",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -4044,12 +4044,12 @@
             {
               "path": "src/main.rs",
               "symbol": "run",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
               "symbol": "scan",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -4088,7 +4088,7 @@
             {
               "path": "src/cli.rs",
               "symbol": "Args for Exec",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -4103,7 +4103,7 @@
             {
               "path": "src/exec/mod.rs",
               "symbol": "ExecutionMode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -4113,7 +4113,7 @@
             {
               "path": "src/exec/command.rs",
               "symbol": "execute_commands",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4142,7 +4142,7 @@
             {
               "path": "src/walk.rs",
               "symbol": "scan",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -4172,7 +4172,7 @@
             {
               "path": "src/dir_entry.rs",
               "symbol": "DirEntryInner",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4187,7 +4187,7 @@
             {
               "path": "src/main.rs",
               "symbol": "ensure_search_pattern_is_not_a_path",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4201,7 +4201,7 @@
             {
               "path": "src/output.rs",
               "symbol": "print_entry_colorized",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4216,17 +4216,17 @@
             {
               "path": "src/output.rs",
               "symbol": "print_entry",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_entry_uncolorized_base",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_entry_uncolorized",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/testenv/mod.rs",
@@ -4241,7 +4241,7 @@
             {
               "path": "CHANGELOG.md",
               "symbol": "v0.3.0",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4275,17 +4275,17 @@
             {
               "path": "src/filetypes.rs",
               "symbol": "FileTypes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_type_empty",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "is_empty",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filetypes.rs",
@@ -4295,12 +4295,12 @@
             {
               "path": "src/config.rs",
               "symbol": "Config",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filetypes.rs",
               "symbol": "FileTypes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/config.rs",
@@ -4319,7 +4319,7 @@
             {
               "path": "src/filetypes.rs",
               "symbol": "FileTypes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -4329,12 +4329,12 @@
             {
               "path": "src/filesystem.rs",
               "symbol": "is_empty",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_type",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -4354,7 +4354,7 @@
             {
               "path": "src/config.rs",
               "symbol": "Config",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filetypes.rs",
@@ -4364,7 +4364,7 @@
             {
               "path": "src/filesystem.rs",
               "symbol": "is_pipe",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4388,7 +4388,7 @@
             {
               "path": "src/main.rs",
               "symbol": "main",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -4398,7 +4398,7 @@
             {
               "path": "src/exec/command.rs",
               "symbol": "execute_commands",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exit_codes.rs",
@@ -4413,12 +4413,12 @@
             {
               "path": "src/cli.rs",
               "symbol": "Args for Exec",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exit_codes.rs",
               "symbol": "merge_exitcodes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exit_codes.rs",
@@ -4442,7 +4442,7 @@
             {
               "path": "src/exec/mod.rs",
               "symbol": "CommandTemplate",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -4457,17 +4457,17 @@
             {
               "path": "src/fmt/mod.rs",
               "symbol": "Token",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/fmt/mod.rs",
               "symbol": "FormatTemplate",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/fmt/mod.rs",
               "symbol": "FormatTemplate",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/fmt/mod.rs",
@@ -4501,7 +4501,7 @@
             {
               "path": "src/filter/owner.rs",
               "symbol": "OwnerFilter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4526,12 +4526,12 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_owner_current_group",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_owner_current_user",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4541,7 +4541,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_owner_ignore_all",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4555,12 +4555,12 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_hyperlink",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/hyperlink.rs",
               "symbol": "Display for PathUrl",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4570,12 +4570,12 @@
             {
               "path": "src/hyperlink.rs",
               "symbol": "PathUrl",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/hyperlink.rs",
               "symbol": "PathUrl",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -4585,7 +4585,7 @@
             {
               "path": "src/output.rs",
               "symbol": "print_entry",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/testenv/mod.rs",
@@ -4595,7 +4595,7 @@
             {
               "path": "src/hyperlink.rs",
               "symbol": "encode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -4614,7 +4614,7 @@
             {
               "path": "src/sanitize.rs",
               "symbol": "sanitize",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4634,7 +4634,7 @@
             {
               "path": "src/sanitize.rs",
               "symbol": "write_sanitized",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/sanitize.rs",
@@ -4649,17 +4649,17 @@
             {
               "path": "src/output.rs",
               "symbol": "print_entry_format",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_entry_uncolorized",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/sanitize.rs",
               "symbol": "sanitize_for_term",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4673,32 +4673,32 @@
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char_inline_flags",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/main.rs",
               "symbol": "build_regex",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char_advanced",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char_simple",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/main.rs",
               "symbol": "construct_config",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -4708,7 +4708,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_regex_searches",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/regex_helper.rs",
@@ -4718,7 +4718,7 @@
             {
               "path": "src/regex_helper.rs",
               "symbol": "Visitor for UppercaseVisitor",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4737,12 +4737,12 @@
             {
               "path": "src/filesystem.rs",
               "symbol": "strip_current_dir",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/fmt/input.rs",
               "symbol": "remove_extension",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -4757,7 +4757,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_pattern_with_forward_slash_is_rejected",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
@@ -4767,17 +4767,17 @@
             {
               "path": "src/output.rs",
               "symbol": "replace_path_separator",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_full_path",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -4801,7 +4801,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_error_if_hidden_not_set_and_pattern_starts_with_dot",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -4826,12 +4826,12 @@
             {
               "path": "src/regex_helper.rs",
               "symbol": "matches_strings_with_leading_dot_simple",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
               "symbol": "Opts",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4860,12 +4860,12 @@
             {
               "path": "src/main.rs",
               "symbol": "ensure_use_hidden_option_for_leading_dot_pattern",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/main.rs",
               "symbol": "build_regex",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4875,7 +4875,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_exact_literal_nonsubstring",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4890,7 +4890,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_regex_searches",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -4909,7 +4909,7 @@
             {
               "path": "doc/sponsors.md",
               "symbol": "Sponsors",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -4924,22 +4924,22 @@
             {
               "path": "CONTRIBUTING.md",
               "symbol": "Contributing to *fd*",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
               "symbol": "fd",
-              "parent": null
+              "parent": ""
             },
             {
               "path": ".github/ISSUE_TEMPLATE/question.md",
               "symbol": "question",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CONTRIBUTING.md",
               "symbol": "Add an entry to the changelog",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -4968,7 +4968,7 @@
             {
               "path": "SECURITY.md",
               "symbol": "Security Reporting",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "SECURITY.md",
@@ -4994,12 +4994,12 @@
             {
               "path": "src/main.rs",
               "symbol": "build_regex",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/main.rs",
               "symbol": "build_pattern_regex",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -5024,7 +5024,7 @@
             {
               "path": "src/cli.rs",
               "symbol": "Opts",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -5034,12 +5034,12 @@
             {
               "path": "src/main.rs",
               "symbol": "ensure_single_search_pattern_is_not_a_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_glob_searches",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5053,12 +5053,12 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_implicit_absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -5073,7 +5073,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_normalized_absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -5083,17 +5083,17 @@
             {
               "path": "src/filesystem.rs",
               "symbol": "path_absolute_form",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_min_depth_broken_symlink_absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -5112,22 +5112,22 @@
             {
               "path": "src/main.rs",
               "symbol": "ensure_single_search_pattern_is_not_a_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/main.rs",
               "symbol": "ensure_search_pattern_is_not_a_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_pattern_with_forward_slash_is_rejected",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_and_pattern_with_forward_slash_is_rejected",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -5137,7 +5137,7 @@
             {
               "path": "src/main.rs",
               "symbol": "run",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -5157,7 +5157,7 @@
             {
               "path": "src/cli.rs",
               "symbol": "Opts",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5176,22 +5176,22 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_min_depth_broken_symlink",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_min_depth_broken_symlink_overlapping_roots",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_max_depth_broken_symlink",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_symlink_as_root",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/testenv/mod.rs",
@@ -5201,22 +5201,22 @@
             {
               "path": "src/dir_entry.rs",
               "symbol": "DirEntryInner",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
               "symbol": "DirEntry",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_exact_depth_broken_symlink",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_min_depth_broken_symlink_absolute_path",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5235,7 +5235,7 @@
             {
               "path": "src/walk.rs",
               "symbol": "ReceiverMode",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -5255,7 +5255,7 @@
             {
               "path": "src/walk.rs",
               "symbol": "ReceiverBuffer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -5265,7 +5265,7 @@
             {
               "path": "src/cli.rs",
               "symbol": "Args for Exec",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/cli.rs",
@@ -5309,7 +5309,7 @@
             {
               "path": ".github/ISSUE_TEMPLATE/question.md",
               "symbol": "question",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -5353,7 +5353,7 @@
             {
               "path": "src/config.rs",
               "symbol": "Config",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -5406,12 +5406,12 @@
             {
               "path": "src/walk.rs",
               "symbol": "BatchSender",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
               "symbol": "BatchSender",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -5427,7 +5427,7 @@
             {
               "path": "src/exec/mod.rs",
               "symbol": "CommandSet",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exec/mod.rs",
@@ -5448,17 +5448,17 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_exec_multi",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_exec",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_exec_batch",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5474,7 +5474,7 @@
             {
               "path": "src/fmt/mod.rs",
               "symbol": "FormatTemplate",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exec/mod.rs",
@@ -5490,17 +5490,17 @@
             {
               "path": "src/filter/owner.rs",
               "symbol": "OwnerFilter",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/mod.rs",
               "symbol": "mod",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/owner.rs",
               "symbol": "OwnerFilter",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5511,12 +5511,12 @@
             {
               "path": "src/error.rs",
               "symbol": "SanitizedError",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/error.rs",
               "symbol": "SanitizeErr for Error",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/error.rs",
@@ -5532,7 +5532,7 @@
             {
               "path": "src/fmt/mod.rs",
               "symbol": "token_from_pattern_id",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/fmt/mod.rs",
@@ -5564,7 +5564,7 @@
             {
               "path": "src/fmt/input.rs",
               "symbol": "basename",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exec/mod.rs",
@@ -5595,7 +5595,7 @@
             {
               "path": "src/walk.rs",
               "symbol": "WorkerState",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5606,7 +5606,7 @@
             {
               "path": "src/main.rs",
               "symbol": "check_path_separator_length",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exec/mod.rs",
@@ -5627,17 +5627,17 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_custom_path_separator",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "replace_path_separator",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "default_path_separator",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5669,7 +5669,7 @@
             {
               "path": "src/dir_entry.rs",
               "symbol": "Eq for DirEntry",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -5695,7 +5695,7 @@
             {
               "path": "src/exit_codes.rs",
               "symbol": "From<ExitCode> for i32",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5716,7 +5716,7 @@
             {
               "path": "src/filter/owner.rs",
               "symbol": "OwnerFilter",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5737,7 +5737,7 @@
             {
               "path": "src/cli.rs",
               "symbol": "FromArgMatches for Exec",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5758,7 +5758,7 @@
             {
               "path": "src/exec/mod.rs",
               "symbol": "CommandTemplate",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5774,7 +5774,7 @@
             {
               "path": "src/exec/mod.rs",
               "symbol": "CommandSet",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exec/mod.rs",
@@ -5790,17 +5790,17 @@
             {
               "path": "src/filesystem.rs",
               "symbol": "is_char_device",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "is_char_device",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "is_block_device",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5816,12 +5816,12 @@
             {
               "path": "src/config.rs",
               "symbol": "Config",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_trailing_slash",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5832,7 +5832,7 @@
             {
               "path": "src/main.rs",
               "symbol": "main",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5843,7 +5843,7 @@
             {
               "path": "src/exit_codes.rs",
               "symbol": "merge_exitcodes",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/exit_codes.rs",
@@ -5890,7 +5890,7 @@
             {
               "path": "tests/tests.rs",
               "symbol": "test_normalized_absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -5906,7 +5906,7 @@
             {
               "path": "src/cli.rs",
               "symbol": "parse_millis",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filter/size.rs",
@@ -5927,12 +5927,12 @@
             {
               "path": "src/filesystem.rs",
               "symbol": "absolute_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/filesystem.rs",
               "symbol": "path_absolute_form",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/dir_entry.rs",
@@ -5948,17 +5948,17 @@
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char_simple",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char_advanced",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/regex_helper.rs",
               "symbol": "pattern_has_uppercase_char",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -5969,12 +5969,12 @@
             {
               "path": "src/output.rs",
               "symbol": "print_entry_uncolorized",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_entry_format",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -5990,17 +5990,17 @@
             {
               "path": "src/output.rs",
               "symbol": "print_trailing_slash",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_entry_uncolorized_base",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/output.rs",
               "symbol": "print_entry_uncolorized",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6011,17 +6011,17 @@
             {
               "path": "src/fmt/input.rs",
               "symbol": "remove_extension",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_extension",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/tests.rs",
               "symbol": "test_and_plus_extension",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6053,7 +6053,7 @@
             {
               "path": "src/walk.rs",
               "symbol": "BatchSender",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/walk.rs",
@@ -6063,7 +6063,7 @@
             {
               "path": "src/walk.rs",
               "symbol": "Batch",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6106,7 +6106,7 @@
             {
               "path": "src/regex_helper.rs",
               "symbol": "Visitor for UppercaseVisitor",
-              "parent": null
+              "parent": ""
             }
           ]
         }
@@ -6241,7 +6241,7 @@
             {
               "path": "src/semantic_code_mcp/container.py",
               "symbol": "container",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/container.py",
@@ -6256,12 +6256,12 @@
             {
               "path": "src/semantic_code_mcp/protocols.py",
               "symbol": "protocols",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/container.py",
               "symbol": "Container",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_indexer.py",
@@ -6286,7 +6286,7 @@
             {
               "path": "tests/test_embedder.py",
               "symbol": "test_embedder",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6310,7 +6310,7 @@
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
               "symbol": "cache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_index_service.py",
@@ -6330,7 +6330,7 @@
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
               "symbol": "FileChangeCache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/services/index_service.py",
@@ -6345,7 +6345,7 @@
             {
               "path": "tests/test_cache.py",
               "symbol": "test_cache",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6374,7 +6374,7 @@
             {
               "path": "tests/test_hybrid_search.py",
               "symbol": "test_hybrid_search",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/protocols.py",
@@ -6389,7 +6389,7 @@
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
               "symbol": "SearchService",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/lancedb.py",
@@ -6399,7 +6399,7 @@
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "IndexResultSummary",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
@@ -6433,7 +6433,7 @@
             {
               "path": "tests/test_hybrid_search.py",
               "symbol": "TestHybridSearch",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_hybrid_search.py",
@@ -6458,7 +6458,7 @@
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
               "symbol": "SearchService",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/lancedb.py",
@@ -6477,7 +6477,7 @@
             {
               "path": "src/semantic_code_mcp/chunkers/markdown.py",
               "symbol": "MarkdownChunker",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/decisions/005-markdown-chunking.md",
@@ -6492,7 +6492,7 @@
             {
               "path": "src/semantic_code_mcp/chunkers/markdown.py",
               "symbol": "markdown",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -6551,7 +6551,7 @@
             {
               "path": ".claude/commands/ship.md",
               "symbol": "Steps",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/chunkers/base.py",
@@ -6610,7 +6610,7 @@
             {
               "path": "src/semantic_code_mcp/models/domain.py",
               "symbol": "FileChanges",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
@@ -6630,7 +6630,7 @@
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
               "symbol": "FileChangeCache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_cache.py",
@@ -6654,12 +6654,12 @@
             {
               "path": "README.md",
               "symbol": "semantic-code-mcp",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CLAUDE.md",
               "symbol": "Semantic Code MCP Server",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/decisions/001-initial-architecture.md",
@@ -6694,12 +6694,12 @@
             {
               "path": "src/semantic_code_mcp/app.py",
               "symbol": "create_app",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/__main__.py",
               "symbol": "__main__",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6777,7 +6777,7 @@
             {
               "path": "src/semantic_code_mcp/config.py",
               "symbol": "Settings",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -6787,17 +6787,17 @@
             {
               "path": "src/semantic_code_mcp/config.py",
               "symbol": "get_settings",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_config.py",
               "symbol": "TestSettings",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/config.py",
               "symbol": "get_index_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_config.py",
@@ -6807,17 +6807,17 @@
             {
               "path": "src/semantic_code_mcp/app.py",
               "symbol": "app",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/container.py",
               "symbol": "container",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_config.py",
               "symbol": "TestResolveCacheDir",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -6831,12 +6831,12 @@
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "profile_async",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "_save_profile",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "TODO.md",
@@ -6856,12 +6856,12 @@
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "configure_profiling",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_searcher.py",
               "symbol": "TestSearch",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_rust_chunker.py",
@@ -6890,7 +6890,7 @@
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "FormattedSearchResult",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/models/responses.py",
@@ -6925,7 +6925,7 @@
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
               "symbol": "SearchService",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_storage.py",
@@ -6983,37 +6983,37 @@
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/services/index_service.py",
               "symbol": "index_service",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/decisions/004-multi-language-chunker-architecture.md",
               "symbol": "004: Multi-Language Chunker Architecture",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_index_service.py",
               "symbol": "test_index_service",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_indexer.py",
               "symbol": "test_indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
               "symbol": "cache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/server.py",
               "symbol": "index_status",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -7052,7 +7052,7 @@
             {
               "path": "src/semantic_code_mcp/chunkers/rust.py",
               "symbol": "NodeType",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/chunkers/rust.py",
@@ -7091,27 +7091,27 @@
             {
               "path": "src/semantic_code_mcp/chunkers/composite.py",
               "symbol": "CompositeChunker",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/chunkers/composite.py",
               "symbol": "composite",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_composite_chunker.py",
               "symbol": "TestCompositeChunker",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/chunkers/base.py",
               "symbol": "BaseTreeSitterChunker",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/protocols.py",
               "symbol": "ChunkerProtocol",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/decisions/004-multi-language-chunker-architecture.md",
@@ -7145,12 +7145,12 @@
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "Indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_storage.py",
               "symbol": "TestLanceDBVectorStore",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/container.py",
@@ -7160,7 +7160,7 @@
             {
               "path": "src/semantic_code_mcp/protocols.py",
               "symbol": "VectorStoreProtocol",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_storage.py",
@@ -7170,12 +7170,12 @@
             {
               "path": "src/semantic_code_mcp/storage/__init__.py",
               "symbol": "__init__",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/lancedb.py",
               "symbol": "lancedb",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/indexer.py",
@@ -7229,7 +7229,7 @@
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "docs/decisions/005-markdown-chunking.md",
@@ -7263,17 +7263,17 @@
             {
               "path": "src/semantic_code_mcp/config.py",
               "symbol": "get_index_path",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "Indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "README.md",
@@ -7283,7 +7283,7 @@
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "IndexCodebaseResponse",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CLAUDE.md",
@@ -7386,7 +7386,7 @@
             {
               "path": ".claude/commands/ship.md",
               "symbol": "If releasing (`$ARGUMENTS` contains \"release\")",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "TODO.md",
@@ -7486,7 +7486,7 @@
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
               "symbol": "FileChangeCache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
@@ -7516,7 +7516,7 @@
             {
               "path": "tests/test_cache.py",
               "symbol": "TestFileChangeCache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/cache.py",
@@ -7550,7 +7550,7 @@
             {
               "path": "tests/test_searcher.py",
               "symbol": "TestGroupByFile",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_searcher.py",
@@ -7560,7 +7560,7 @@
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "SearchStats",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "TODO.md",
@@ -7570,12 +7570,12 @@
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
               "symbol": "SearchService",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
               "symbol": "SearchOutcome",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
@@ -7648,7 +7648,7 @@
             {
               "path": "tests/test_hybrid_search.py",
               "symbol": "TestHybridSearch",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_hybrid_search.py",
@@ -7688,7 +7688,7 @@
             {
               "path": "README.md",
               "symbol": "semantic-code-mcp",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/protocols.py",
@@ -7732,12 +7732,12 @@
             {
               "path": "src/semantic_code_mcp/protocols.py",
               "symbol": "ChunkerProtocol",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/services/index_service.py",
               "symbol": "IndexService",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/chunkers/base.py",
@@ -7771,12 +7771,12 @@
             {
               "path": ".claude/commands/ship.md",
               "symbol": "If releasing (`$ARGUMENTS` contains \"release\")",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
               "symbol": "Changelog",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -7800,7 +7800,7 @@
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "profiling",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "CHANGELOG.md",
@@ -7869,7 +7869,7 @@
             {
               "path": "tests/test_composite_chunker.py",
               "symbol": "test_composite_chunker",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_index_service.py",
@@ -7885,7 +7885,7 @@
             {
               "path": "tests/test_cache.py",
               "symbol": "TestFileChangeCache",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_cache.py",
@@ -7906,17 +7906,17 @@
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "IndexResultSummary",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "SearchDebugInfo",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/models/domain.py",
               "symbol": "IndexResult",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -7937,7 +7937,7 @@
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "indexer",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -7969,17 +7969,17 @@
             {
               "path": "src/semantic_code_mcp/models/responses.py",
               "symbol": "SearchResponse",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/server.py",
               "symbol": "search_code",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/models/__init__.py",
               "symbol": "__init__",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -7990,17 +7990,17 @@
             {
               "path": "src/semantic_code_mcp/config.py",
               "symbol": "configure_settings",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/config.py",
               "symbol": "get_settings",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/container.py",
               "symbol": "configure",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -8011,7 +8011,7 @@
             {
               "path": "tests/test_indexer.py",
               "symbol": "test_indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_index_service.py",
@@ -8200,17 +8200,17 @@
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "configure_profiling",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "profiling",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/profiling.py",
               "symbol": "profile_async",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -8242,7 +8242,7 @@
             {
               "path": "tests/test_indexer.py",
               "symbol": "test_indexer",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_index_service.py",
@@ -8252,7 +8252,7 @@
             {
               "path": "src/semantic_code_mcp/indexer.py",
               "symbol": "Indexer",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -8268,7 +8268,7 @@
             {
               "path": "src/semantic_code_mcp/storage/lancedb.py",
               "symbol": "LanceDBConnection",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/storage/lancedb.py",
@@ -8284,17 +8284,17 @@
             {
               "path": "src/semantic_code_mcp/container.py",
               "symbol": "get_container",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/app.py",
               "symbol": "create_app",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "src/semantic_code_mcp/container.py",
               "symbol": "configure",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -8331,7 +8331,7 @@
             {
               "path": "src/semantic_code_mcp/models/domain.py",
               "symbol": "ScanPlan",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_index_service.py",
@@ -8357,7 +8357,7 @@
             {
               "path": "src/semantic_code_mcp/models/domain.py",
               "symbol": "Chunk",
-              "parent": null
+              "parent": ""
             }
           ]
         },
@@ -8389,12 +8389,12 @@
             {
               "path": "src/semantic_code_mcp/services/search_service.py",
               "symbol": "search_service",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_hybrid_search.py",
               "symbol": "test_hybrid_search",
-              "parent": null
+              "parent": ""
             },
             {
               "path": "tests/test_hybrid_search.py",

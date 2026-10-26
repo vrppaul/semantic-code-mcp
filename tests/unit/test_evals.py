@@ -8,9 +8,10 @@ from evals.quality import (
     KindScores,
     QueryRanks,
     RankScores,
-    answers,
     first_rank,
+    hit_answers,
     is_ambiguous,
+    is_held,
     relative_hit,
     sample_names,
     score,
@@ -165,9 +166,21 @@ def test_a_question_shares_its_answer_s_words_when_a_stem_is_both_s(
         ),
         pytest.param(
             Answer(path="walk.rs", symbol="scan", parent=""),
-            Answer(path="walk.rs", symbol="scan", parent=None),
+            Answer(path="walk.rs", symbol="scan", parent=""),
             True,
             id="no parent, named so",
+        ),
+        pytest.param(
+            Answer(path="walk.rs", symbol="scan", parent=""),
+            Answer(path="walk.rs", symbol="scan", parent="WorkerState"),
+            False,
+            id="no parent named, a method's hit",
+        ),
+        pytest.param(
+            Answer(path="types.py", symbol="convert"),
+            Answer(path="types.py", symbol="to_info_dict"),
+            False,
+            id="another name",
         ),
         pytest.param(
             Answer(path="types.py", symbol="convert"),
@@ -180,7 +193,7 @@ def test_a_question_shares_its_answer_s_words_when_a_stem_is_both_s(
 def test_a_hit_answers_when_its_file_name_and_any_parent_named_are_the_answer_s(
     answer: Answer, hit: Answer, matches: bool
 ):
-    assert answers(answer, hit) is matches
+    assert hit_answers(hit, answer) is matches
 
 
 @pytest.mark.parametrize(
@@ -205,6 +218,22 @@ def test_an_answer_names_its_parent_where_chunks_of_several_share_its_name(
     ]
 
     assert is_ambiguous(answer, chunks) is ambiguous
+
+
+@pytest.mark.parametrize(
+    ("answer", "held"),
+    [
+        pytest.param(Answer(path="types.py", symbol="convert", parent="File"), True, id="held"),
+        pytest.param(
+            Answer(path="types.py", symbol="convert", parent="Path"), False, id="a parent none has"
+        ),
+    ],
+)
+def test_an_answer_is_held_when_a_chunk_of_its_file_is_it(answer: Answer, held: bool):
+    """A mistyped parent would otherwise score as a miss forever."""
+    chunks = [defined("convert", "types.py", ChunkKind.method, parent="File")]
+
+    assert is_held(answer, chunks) is held
 
 
 def test_relative_hit_names_the_file_from_the_corpus_root(tmp_path: Path):
