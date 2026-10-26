@@ -332,7 +332,7 @@ As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - Property tests (hypothesis) move to stage 6, with the fusion they are most needed for. The old chunker tests still filter in comprehensions; TODO.md records it.
 - One index per repository (D10, O6) is not built: the tools resolve the path and nothing more. It moves to stage 6, with the path prefilter it needs to keep a subdirectory's results to that subdirectory.
 
-Stage 5 is under way. As built, it differs from D2, D3, D4, D7, D8 and D11 in these points:
+Stage 5 is done (2026-10-26), not released. As built, it differs from D2, D3, D4, D6, D7, D8 and D11 in these points:
 - `embed_documents` takes no progress callback: the indexing service embeds in slices of `EMBEDDING_SLICE_SIZE` chunks and reports before each, so the embedder stays a plain call in a worker thread and progress stays on the event loop.
 - The domain imports numpy for one thing, the type of a vector (`Vector`, `VectorMatrix` in `domain/interfaces.py`); numpy is a declared dependency.
 - The manifest holds an `IndexIdentity` (model name, chunker version), the store's schema version and the time of the last write, not the vectors' dimension: the model's name fixes it and the vector column records it, so reading a manifest never needs the model. The store writes it on every write. The chunks table is made by the first write that has vectors, as wide as they are.
@@ -358,8 +358,10 @@ Stage 5 is under way. As built, it differs from D2, D3, D4, D7, D8 and D11 in th
 - `parent` is the qualified name of what a chunk sits in, joined as its language writes it: `Outer.Inner` in Python, `outer::Stack` in Rust (modules, impls, traits), `Guide > Install` in Markdown (the headings above a section).
 - `SCHEMA_VERSION` and `CHUNKER_VERSION` are 2: each names a new index directory, so nothing is migrated, and users of 0.4 still build one index on upgrade.
 
-Open in stage 5, for the skeletons chunk:
-- Measure an edit inside a method too, which re-embeds its class's chunk until D6's skeletons cut the methods out of it; the harness's edit appends a definition, which shows the reuse of vectors but not that.
+- D6's class skeletons are rejected on the harness. With a class's, impl's or trait's chunk holding its outline, each method's body cut to `...`, file MRR fell from 0.455 to 0.427 on click and from 0.549 to 0.502 on fd, and rose from 0.698 to 0.729 on this repo; chunk MRR went 0.328 → 0.32, 0.31 → 0.293 and stayed at 0.544. A full index ran about 5% faster (65.3 / 22.3 / 19.4 s against 68.0 / 23.3 / 20.7). A class chunk that holds its methods' text brings its file up for questions about what the methods do: code search lost more than the docs-heavy corpus gained. The double embedding of Q2 stays; stage 6's fusion and prose prior are where to take it up again, measured as there.
+
+Open from stage 5:
+- An edit inside a method re-embeds its class's chunk too, which holds the method's text; the harness's edit appends a definition, which shows the reuse of vectors but not that cost.
 - A first index of click took 71.2 and 72.9 s in two runs after writes went per slice, against 68.4 s before, and 68.0 s in a third; the store's seven writes account for under half a second (probed), so the spread is the run-to-run noise, wider than the 10% assumed. Peak memory on click spread from 1103 to 1269 MB over four runs, on fd and this repo within 30 MB; the cause is not found.
 - The by-source delete makes each merge scan the whole table: one edited file's write costs 12 / 47 / 124 ms at 1.7k / 20k / 100k chunks against 5 to 8 ms for a delete and an add, and a first index of 100k chunks spends 52 s in its 385 merges, about 1.3% of its embedding (a review's probes). If that matters, upsert by `chunk_id`, then delete `path IN (...) AND chunk_id NOT IN (...)`: two commits, between which a reader finds a file's old and new chunks both, never neither. A first index could also skip the lookup of stored vectors for files the table holds no chunk of.
 - Whether `when_matched_update_all(where=...)`, skipping the rows a write leaves as they were, saves index growth (0.10 MB per edit on click now).
