@@ -1331,7 +1331,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=23.0.0,<24" },
     { name = "pydantic", specifier = ">=2.12.5,<3" },
     { name = "pydantic-settings", specifier = ">=2.12.0,<3" },
-    { name = "pylance", specifier = ">=4.0.0,<4.1" },
+    { name = "pylance", specifier = ">=4.0.2,<4.1" },
     { name = "sentence-transformers", specifier = ">=5.2.0,<6" },
     { name = "structlog", specifier = ">=26.1.0,<27" },
     { name = "torch", specifier = ">=2.10.0,<3", index = "https://download.pytorch.org/whl/cpu" },

@@ -45,6 +45,7 @@ from tests.fakes import EMBEDDING_DIMENSION
 from tests.helpers import (
     chunks_fragments,
     chunks_outside_the_full_text_index,
+    full_text_index_documents,
     newest_full_text_index_files,
 )
 
@@ -56,10 +57,17 @@ LIMIT = 10
 # A text no chunk's words match, so a search finds by vector alone
 NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
-# Retentions no version is young enough for, and every version a test makes is: with the
-# first, upkeep prunes every version but the latest; with the second, none
+# A retention no version is young enough for, and one every version a test makes is: under
+# the first upkeep prunes every version but the latest, under the second none
 NO_RETENTION = timedelta(0)
-AN_HOUR = timedelta(hours=1)
+LONGER_THAN_ANY_TEST = timedelta(hours=1)
+# The version a table's first write makes
+FIRST_VERSION = 1
+# A table of a hundred chunks: a file of two that a test edits again and again, and the
+# rest, one file each
+OFTEN_EDITED_FILE = "often_edited.py"
+OFTEN_EDITED_NAMES = ("often_first", "often_second")
+OTHER_CHUNKS = 98
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
 # Modes for a table's files: read and enter only, so a write to it fails; and writable again
@@ -821,6 +829,48 @@ def test_an_upkeep_between_compactions_rewrites_no_fragment(filled_store: LanceD
     assert fragments[: len(kept)] == kept
 
 
+def write_the_often_edited_file(store: LanceDBIndexStore, edit: int) -> None:
+    """Write the numbered edit of the file a test edits again and again, of two chunks."""
+    chunks = [
+        function_chunk(name, OFTEN_EDITED_FILE, f"def {name}(): return {edit}")
+        for name in OFTEN_EDITED_NAMES
+    ]
+    update = IndexUpdate(files=[record_of(OFTEN_EDITED_FILE)], chunks=chunks, removed_paths=[])
+    store.write(update, vectors_of(*[TOWARD_QUERY] * len(chunks)))
+
+
+@pytest.mark.parametrize(
+    ("edits", "replaced_rows_counted"),
+    [
+        pytest.param(2, 4, id="replaced rows under the share, kept"),
+        pytest.param(3, 0, id="replaced rows past the share, dropped"),
+    ],
+)
+def test_upkeep_compacts_once_replaced_rows_weigh_in_the_full_text_index(
+    store: LanceDBIndexStore, edits: int, replaced_rows_counted: int
+):
+    """The full-text index counts the rows writes replaced in its word statistics until a
+    rebuild: one file edited again and again moved answers of click's. Its rows sit in the
+    fragment the last edit wrote, which Lance drops whole at the next, so only the index's
+    own count shows them."""
+    others = [
+        function_chunk(f"other_{number}", f"other_{number}.py", f"def other_{number}(): pass")
+        for number in range(OTHER_CHUNKS)
+    ]
+    store.write(update_of(others, removed_paths=[]), vectors_of(*[TOWARD_QUERY] * len(others)))
+    write_the_often_edited_file(store, 0)
+    store.keep_up()
+    for edit in range(1, edits):
+        write_the_often_edited_file(store, edit)
+        store.keep_up()
+    write_the_often_edited_file(store, edits)
+
+    store.keep_up()
+
+    replaced = full_text_index_documents(store) - store.counts().chunks
+    assert replaced == replaced_rows_counted
+
+
 def test_compaction_merges_small_fragments_and_leaves_full_ones(store: LanceDBIndexStore):
     """Each write leaves a fragment of its own, which compaction merges with its small
     neighbours folded into the indexes alike, up to ROWS_PER_FRAGMENT rows; a fragment that
@@ -845,18 +895,28 @@ def test_compaction_merges_small_fragments_and_leaves_full_ones(store: LanceDBIn
     assert (fragments[0].fragment_id, len(fragments)) == (full_fragment, 2)
 
 
+def only_the_latest(latest: int) -> list[int]:
+    """The versions upkeep leaves when none is young enough to keep: the latest alone."""
+    return [latest]
+
+
+def every_version(latest: int) -> list[int]:
+    """The versions upkeep leaves when all are young enough to keep: each, from the first."""
+    return list(range(FIRST_VERSION, latest + 1))
+
+
 @pytest.mark.parametrize(
-    ("retention", "only_the_latest_left"),
+    ("retention", "versions_left"),
     [
-        pytest.param(NO_RETENTION, True, id="none young enough to keep"),
-        pytest.param(AN_HOUR, False, id="all young enough to keep"),
+        pytest.param(NO_RETENTION, only_the_latest, id="none young enough to keep"),
+        pytest.param(LONGER_THAN_ANY_TEST, every_version, id="all young enough to keep"),
     ],
 )
 def test_upkeep_prunes_the_versions_older_than_any_read_can_last(
     filled_store: LanceDBIndexStore,
     monkeypatch: pytest.MonkeyPatch,
     retention: timedelta,
-    only_the_latest_left: bool,
+    versions_left: Callable[[int], list[int]],
 ):
     """Else each write would keep a copy of what it replaced, and the index grow for ever;
     a version younger than the retention stays, as a read may still be on it."""
@@ -866,6 +926,7 @@ def test_upkeep_prunes_the_versions_older_than_any_read_can_last(
     filled_store.keep_up()
 
     database = lancedb.connect(str(filled_store.directory))
-    tables = (CHUNKS_TABLE, FILES_TABLE)
-    versions = [len(database.open_table(name).list_versions()) for name in tables]
-    assert [count == 1 for count in versions] == [only_the_latest_left, only_the_latest_left]
+    tables = [database.open_table(name) for name in (CHUNKS_TABLE, FILES_TABLE)]
+    assert [[entry["version"] for entry in table.list_versions()] for table in tables] == [
+        versions_left(table.version) for table in tables
+    ]

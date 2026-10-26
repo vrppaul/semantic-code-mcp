@@ -123,8 +123,13 @@ TEMPORARY_SUFFIX = ".tmp"
 # A store compacts the tables and rebuilds the full-text index at its first upkeep, as it
 # cannot know what an earlier process left, and once in this many after: between, parts of
 # the index and fragments pile up, and replaced rows still count in the word statistics
-# (100k chunks: an upkeep 69-72 ms, one that compacts 2.3-2.4 s)
+# (100k chunks: an upkeep 69-77 ms, one that compacts 2.3-2.4 s)
 UPKEEPS_PER_COMPACTION = 20
+# ... and at once when the full-text index counts more rows than the table holds by this
+# share of them: the rows writes replaced weigh in its word statistics until a rebuild, and
+# a file edited again and again piles them up (19 appends to click's core.py moved 4 of 32
+# answers one place, a review's probe)
+REPLACED_ROWS_SHARE_BEFORE_COMPACTION = 0.05
 # Compaction merges fragments up to this many rows, so a large table keeps fragments a flat
 # vector search reads side by side (100k chunks: a search 40 ms, 54 with one fragment)
 ROWS_PER_FRAGMENT = 4096
@@ -152,6 +157,8 @@ VECTOR_LENGTH_AXIS = 1
 NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
+# The full-text index's name, the one LanceDB gives it by default
+FULL_TEXT_INDEX_NAME = f"{SEARCH_TEXT_COLUMN}_idx"
 # The full-text index keeps the words LanceDB drops by default (`a`, `the`, `is`, `not`):
 # the questions the harness chooses by gained 2.1 in chunk reciprocal-rank sum, the
 # held-out ones lost 0.5, for a full-text index 6-8% larger (ADR 006, stage 6)
@@ -459,8 +466,11 @@ class LanceDBIndexStore(IndexStore):
 
     def _compact_when_due(self) -> None:
         """Compact both tables, then rebuild the full-text index whole over the rows left, at
-        this store's first upkeep and once in UPKEEPS_PER_COMPACTION after it."""
-        if self._upkeeps_until_compaction > 0:
+        this store's first upkeep, once in UPKEEPS_PER_COMPACTION after it, and whenever the
+        rows writes replaced weigh too much in the full-text index."""
+        chunks = self._open(CHUNKS_TABLE)
+        weighing = chunks is not None and replaced_rows_weigh_too_much(chunks)
+        if self._upkeeps_until_compaction > 0 and not weighing:
             self._upkeeps_until_compaction -= 1
             return
         for name in (CHUNKS_TABLE, FILES_TABLE):
@@ -655,6 +665,17 @@ def files_table(files: list[SourceFile]) -> pyarrow.Table:
     )
 
 
+def replaced_rows_weigh_too_much(chunks: lancedb.table.Table) -> bool:
+    """Whether the full-text index counts rows the table no longer holds, the rows writes
+    replaced, past REPLACED_ROWS_SHARE_BEFORE_COMPACTION of those it does. The index's own
+    statistics count them; the table's fragments do not, as Lance drops a fragment whose
+    rows were all replaced."""
+    statistics = chunks.to_lance().stats.index_stats(FULL_TEXT_INDEX_NAME)
+    counted_rows = sum(part["num_docs"] for part in statistics["indices"])
+    held_rows = statistics["num_indexed_rows"]
+    return counted_rows - held_rows > REPLACED_ROWS_SHARE_BEFORE_COMPACTION * held_rows
+
+
 def fold_and_prune(dataset: lance.LanceDataset) -> None:
     """Fold a table's new rows into its indexes, then prune its versions older than
     OLD_VERSION_RETENTION, among them what a compaction or rebuild before it replaced."""
@@ -665,7 +686,12 @@ def fold_and_prune(dataset: lance.LanceDataset) -> None:
 def make_full_text_index(table: lancedb.table.Table) -> None:
     """Index the chunks' search text for full-text search, whole, in place of any index the
     table has."""
-    table.create_fts_index(SEARCH_TEXT_COLUMN, replace=True, remove_stop_words=REMOVE_STOP_WORDS)
+    table.create_fts_index(
+        SEARCH_TEXT_COLUMN,
+        replace=True,
+        remove_stop_words=REMOVE_STOP_WORDS,
+        name=FULL_TEXT_INDEX_NAME,
+    )
 
 
 def has_full_text_index(table: lancedb.table.Table) -> bool:

@@ -14,7 +14,11 @@ from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry
-from semantic_code_mcp.storage.lancedb import CHUNKS_TABLE, LanceDBIndexStore
+from semantic_code_mcp.storage.lancedb import (
+    CHUNKS_TABLE,
+    FULL_TEXT_INDEX_NAME,
+    LanceDBIndexStore,
+)
 
 # Where LanceDB keeps each version of every index of a table, a directory each: while the
 # chunks table has no index but the full-text one, the newest is the full-text index's
@@ -62,6 +66,14 @@ def chunks_fragments(store: LanceDBIndexStore) -> list[LanceFragment]:
     """The fragments the latest version of a store's chunks table reads, in order."""
     chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
     return chunks_table.to_lance().get_fragments()
+
+
+def full_text_index_documents(store: LanceDBIndexStore) -> int:
+    """How many rows a store's full-text index counts in its word statistics: those the
+    table holds, and those writes replaced, until a rebuild drops them."""
+    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
+    statistics = chunks_table.to_lance().stats.index_stats(FULL_TEXT_INDEX_NAME)
+    return sum(part["num_docs"] for part in statistics["indices"])
 
 
 def newest_full_text_index_files(store: LanceDBIndexStore) -> int:
