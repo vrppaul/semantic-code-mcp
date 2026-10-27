@@ -14,10 +14,12 @@ and holds:
   answer, nested ones among them;
 - in the skill, the instructions, each tool's description and the descriptions its
   schemas give its parameters and the fields of its answer, every span of code that is a
-  name or a dotted path of names (`debug.timings`, and one ending a sentence), alone,
-  called (`index_codebase(...)`) or given a value (`force=true`, `force: true`), to be one
-  the server has: a tool, a parameter, one of its fixed values, a field of an answer, or a
-  setting, the examples' own project names aside; and every `SEMANTIC_CODE_MCP_*`
+  name or a dotted path of names (`debug.timings`, `results[0].file_path`, and one ending a
+  sentence), alone, called (`index_codebase (...)`) or given a value (`force = true`,
+  `force: true`), to be one the server has: a tool, a parameter, one of its fixed values, a
+  field of an answer, or a setting, the examples' own project names aside, and a dotted
+  path to be a run of fields some parameter or answer holds in that order; and every
+  `SEMANTIC_CODE_MCP_*`
   variable anywhere in them, a fenced block among other code included, to name a setting;
 - each tool's description to give, in its `Args:` section, every parameter of the tool
   and no other;
@@ -26,13 +28,14 @@ and holds:
   instructions to name every tool;
 - the skill to its length, as D16 of ADR 006 sets it.
 
-What it cannot see: a name written in plain words outside `Args:` (with force); what a
-sentence says of a name (a wrong default, cap or meaning, which the texts therefore leave
-to the tools' schemas rather than repeating their numbers); the value after a name's `=`
-or `:` or inside its call (`chunk_kinds=["struct"]`); a name written with a capital
-(`Struct`), as the examples' own classes are; a name inside a fenced block among other
-code; a language a text names that no chunker reads, as no closed list of languages
-exists to look for one in.
+What it cannot see: a name written in plain words outside `Args:` (with force), or given
+its value after a space alone (`project_path /abs/dir`); what a sentence says of a name
+(a wrong default, cap or meaning, which the texts therefore leave to the tools' schemas
+rather than repeating their numbers); the value after a name's `=` or `:` or inside its
+call (`chunk_kinds=["struct"]`); a name written with a capital (`Struct`), as the
+examples' own classes are; a name inside a fenced block among other code; a language a
+text names that no chunker reads, as no closed list of languages exists to look for one
+in.
 
 Run in the repository's root, as pre-commit runs it: `uv run python scripts/check_skill.py`.
 Prints each disagreement, a line each, and exits 1; prints nothing and exits 0 when the
@@ -64,12 +67,20 @@ AGREE = 0
 # What a text writes as code: a fenced block, or a span between backticks
 CODE = re.compile(r"```.*?```|`[^`]+`", re.DOTALL)
 CODE_QUOTE = "`"
-# A span that is a name or a dotted path of names, alone, ending a sentence, called, or
-# given a value: `chunk_kinds`, `debug.timings.`, `index_codebase(force=true)`,
-# `force=true`, `force: true`
-NAMED_SPAN = re.compile(r"(?P<path>[a-z][a-z_]*(?:\.[a-z][a-z_]*)*)(?:[(=:].*|\.)?", re.DOTALL)
+# A span that is a name or a dotted path of names, an item of a list among them, alone,
+# ending a sentence, called, or given a value: `chunk_kinds`, `debug.timings.`,
+# `results[0].file_path`, `index_codebase (force=true)`, `force = true`, `force: true`
+NAMED_SPAN = re.compile(
+    r"(?P<path>[a-z][a-z0-9_]*(?:\[\d+\])?(?:\.[a-z][a-z0-9_]*(?:\[\d+\])?)*)(?:\s*[(=:].*|\.)?",
+    re.DOTALL,
+)
 PATH_GROUP = "path"
 PATH_SEPARATOR = "."
+# An item of a list in a path, which names no field
+LIST_ITEM = re.compile(r"\[\d+\]")
+# A path of more than one name is checked as a path, as well as name by name
+ONE_NAME = 1
+SHORTEST_PATH = 2
 # A settings variable of the server's, wherever a text writes one
 SETTING_VARIABLE = re.compile(r"\bSEMANTIC_CODE_MCP_(?P<setting>[A-Z_]+)")
 SETTING_GROUP = "setting"
@@ -87,8 +98,9 @@ ARGUMENT_LINE = re.compile(r"(?P<indent>[ \t]+)(?P<name>[A-Za-z_]\w*):(?:\s.*)?"
 INDENT_GROUP = "indent"
 NAME_GROUP = "name"
 # The keys of a JSON schema this reads: an object's fields, a fixed set of values, what
-# a field is
+# a field is, and those through which a field's own schema is reached
 PROPERTIES = "properties"
+NESTED_SCHEMA_KEYS = ("items", "anyOf", "oneOf", "allOf")
 ENUM = "enum"
 DESCRIPTION = "description"
 # A schema's named definitions, and a reference to one, as `#/$defs/Language`
@@ -192,15 +204,57 @@ def code_of(text: str) -> str:
     return "\n".join(CODE.findall(text))
 
 
-def code_names(text: str) -> set[str]:
-    """The names a text's code gives: each name of a span that is a name or a dotted path
-    of names, alone, called, or given a value."""
-    names: set[str] = set()
+def code_paths(text: str) -> set[tuple[str, ...]]:
+    """The paths a text's code gives, each a span that is a name or a dotted path of names,
+    alone, called, or given a value, its lists' items left out."""
+    paths: set[tuple[str, ...]] = set()
     for span in CODE.findall(text):
         match = NAMED_SPAN.fullmatch(span.strip(CODE_QUOTE))
         if match is not None:
-            names.update(match.group(PATH_GROUP).split(PATH_SEPARATOR))
-    return names
+            path = LIST_ITEM.sub("", match.group(PATH_GROUP))
+            paths.add(tuple(path.split(PATH_SEPARATOR)))
+    return paths
+
+
+def field_paths(
+    schema: object, definitions: dict[str, object], followed: frozenset[str]
+) -> set[tuple[str, ...]]:
+    """Every path of field names from a schema's root down, through objects, lists, unions
+    and the schema's own definitions, each definition followed once along a path."""
+    if not isinstance(schema, dict):
+        return set()
+    paths: set[tuple[str, ...]] = set()
+    reference = schema.get(REFERENCE)
+    if isinstance(reference, str) and reference not in followed:
+        referred = definitions.get(reference.removeprefix(DEFINITION_PREFIX))
+        paths |= field_paths(referred, definitions, followed | {reference})
+    for key in NESTED_SCHEMA_KEYS:
+        nested = schema.get(key)
+        options = nested if isinstance(nested, list) else [nested]
+        for option in options:
+            paths |= field_paths(option, definitions, followed)
+    properties = schema.get(PROPERTIES)
+    if isinstance(properties, dict):
+        for name, field_schema in properties.items():
+            below = field_paths(field_schema, definitions, followed)
+            paths |= {(str(name),), *((str(name), *path) for path in below)}
+    return paths
+
+
+def surface_paths(surface: ServerSurface) -> set[tuple[str, ...]]:
+    """Every run of two or more field names the tools' parameters and answers hold in that
+    order, from any field down: `debug.timings`, `timings.total_ms`, `results.file_path`."""
+    runs: set[tuple[str, ...]] = set()
+    for tool in surface.tools:
+        for schema in (tool.input_schema, tool.output_schema or {}):
+            definitions = schema.get(DEFINITIONS, {})
+            for path in field_paths(schema, definitions, frozenset()):
+                runs |= {
+                    path[start:end]
+                    for start in range(len(path))
+                    for end in range(start + SHORTEST_PATH, len(path) + 1)
+                }
+    return runs
 
 
 def named_settings(text: str) -> set[str]:
@@ -267,11 +321,18 @@ def unknown_name_disagreements(surface: ServerSurface, skill: str) -> list[str]:
     that names no setting."""
     settings = set(Settings.model_fields)
     known = surface_names(surface) | settings | EXAMPLE_NAMES
+    known_paths = surface_paths(surface)
     found: list[str] = []
     for where, text in texts_of(surface, skill).items():
+        paths = code_paths(text)
+        names = {name for path in paths for name in path}
         found.extend(
-            f"{name}, named in {where}, is none of the server's"
-            for name in sorted(code_names(text) - known)
+            f"{name}, named in {where}, is none of the server's" for name in sorted(names - known)
+        )
+        found.extend(
+            f"{PATH_SEPARATOR.join(path)}, named in {where}, is no path of the server's fields"
+            for path in sorted(paths)
+            if len(path) > ONE_NAME and set(path) <= known and path not in known_paths
         )
         found.extend(
             f"{SETTINGS_PREFIX}{name.upper()}, named in {where}, is no setting of the server's"
