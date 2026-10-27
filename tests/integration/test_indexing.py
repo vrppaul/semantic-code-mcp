@@ -28,6 +28,7 @@ from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES, NO_CA
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
+    FAKE_EMBEDDER_VERSION,
     FAKE_MODEL_NAME,
     ChangingChunker,
     ChunkCountRecorder,
@@ -69,7 +70,10 @@ MODULE_NAME_FORMAT = "module_{file_number}.py"
 FIRST_MODULE = MODULE_NAME_FORMAT.format(file_number=0)
 # What the fakes and the chunkers in these tests build an index from
 IDENTITY = IndexIdentity(
-    model_name=FAKE_MODEL_NAME, model_revision=None, chunker_version=CHUNKER_VERSION
+    model_name=FAKE_MODEL_NAME,
+    model_revision=None,
+    embedder_version=FAKE_EMBEDDER_VERSION,
+    chunker_version=CHUNKER_VERSION,
 )
 
 
@@ -205,13 +209,18 @@ async def test_a_deleted_file_leaves_the_index(indexing: IndexingService, sample
             id="the same model at another revision",
         ),
         pytest.param(
+            FakeEmbedder(version=FAKE_EMBEDDER_VERSION + 1),
+            build_chunker(),
+            id="the same model read by another embedder version",
+        ),
+        pytest.param(
             FakeEmbedder(),
             VersionedChunker(build_chunker(), CHUNKER_VERSION + 1),
             id="another chunker version",
         ),
     ],
 )
-async def test_sessions_of_two_models_or_chunker_versions_keep_an_index_each(
+async def test_sessions_of_two_models_or_versions_keep_an_index_each(
     test_settings: Settings,
     sample_project: Path,
     second_embedder: FakeEmbedder,

@@ -43,6 +43,13 @@ class Embedder(ABC):
 
     @property
     @abstractmethod
+    def version(self) -> int:
+        """The version of how it makes a text's vector of a model's files, bumped by any
+        change to that, as reading a model's lowercasing was: each keeps an index of its
+        own."""
+
+    @property
+    @abstractmethod
     def is_loaded(self) -> bool:
         """Whether the model is in memory, so the next call does not wait for it."""
 

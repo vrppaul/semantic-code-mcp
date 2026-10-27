@@ -78,8 +78,10 @@ def test_debug_details_only_when_asked():
     assert present_search(report, PROJECT_ROOT, include_debug=True).debug is not None
 
 
-def test_a_status_names_the_model_and_the_revision_that_built_the_index():
-    identity = IndexIdentity(model_name="model", model_revision="revision", chunker_version=3)
+def test_a_status_names_the_model_its_revision_and_the_embedder_that_built_the_index():
+    identity = IndexIdentity(
+        model_name="model", model_revision="revision", embedder_version=2, chunker_version=3
+    )
     manifest = IndexManifest(
         identity=identity, schema_version=2, indexed_at=datetime(2026, 1, 1, tzinfo=UTC)
     )
@@ -87,4 +89,4 @@ def test_a_status_names_the_model_and_the_revision_that_built_the_index():
 
     view = present_status(status, PROJECT_ROOT).manifest
 
-    assert (view.model_name, view.model_revision) == ("model", "revision")
+    assert (view.model_name, view.model_revision, view.embedder_version) == ("model", "revision", 2)

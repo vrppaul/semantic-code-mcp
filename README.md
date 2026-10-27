@@ -123,7 +123,7 @@ Check indexing status for a project.
 |-----------|------|---------|-------------|
 | `project_path` | `str` | the client's workspace root | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 
-Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `stale_files_count` and `manifest` (the model, its revision, and the chunker and storage versions that built the index).
+Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `stale_files_count` and `manifest` (the model, its revision, and the embedder, chunker and storage versions that built the index).
 
 ## Configuration
 

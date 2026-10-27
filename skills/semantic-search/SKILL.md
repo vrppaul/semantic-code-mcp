@@ -96,7 +96,7 @@ searched (`files_indexed`, `chunks_indexed`).
 - Call `index_status` to see which root a directory belongs to and what built its index,
   not before every search. It answers `project_root`, `is_indexed`, `last_updated`,
   `files_count`, `chunks_count`, `stale_files_count` and the `manifest`: `model_name`,
-  `model_revision`, `chunker_version`, `schema_version`.
+  `model_revision`, `embedder_version`, `chunker_version`, `schema_version`.
 - Each model and version keeps an index of its own, built once on the first search after a
   change; one no session used for a week is removed.
 - In a git repository, git lists the files: tracked ones, and untracked ones `.gitignore`

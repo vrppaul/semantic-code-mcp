@@ -106,6 +106,8 @@ class IndexManifestView(BaseModel):
     model_name: str
     # None where nothing pins the model's weights, as for a local path
     model_revision: str | None
+    # How the embedder read the model: another reading keeps an index of its own
+    embedder_version: int
     chunker_version: int
     schema_version: int
 

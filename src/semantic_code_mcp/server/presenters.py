@@ -116,6 +116,7 @@ def present_manifest(manifest: IndexManifest) -> IndexManifestView:
     return IndexManifestView(
         model_name=manifest.identity.model_name,
         model_revision=manifest.identity.model_revision,
+        embedder_version=manifest.identity.embedder_version,
         chunker_version=manifest.identity.chunker_version,
         schema_version=manifest.schema_version,
     )

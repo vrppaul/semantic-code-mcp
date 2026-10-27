@@ -48,6 +48,9 @@ from semantic_code_mcp.domain.interfaces import Embedder, Vector, VectorMatrix
 
 log = structlog.get_logger()
 
+# The version of how the embedder makes a text's vector of a model's files: bumped by any
+# change to that, so an index of the vectors it made before is never written to again
+EMBEDDER_VERSION = 1
 # The default model's weights as the harness measured them (`evals/baseline/`)
 ALL_MINILM_L6_V2_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 # The revision each model the server knows loads, under every name it goes by: a hub
@@ -317,6 +320,11 @@ class OnnxEmbedder(Embedder):
     @override
     def revision(self) -> str | None:
         return self._revision
+
+    @property
+    @override
+    def version(self) -> int:
+        return EMBEDDER_VERSION
 
     @property
     @override

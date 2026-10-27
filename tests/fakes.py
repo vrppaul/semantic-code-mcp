@@ -28,6 +28,7 @@ from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 EMBEDDING_DIMENSION = 384
 FAKE_MODEL_NAME = "fake-model"
 FAKE_CHUNKER_VERSION = 1
+FAKE_EMBEDDER_VERSION = 1
 FAKE_SCHEMA_VERSION = 1
 BYTE_RANGE = 255
 # A digest byte scaled into [-1, 1]
@@ -49,6 +50,7 @@ class FakeEmbedder(Embedder):
         loaded: bool = True,
         model_name: str = FAKE_MODEL_NAME,
         revision: str | None = None,
+        version: int = FAKE_EMBEDDER_VERSION,
         dimension: int = EMBEDDING_DIMENSION,
     ) -> None:
         self.embedded_texts: list[str] = []
@@ -56,6 +58,7 @@ class FakeEmbedder(Embedder):
         self._loaded = loaded
         self._model_name = model_name
         self._revision = revision
+        self._version = version
         self._dimension = dimension
 
     @property
@@ -67,6 +70,11 @@ class FakeEmbedder(Embedder):
     @override
     def revision(self) -> str | None:
         return self._revision
+
+    @property
+    @override
+    def version(self) -> int:
+        return self._version
 
     @property
     @override
@@ -153,6 +161,7 @@ class FakeIndexStore(IndexStore):
             identity=IndexIdentity(
                 model_name=FAKE_MODEL_NAME,
                 model_revision=None,
+                embedder_version=FAKE_EMBEDDER_VERSION,
                 chunker_version=FAKE_CHUNKER_VERSION,
             ),
             schema_version=FAKE_SCHEMA_VERSION,

@@ -83,6 +83,7 @@ class ProjectRegistry:
         identity = IndexIdentity(
             model_name=self._embedder.model_name,
             model_revision=self._embedder.revision,
+            embedder_version=self._embedder.version,
             chunker_version=self._chunker.version,
         )
         store = self._open_store(index_path, identity)

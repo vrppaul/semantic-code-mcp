@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - sentence-transformers and torch: the embedder runs the model's ONNX export on onnxruntime, so the install no longer needs the `--index pytorch-cpu=...` flag on Linux
 
 ### Added
-- `index_status` reports the index's `manifest` (model, its revision, chunker version, storage schema version)
+- `index_status` reports the index's `manifest` (model, its revision, embedder version, chunker version, storage schema version); a new reading of a model by the embedder keeps an index of its own, as a new chunker does
 - Each `search_code` result names its `parent`: the class, impl, module or heading it sits in, as `Stack` for `Stack.push` and `Guide > Install` for a section
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`

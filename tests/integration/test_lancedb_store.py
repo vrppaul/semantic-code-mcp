@@ -78,8 +78,12 @@ SHORT_LOCK_TIMEOUT_SECONDS = 0.2
 # Modes for a table's files: read and enter only, so a write to it fails; and writable again
 READ_ONLY = 0o555
 WRITABLE = 0o755
-IDENTITY = IndexIdentity(model_name="fake-model", model_revision=None, chunker_version=1)
-OTHER_IDENTITY = IndexIdentity(model_name="other-model", model_revision=None, chunker_version=1)
+IDENTITY = IndexIdentity(
+    model_name="fake-model", model_revision=None, embedder_version=1, chunker_version=1
+)
+OTHER_IDENTITY = IndexIdentity(
+    model_name="other-model", model_revision=None, embedder_version=1, chunker_version=1
+)
 # A time long before any test runs: an index last written then is long unused
 LONG_AGO_SECONDS = 1_000_000_000
 # What 0.4 kept in a project's index directory: its chunks table, and its record of mtimes
