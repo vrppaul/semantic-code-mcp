@@ -106,8 +106,13 @@ def available_corpus_names() -> list[str]:
 
 
 def load_corpus(name: str) -> Corpus:
-    """Read one corpus file by name."""
-    path = CORPORA_DIRECTORY / f"{name}{CORPUS_FILE_SUFFIX}"
+    """Read one corpus file of `evals/corpora/` by name."""
+    return load_corpus_file(CORPORA_DIRECTORY / f"{name}{CORPUS_FILE_SUFFIX}")
+
+
+def load_corpus_file(path: Path) -> Corpus:
+    """Read a corpus file wherever it lies, as one of the owner's private repositories keeps
+    out of this one."""
     return Corpus.model_validate(tomllib.loads(path.read_text()))
 
 

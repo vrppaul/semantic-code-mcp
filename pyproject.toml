@@ -326,6 +326,8 @@ ignore_names = [
     "python",
     "columns",
     "search_texts",
+    # Kept in an agents run's results, to read a session's cost by hand
+    "cache_creation_tokens",
     # The recorders of what each version made, which the version tests compare: run by hand
     "record_chunks",
     "record_vectors",

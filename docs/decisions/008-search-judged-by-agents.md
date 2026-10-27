@@ -1,6 +1,6 @@
 # 008: Search judged by agents
 
-**Status**: proposed
+**Status**: accepted; `evals agents` built (2026-10-27)
 **Date**: 2026-10-27
 **Continues**: 006 (D12, the harness), 007 (step 1)
 
@@ -19,13 +19,13 @@ The harness's chosen questions, code and documentation, each asked as a task: fi
 Each task runs in each arm with the same prompt, which names no tool:
 - **own tools**: Claude Code's Read, Grep and Glob, and its shell for reading (`rg`, `grep`, `find`, `ls`, `cat`, `head`, `tail`, `sed -n`, `wc`, `git grep`, `git log`);
 - **with search**: the same, and this server's `search_code` and `index_status`;
-- **with search and the skill**, once the first two are measured: the skill loaded from the repository (`--plugin-dir`).
+- **with search and the skill**, once the first two are measured: the skill loaded from the repository (`--plugin-dir`). Not built: pilot 2 saw the skill loaded and unused, and with the search in the prompt the agent searched unprompted (pilots 5 and 6).
 
 No arm edits, fetches from the web or starts subagents, so a session's cost is its own.
 
 ### D3. Sessions alike, and apart from the owner's own
 
-Each session is Claude Code headless (`claude -p`, `--output-format stream-json`), started in the corpus's checkout. It runs in a config directory of its own, holding only a link to the owner's login, so none of the owner's instructions, memory, hooks, plugins or MCP servers reach it: his `CLAUDE.md` asks an agent to wait for his word before acting, which would end a task before it starts. `--bare` would isolate it too, but takes an API key, not a subscription's login. The arm's MCP config is the only one (`--strict-mcp-config`). The server is the checkout of this repository under test (`uv run --directory`), its index built before the first session into the run's own cache, so no session pays a first index. Each session runs under a memory cap.
+Each session is Claude Code headless (`claude -p`, `--output-format stream-json`), started in the corpus's checkout. It runs in a config directory of its own, holding only a link to the owner's login, so none of the owner's instructions, memory, hooks, plugins or MCP servers reach it: his `CLAUDE.md` asks an agent to wait for his word before acting, which would end a task before it starts. `--bare` would isolate it too, but takes an API key, not a subscription's login. The arm's MCP config is the only one (`--strict-mcp-config`). The server is this environment's (`python -m semantic_code_mcp` on the harness's own interpreter), its index kept between runs under the checkouts' cache (`indexes/<corpus>-<commit>`), as a large corpus's takes an hour, and brought up to date before the first session, so no session pays a first index. A run is started under a memory cap, as `evals quality` is.
 
 ### D4. What a session is scored by
 
@@ -37,7 +37,7 @@ An agent's path through a task varies from run to run, so each task runs several
 
 ### D6. Where it lives
 
-`evals agents` beside `quality` and `speed`, in `evals/agents.py`: a run names its model and arms, writes its sessions to `evals/results/`, and saves a baseline (`evals/baseline/agents.json`) when asked. It measures the product, so it is code of the repository, tested where it scores.
+`evals agents` beside `quality` and `speed`, in `evals/agents.py`: a run names its corpora (`--corpus`, or `--corpus-file` for one kept outside the repository, as a private repository's questions are), its arms, its repeats and its model, prints each session as it ends and each arm's sums, and writes its sessions to the git-ignored `evals/results/agents.json`. It keeps no baseline: its sessions hold the questions of private corpora, and its costs compare only within a run. An answer is right when a key names its file and its symbol, whole (a heading with dots), by its last qualified part, or as a member of the keyed class. It measures the product, so it is code of the repository, tested where it scores (`tests/unit/test_evals_agents.py`).
 
 ### D7. Pilots (2026-10-27, Sonnet, each question once per arm)
 
