@@ -317,6 +317,14 @@ def test_full_text_search_finds_a_chunk_by_the_words_of_its_name_and_parent(
     assert [candidate.chunk.name for candidate in matching(store, words)] == ["addItem"]
 
 
+def test_a_question_wholly_in_quotes_finds_a_chunk_by_its_words(filled_store: LanceDBIndexStore):
+    """An agent quotes an identifier it knows; LanceDB read such a text as a phrase, which
+    an index without word positions cannot answer, and the search failed."""
+    assert [candidate.chunk.name for candidate in matching(filled_store, '"duration_ms"')] == [
+        "keyword"
+    ]
+
+
 def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
     filled_store: LanceDBIndexStore,
 ):

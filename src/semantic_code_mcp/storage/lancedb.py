@@ -62,6 +62,7 @@ import numpy
 import pyarrow
 import structlog
 from filelock import FileLock
+from lancedb.query import FullTextOperator, MatchQuery
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -730,10 +731,13 @@ def keyword_candidates(
 ) -> list[Candidate]:
     """The chunks of the scope whose words best match the query's, best first; none while
     the table has no full-text index, as after a write stopped between the table and its
-    index."""
+    index. The text is matched as words, any of which may match, never read as LanceDB's
+    query syntax: an agent's question wholly in quotes would be a phrase, which an index
+    without word positions cannot answer."""
     if not has_full_text_index(table):
         return []
-    by_keyword = table.search(query_text, query_type=FULL_TEXT_QUERY_TYPE)
+    words = MatchQuery(query_text, SEARCH_TEXT_COLUMN, operator=FullTextOperator.OR)
+    by_keyword = table.search(words, query_type=FULL_TEXT_QUERY_TYPE)
     if scope is not None:
         by_keyword = by_keyword.where(scope)
     rows = by_keyword.select([*CANDIDATE_COLUMNS, FULL_TEXT_SCORE_COLUMN]).limit(limit)
