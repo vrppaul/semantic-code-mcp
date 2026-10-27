@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict
 
 from evals.corpus import Corpus, Query, restore
 from evals.quality import RESULTS_PER_QUERY
-from evals.server import ServerConnection, connect
+from evals.server import SearchNarrowing, ServerConnection, connect
 
 MILLISECONDS_PER_SECOND = 1000
 BYTES_PER_MEGABYTE = 1024 * 1024
@@ -51,6 +51,9 @@ WARM_UP_SOURCE = "def warm_up():\n    return None\n"
 WARM_UP_QUERY = "warm up"
 # Status calls timed on the indexed corpus; each search makes the same check first
 STATUS_CALLS = 10
+# A narrowing every corpus can take, which both filters read: two kinds, and a glob
+# left out, the regex a search tests every path against
+NARROWING = SearchNarrowing(chunk_kinds=("function", "method"), exclude_glob="tests")
 # Where Linux names the processor, and the field that holds its model
 CPU_INFO = Path("/proc/cpuinfo")
 CPU_MODEL_FIELD = "model name"
@@ -80,6 +83,7 @@ class CorpusSpeed(BaseModel):
     chunks_per_second: float
     warm_search_p50_milliseconds: float
     warm_search_p95_milliseconds: float
+    narrowed_search_p50_milliseconds: float
     status_p50_milliseconds: float
     index_growth_megabytes_per_edit: float
     search_after_edit_p50_milliseconds: float
@@ -125,7 +129,11 @@ async def measure_speed(
         model_load_seconds = await timed_model_load_seconds(connection)
         report = await connection.index(working_tree)
         latencies = [
-            await timed_search_seconds(connection, working_tree, query) for query in queries
+            await timed_search_seconds(connection, working_tree, query, None) for query in queries
+        ]
+        narrowed_latencies = [
+            await timed_search_seconds(connection, working_tree, query, NARROWING)
+            for query in queries
         ]
         status_seconds = [
             await timed_status_seconds(connection, working_tree) for _ in range(STATUS_CALLS)
@@ -150,6 +158,7 @@ async def measure_speed(
         chunks_per_second=rounded(report.chunks_indexed / report.duration_seconds),
         warm_search_p50_milliseconds=percentile_milliseconds(latencies, MEDIAN_CUT),
         warm_search_p95_milliseconds=percentile_milliseconds(latencies, NINETY_FIFTH_CUT),
+        narrowed_search_p50_milliseconds=percentile_milliseconds(narrowed_latencies, MEDIAN_CUT),
         status_p50_milliseconds=median_milliseconds(status_seconds),
         index_growth_megabytes_per_edit=rounded(
             edits_cost.growth_bytes / BYTES_PER_MEGABYTE / edits
@@ -183,11 +192,14 @@ async def timed_status_seconds(connection: ServerConnection, working_tree: Path)
 
 
 async def timed_search_seconds(
-    connection: ServerConnection, working_tree: Path, query: str
+    connection: ServerConnection,
+    working_tree: Path,
+    query: str,
+    narrowing: SearchNarrowing | None,
 ) -> float:
-    """How long one search takes, seen from the client."""
+    """How long one search takes, seen from the client, narrowed where a narrowing is given."""
     started = time.perf_counter()
-    await connection.search(working_tree, query, RESULTS_PER_QUERY)
+    await connection.search(working_tree, query, RESULTS_PER_QUERY, narrowing)
     return time.perf_counter() - started
 
 
@@ -231,7 +243,7 @@ async def edit_cost(
             with edited_file.open("a") as edited:
                 edited.write(edit_text(edited_file, number))
             search_seconds.append(
-                await timed_search_seconds(connection, working_tree, edit.question)
+                await timed_search_seconds(connection, working_tree, edit.question, None)
             )
     finally:
         restore(working_tree)

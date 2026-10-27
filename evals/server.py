@@ -37,6 +37,15 @@ class SearchHit(BaseModel):
     line_end: int
 
 
+class SearchNarrowing(BaseModel):
+    """What a narrowed search keeps to, as `search_code`'s parameters name it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunk_kinds: tuple[str, ...]
+    exclude_glob: str
+
+
 class SearchAnswer(BaseModel):
     """The answer of `search_code`."""
 
@@ -79,9 +88,20 @@ class ServerConnection:
         result = await self._session.call_tool("index_status", {"project_path": str(project)})
         return StatusReport.model_validate(tool_payload(result))
 
-    async def search(self, project: Path, query: str, limit: int) -> SearchAnswer:
-        """Search a project as an agent would."""
-        arguments = {"query": query, "project_path": str(project), "limit": limit}
+    async def search(
+        self, project: Path, query: str, limit: int, narrowing: SearchNarrowing | None = None
+    ) -> SearchAnswer:
+        """Search a project as an agent would, narrowed where a narrowing is given."""
+        arguments: dict[str, object] = {
+            "query": query,
+            "project_path": str(project),
+            "limit": limit,
+        }
+        if narrowing is not None:
+            arguments |= {
+                "chunk_kinds": list(narrowing.chunk_kinds),
+                "exclude_glob": narrowing.exclude_glob,
+            }
         result = await self._session.call_tool("search_code", arguments)
         return SearchAnswer.model_validate(tool_payload(result))
 
