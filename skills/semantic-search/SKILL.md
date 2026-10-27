@@ -71,10 +71,10 @@ meaning. For every place a name is used, Grep.
 
 ## 5. Reading the answer
 
-`search_code` returns `project_root`, the repository's root, and `searched_directory`, the
-directory it kept to: where the two differ, nothing outside `searched_directory` was
-searched, and `project_root` as `project_path` searches it all. Then `results`, best
-first by meaning and words together. Each has:
+`search_code` returns `project_root`, the project's root (its repository's), and
+`searched_directory`, the directory it kept to: where the two differ, nothing outside
+`searched_directory` was searched, and `project_root` as `project_path` searches it all.
+Then `results`, best first by meaning and words together. Each has:
 
 - `file_path` (absolute), `line_start`, `line_end`: Read that range for the whole chunk;
 - `name`, `kind`, and `parent`: the class, impl, module or heading it sits in, as `Stack`

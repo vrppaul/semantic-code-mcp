@@ -227,8 +227,8 @@ async def located_project(
     if not location.is_repository:
         message = (
             f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {root}, is no part of "
-            "a git repository below the home directory, so nothing says it is one project "
-            "rather than a folder of many, and a search would index every file below it"
+            "a git repository that leaves out the home directory, so nothing says it is one "
+            "project rather than a folder of many, and a search would index every file below it"
         )
         raise ToolError(message)
     return location

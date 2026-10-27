@@ -62,8 +62,8 @@ class FoundFile(BaseModel):
 
 class ProjectRoot(BaseModel):
     """The root of the project a directory belongs to, and whether a git repository names
-    it: a work tree's root below the home directory. Otherwise it is the directory itself,
-    which nothing says is one project rather than a folder of many."""
+    it: a work tree's root that does not hold the home directory. Otherwise it is the
+    directory itself, which nothing says is one project rather than a folder of many."""
 
     model_config = ConfigDict(frozen=True)
 

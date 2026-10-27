@@ -436,7 +436,7 @@ async def test_a_tool_given_no_project_path_and_two_workspace_roots_asks_for_one
 @pytest.mark.parametrize(
     "root",
     [
-        pytest.param("home", id="the home directory"),
+        pytest.param("home", id="a home under git for its dotfiles"),
         pytest.param("folder", id="a folder of repositories"),
     ],
 )
@@ -448,7 +448,7 @@ async def test_a_tool_given_no_project_path_refuses_a_workspace_root_no_reposito
     root: str,
 ):
     """A session started there would index every project below it as one."""
-    (tmp_path / "home").mkdir()
+    make_repository(tmp_path / "home")
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     make_repository(tmp_path / "folder" / "project")
     client = client_with_roots(test_settings, embedder, [(tmp_path / root).as_uri()])
