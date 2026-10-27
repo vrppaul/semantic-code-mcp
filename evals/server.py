@@ -20,8 +20,10 @@ from pydantic import BaseModel, ConfigDict
 SETTINGS_PREFIX = "SEMANTIC_CODE_MCP_"
 CACHE_DIR_VARIABLE = f"{SETTINGS_PREFIX}CACHE_DIR"
 SERVER_MODULE = "semantic_code_mcp"
-# Long enough for a full index of the largest corpus with a cold model download
-READ_TIMEOUT_SECONDS = 900.0
+# Long enough for a full index of the largest corpus with a cold model download: `agents`
+# indexes corpora kept outside the repository, and one of Sentry's 87,694 chunks took about
+# an hour, where the fifteen minutes this was cut its first index short
+READ_TIMEOUT_SECONDS = 3 * 3600.0
 
 
 class SearchHit(BaseModel):
