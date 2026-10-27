@@ -59,8 +59,8 @@ OWNER_SEPARATOR = "/"
 MODULES_FILE = "modules.json"
 POOLING_CONFIG_FILE = "1_Pooling/config.json"
 SENTENCE_BERT_CONFIG_FILE = "sentence_bert_config.json"
-TOKENIZER_CONFIG_FILE = "tokenizer_config.json"
 TRANSFORMER_CONFIG_FILE = "config.json"
+TOKENIZER_CONFIG_FILE = "tokenizer_config.json"
 TOKENIZER_FILE = "tokenizer.json"
 ONNX_MODEL_FILE = "onnx/model.onnx"
 
@@ -74,7 +74,7 @@ class ModuleKind(StrEnum):
 
 
 # Each module whose work the embedder does, under every type sentence-transformers saves it
-# as: in `sentence_transformers.models`, or where version 5.7 moved it
+# as: in `sentence_transformers.models`, or where version 5.4 moved it
 MODULE_KINDS: Mapping[str, ModuleKind] = MappingProxyType(
     {
         "sentence_transformers.models.Transformer": ModuleKind.transformer,
@@ -96,12 +96,19 @@ READ_MODULE_CHAINS = (
     (ModuleKind.transformer, ModuleKind.pooling, ModuleKind.normalize),
 )
 MEAN_POOLING = "mean"
+# How a message lists names: a chain's types, an export's inputs
+LIST_SEPARATOR = ", "
 # The model's inputs, as its ONNX export names them; one text's token types are all zero
 INPUT_IDS = "input_ids"
 ATTENTION_MASK = "attention_mask"
 TOKEN_TYPE_IDS = "token_type_ids"  # nosec B105 - an input's name, not a secret
+# The inputs the embedder sends: these two always, and the token types where the export
+# takes them
+NEEDED_INPUTS = frozenset({INPUT_IDS, ATTENTION_MASK})
+SENT_INPUTS = frozenset({INPUT_IDS, ATTENTION_MASK, TOKEN_TYPE_IDS})
 # The token states are the export's first output, a batch of texts by tokens by width
 TOKEN_STATES_OUTPUT = 0
+TOKEN_STATES_AXES = 3
 TOKEN_AXIS = 1
 # A row of a matrix of vectors runs along this axis
 VECTOR_AXIS = 1
@@ -120,15 +127,18 @@ NO_SPINNING = "0"
 # What onnxruntime raises, each a bare Exception of its own, when an export starts no
 # session: a file of no ONNX model (InvalidProtobuf) and weights in a file beside it that
 # is missing (Fail), both probed, and by their names the rest an export can bring about:
-# an argument it refuses, a file it cannot find, a graph it cannot read, an operator it
-# cannot run
+# an argument it refuses, a file or a model it cannot find, a graph it cannot read, an
+# operator it cannot run, an exception while it starts the session
 EXPORT_LOAD_ERRORS = (
     onnxruntime_pybind11_state.Fail,
     onnxruntime_pybind11_state.InvalidArgument,
     onnxruntime_pybind11_state.InvalidGraph,
     onnxruntime_pybind11_state.InvalidProtobuf,
+    onnxruntime_pybind11_state.NoModel,
     onnxruntime_pybind11_state.NoSuchFile,
+    onnxruntime_pybind11_state.NotFound,
     onnxruntime_pybind11_state.NotImplemented,
+    onnxruntime_pybind11_state.RuntimeException,
 )
 
 
@@ -160,10 +170,15 @@ class ModuleChain(RootModel[list[ModuleEntry]]):
         """Each module's kind, in the chain's order."""
         return tuple(module.kind for module in self.root)
 
+    @property
+    def types(self) -> str:
+        """Each module's type, in the chain's order, as a reader is told them."""
+        return LIST_SEPARATOR.join(module.type for module in self.root)
+
 
 class PoolingConfig(BaseModel):
     """How a sentence-transformers model makes one vector of a text's token states: one
-    mode, or several joined, by name since sentence-transformers 5, by flags before."""
+    mode, or several joined, by name since sentence-transformers 5.4, by flags before."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -192,13 +207,13 @@ class PoolingConfig(BaseModel):
 
 class SentenceBertConfig(BaseModel):
     """What a sentence-transformers model says of the texts it reads: whether to lowercase
-    them first, and the longest, in tokens, which models saved by sentence-transformers 5
-    leave to the tokenizer's config."""
+    them first, and the longest, in tokens. Models saved by sentence-transformers 5.4 or
+    later say neither, leaving both to the tokenizer."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     do_lower_case: bool = False
-    max_seq_length: int | None = None
+    max_seq_length: PositiveInt | None = None
 
 
 class TokenizerConfig(BaseModel):
@@ -210,8 +225,8 @@ class TokenizerConfig(BaseModel):
 
 
 class TransformerConfig(BaseModel):
-    """The transformer's positions, the most tokens it can read; positive, as XLNet's -1
-    for none would leave a text uncut."""
+    """The transformer's positions, which bound the tokens it reads (RoBERTa reads two
+    fewer); positive, as XLNet's -1 for none would leave a text uncut."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -318,7 +333,8 @@ class ModelFiles:
         except LocalEntryNotFoundError as error:
             message = (
                 f"{self._model_name}'s {relative_path} is neither in the hub's cache nor "
-                "fetched from the hub (offline, or the hub did not answer)"
+                "fetched from the hub (offline, or the hub did not answer): start the server "
+                "once where it reaches the hub"
             )
             raise UnusableModelError(message) from error
         except RemoteEntryNotFoundError as error:
@@ -354,16 +370,18 @@ def load_model(model_name: str, revision: str | None) -> OnnxModel:
     check_modules(files)
     tokenizer = model_tokenizer(files)
     session = inference_session(files)
+    check_export(files, session)
     log.info("embedding_model_loaded", model=model_name)
     return OnnxModel(tokenizer, session)
 
 
 def check_modules(files: ModelFiles) -> None:
     """Refuse a model whose modules make its vectors otherwise than the embedder does."""
-    if files.config(MODULES_FILE, ModuleChain).kinds not in READ_MODULE_CHAINS:
+    chain = files.config(MODULES_FILE, ModuleChain)
+    if chain.kinds not in READ_MODULE_CHAINS:
         message = (
-            f"{files.model_name}'s {MODULES_FILE} chains modules other than a transformer, "
-            "its pooling and a unit length"
+            f"{files.model_name}'s {MODULES_FILE} chains {chain.types}: the embedder reads a "
+            "transformer, its pooling and a unit length, as sentence-transformers names them"
         )
         raise UnusableModelError(message)
     if not files.config(POOLING_CONFIG_FILE, PoolingConfig).is_mean:
@@ -381,7 +399,7 @@ def model_tokenizer(files: ModelFiles) -> Tokenizer:
     for both)."""
     config = files.config(SENTENCE_BERT_CONFIG_FILE, SentenceBertConfig)
     limit = token_limit(files, config)
-    tokenizer = Tokenizer.from_file(str(files.path(TOKENIZER_FILE)))
+    tokenizer = read_tokenizer(files)
     if config.do_lower_case:
         tokenizer.normalizer = lowercasing_first(tokenizer.normalizer)
     tokenizer.enable_truncation(max_length=limit)
@@ -389,24 +407,55 @@ def model_tokenizer(files: ModelFiles) -> Tokenizer:
     return tokenizer
 
 
+def read_tokenizer(files: ModelFiles) -> Tokenizer:
+    """The model's tokenizer, as its file holds it."""
+    path = files.path(TOKENIZER_FILE)
+    try:
+        return Tokenizer.from_file(str(path))
+    # tokenizers raises a bare Exception for a file it cannot read, and no narrower class
+    except Exception as error:
+        message = f"{files.model_name}'s {TOKENIZER_FILE} does not load in tokenizers: {error}"
+        raise UnusableModelError(message) from error
+
+
 def token_limit(files: ModelFiles, config: SentenceBertConfig) -> int:
     """The longest text the model reads, in tokens, as sentence-transformers sets it: its
     own config's, or where that names none, its tokenizer's held to the positions its
-    transformer has (a tokenizer's config can hold transformers' "no limit", 10^30)."""
-    if config.max_seq_length is not None:
-        return config.max_seq_length
-    tokenizer_limit = files.config(TOKENIZER_CONFIG_FILE, TokenizerConfig).model_max_length
+    transformer has (a tokenizer's config can hold transformers' "no limit", 10^30). A
+    limit of its own past those positions is refused: the transformer could not read it."""
     positions = files.config(TRANSFORMER_CONFIG_FILE, TransformerConfig).max_position_embeddings
-    return min(tokenizer_limit, positions)
+    if config.max_seq_length is None:
+        tokenizer_limit = files.config(TOKENIZER_CONFIG_FILE, TokenizerConfig).model_max_length
+        return min(tokenizer_limit, positions)
+    if config.max_seq_length > positions:
+        message = (
+            f"{files.model_name}'s {SENTENCE_BERT_CONFIG_FILE} cuts a text at "
+            f"{config.max_seq_length} tokens, past the {positions} positions its transformer "
+            f"has ({TRANSFORMER_CONFIG_FILE})"
+        )
+        raise UnusableModelError(message)
+    return config.max_seq_length
 
 
 def lowercasing_first(normalizer: Normalizer | None) -> Normalizer:
     """A tokenizer's normalizer with lowercasing put before its own steps, as
-    sentence-transformers puts it; where the normalizer holds a `Lowercase` already,
-    sentence-transformers puts none, and a text lowercased again comes out the same."""
+    sentence-transformers puts it, unless the normalizer lowercases already: a step before
+    its own `Lowercase` may read case, as a `Replace` of a capital does."""
     if normalizer is None:
         return Lowercase()
+    if lowercases(normalizer):
+        return normalizer
     return Sequence([Lowercase(), normalizer])
+
+
+def lowercases(normalizer: Normalizer) -> bool:
+    """Whether a normalizer is a `Lowercase`, or a sequence holding one, as
+    sentence-transformers looks for it."""
+    if isinstance(normalizer, Lowercase):
+        return True
+    return isinstance(normalizer, Sequence) and any(
+        isinstance(step, Lowercase) for step in normalizer
+    )
 
 
 def inference_session(files: ModelFiles) -> onnxruntime.InferenceSession:
@@ -419,6 +468,27 @@ def inference_session(files: ModelFiles) -> onnxruntime.InferenceSession:
     except EXPORT_LOAD_ERRORS as error:
         message = f"{files.model_name}'s {ONNX_MODEL_FILE} does not load in onnxruntime: {error}"
         raise UnusableModelError(message) from error
+
+
+def check_export(files: ModelFiles, session: onnxruntime.InferenceSession) -> None:
+    """Refuse an export the embedder cannot feed, or whose first output is not each
+    token's state of each text: the one would fail at the first text, the other would give
+    vectors that mean nothing, unseen while a search embeds a single text."""
+    inputs = frozenset(node.name for node in session.get_inputs())
+    if not NEEDED_INPUTS <= inputs <= SENT_INPUTS:
+        taken = LIST_SEPARATOR.join(sorted(inputs))
+        message = (
+            f"{files.model_name}'s {ONNX_MODEL_FILE} takes {taken}: the embedder sends "
+            f"{INPUT_IDS} and {ATTENTION_MASK}, and {TOKEN_TYPE_IDS} where taken"
+        )
+        raise UnusableModelError(message)
+    axes = len(session.get_outputs()[TOKEN_STATES_OUTPUT].shape)
+    if axes != TOKEN_STATES_AXES:
+        message = (
+            f"{files.model_name}'s {ONNX_MODEL_FILE} gives first an output of {axes} axes: the "
+            "embedder reads each token's state of each text, texts by tokens by width"
+        )
+        raise UnusableModelError(message)
 
 
 def file_in_directory(directory: Path, relative_path: str) -> Path:

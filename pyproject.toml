@@ -50,6 +50,7 @@ dev = [
     "deptry>=0.25.1",
     "hypothesis>=6.170.11",
     "import-linter>=2.15",
+    "onnx>=1.23.2",
     "pre-commit>=4.5.1",
     "pyinstrument>=5.1.2",
     "pytest>=9.0.2",
