@@ -7,6 +7,9 @@ What we mean to build and why. How each epic is built lives in `docs/decisions/`
 ### Rebuild on mcp 2.x
 The published 0.4.0 does not start on mcp 2.x, the index dropped code without a word, search ranks prose over the code it describes, indexing runs 20–50× slower than our own target, and our gates passed without checking anything. `docs/decisions/006-rebuild-on-mcp-2.md` holds the plan in ten stages, from a hotfix to the skill and the plugin; the stages and their state live there.
 
+### The index store behind a contract, and SQLite tried
+Swapping the store should be a class behind a tested contract, and today it is not: the interface speaks LanceDB, the index's life sits inside the LanceDB store, and the tests hold the implementation. LanceDB, made for large versioned datasets, cost most of the upkeep rules of ADR 006; SQLite's transactions, snapshots and exact full-text index fit an index replaced a file at a time. Done before the release, which builds every index again once anyway. `docs/decisions/007-storage-behind-a-contract.md` holds the plan.
+
 ## Pending
 
 ### JavaScript, TypeScript and Go
