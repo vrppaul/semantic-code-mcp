@@ -1,0 +1,27 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "semantic-code-marketplace",
+  "description": "Semantic code search for coding agents",
+  "owner": {
+    "name": "Pavel Paranin"
+  },
+  "plugins": [
+    {
+      "name": "semantic-code",
+      "description": "Find code by what it does: a local MCP server that indexes a project's Python, Rust and Markdown files and searches them by meaning and words, with a skill that tells the agent when to use it and when Grep serves better.",
+      "author": {
+        "name": "Pavel Paranin"
+      },
+      "source": "./",
+      "skills": ["./skills/semantic-search"],
+      "mcpServers": {
+        "semantic-code": {
+          "command": "uvx",
+          "args": ["semantic-code-mcp"]
+        }
+      },
+      "category": "development",
+      "homepage": "https://github.com/vrppaul/semantic-code-mcp"
+    }
+  ]
+}

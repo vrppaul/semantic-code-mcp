@@ -30,10 +30,29 @@ One command on every platform, about 0.6 GB installed; the first start fetches t
 uvx semantic-code-mcp
 ```
 
-**Claude Code integration:**
+**Claude Code, as a plugin** — the server and the skill that tells the agent when to search by meaning and when to Grep, in one install (Claude Code 2.1.275 or later):
+
+```
+/plugin install semantic-code --marketplace vrppaul/semantic-code-mcp
+```
+
+On an earlier Claude Code, add the marketplace first:
+
+```
+/plugin marketplace add vrppaul/semantic-code-mcp
+/plugin install semantic-code@semantic-code-marketplace
+```
+
+**Claude Code, the server alone:**
 
 ```bash
 claude mcp add --scope user semantic-code -- uvx semantic-code-mcp
+```
+
+**The skill alone**, for an agent that has the server some other way:
+
+```bash
+npx skills add vrppaul/semantic-code-mcp
 ```
 
 <details>
