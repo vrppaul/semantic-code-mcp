@@ -16,7 +16,8 @@ their names.
 retried"). Use Grep for an exact identifier, a string or a regex, and for every call site: \
 `search_code` returns only its best matches.
 - `project_path` is absolute: a repository's root, or a directory inside it, which keeps \
-the search to that directory. A repository keeps one index, whichever directory you name.
+the search to that directory. A repository keeps one index, whichever directory you name. \
+Left out, it is the client's workspace root: where Claude Code was started.
 - Indexing is automatic: the first search indexes the project, each later one the files \
 changed since. Call `index_codebase` with `force` only after mass renames or when results \
 point at code that is gone; `index_status` reports an index without changing it.

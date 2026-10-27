@@ -2,11 +2,12 @@
 
 import asyncio
 import os
+from functools import partial
 from pathlib import Path
 
 import pytest
 from mcp import Client
-from mcp.types import CallToolResult
+from mcp.types import CallToolResult, ListRootsResult, Root
 
 from semantic_code_mcp.app import create_app
 from semantic_code_mcp.config import Settings
@@ -50,6 +51,24 @@ def retry_with_backoff(operation, attempts: int):
     """Call an operation again after a growing pause each time it fails."""
     return operation()
 '''
+
+
+# A root a client may name that is no directory on this machine
+MISSING_ROOT = "file:///no/such/directory"
+
+
+async def roots_answer(uris: list[str], _context: object) -> ListRootsResult:
+    """A client's answer to `roots/list`: the workspace roots at the URIs given."""
+    return ListRootsResult(roots=[Root(uri=uri) for uri in uris])
+
+
+def client_with_roots(settings: Settings, embedder: OnnxEmbedder, uris: list[str] | None) -> Client:
+    """A client of the app whose workspace roots are the URIs given, or one that declares
+    no roots at all for None."""
+    callback = None if uris is None else partial(roots_answer, uris)
+    return Client(
+        create_app(settings, embedder=embedder), mode="legacy", list_roots_callback=callback
+    )
 
 
 def structured(result: CallToolResult) -> object:
@@ -302,3 +321,71 @@ async def test_an_index_tool_asked_of_a_directory_of_a_repository_names_the_repo
         result = await client.call_tool(tool, {"project_path": str(repository / "package")})
 
     assert response.model_validate(structured(result)).project_root == str(repository)
+
+
+@pytest.mark.parametrize(
+    ("tool", "response"),
+    [
+        pytest.param("index_codebase", IndexCodebaseResponse, id="index_codebase"),
+        pytest.param("index_status", IndexStatusResponse, id="index_status"),
+    ],
+)
+async def test_an_index_tool_given_no_project_path_works_on_the_client_s_workspace_root(
+    project: Path,
+    test_settings: Settings,
+    embedder: OnnxEmbedder,
+    tool: str,
+    response: type[IndexCodebaseResponse | IndexStatusResponse],
+):
+    """As Claude Code names the directory it was started in."""
+    client = client_with_roots(test_settings, embedder, [project.as_uri()])
+
+    async with client:
+        result = await client.call_tool(tool, {})
+
+    assert response.model_validate(structured(result)).project_root == str(project)
+
+
+async def test_a_search_given_no_project_path_searches_the_client_s_workspace_root(
+    project: Path, test_settings: Settings, embedder: OnnxEmbedder
+):
+    client = client_with_roots(test_settings, embedder, [project.as_uri()])
+
+    async with client:
+        result = await client.call_tool("search_code", {"query": "say hello to someone"})
+
+    first_hit = SearchCodeResponse.model_validate(structured(result)).results[0]
+    assert Path(first_hit.file_path) == project / "greeting.py"
+
+
+@pytest.mark.parametrize(
+    "uris",
+    [
+        pytest.param(None, id="a client that declares no roots"),
+        pytest.param([], id="a client that names none"),
+        pytest.param([MISSING_ROOT], id="a root that is no directory here"),
+    ],
+)
+async def test_a_tool_given_no_project_path_and_no_one_workspace_root_asks_for_one(
+    test_settings: Settings, embedder: OnnxEmbedder, uris: list[str] | None
+):
+    client = client_with_roots(test_settings, embedder, uris)
+
+    async with client:
+        result = await client.call_tool("index_status", {})
+
+    assert result.is_error
+    assert "project_path" in str(result.content)
+
+
+async def test_a_tool_given_no_project_path_and_two_workspace_roots_asks_for_one(
+    project: Path, tmp_path: Path, test_settings: Settings, embedder: OnnxEmbedder
+):
+    """Either could be meant: the server does not pick."""
+    client = client_with_roots(test_settings, embedder, [project.as_uri(), tmp_path.as_uri()])
+
+    async with client:
+        result = await client.call_tool("index_status", {})
+
+    assert result.is_error
+    assert "project_path" in str(result.content)

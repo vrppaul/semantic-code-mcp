@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The server sends instructions a client shows beside the tools: when to search by meaning and when to Grep, what `project_path` names, the languages indexed, and that indexing is automatic
 - A skill, `skills/semantic-search`, that tells an agent which tool to use, how to phrase a query, how to narrow a search and read its answer, and the traps met so far
 - A Claude Code plugin that installs the server and the skill together: `/plugin install semantic-code --marketplace vrppaul/semantic-code-mcp`
+- `project_path` may be left out of every tool: the tool then works on the client's workspace root, the directory Claude Code was started in
 - `search_code` takes `chunk_kinds`, `languages`, `path_glob` and `exclude_glob`, applied before the best hits are taken, so a narrow search still fills its results (#3). A glob reads as in a `.gitignore`, from the directory searched, without character classes; one holding a class, braces, an escape, a leading `!` or `..`, or of more than 1000 characters, is refused with the reason
 - `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS`
 - `SEMANTIC_CODE_MCP_MIN_SIMILARITY` (0.35) and `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` (0.25): how close in meaning to the query a hit must be to stay, without and with its words matching the query's

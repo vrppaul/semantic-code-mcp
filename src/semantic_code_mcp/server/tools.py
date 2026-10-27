@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Annotated
 
 import structlog
-from mcp.server.mcpserver import Context
+from mcp.server.mcpserver import Context, ListRoots, Resolve
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ListRootsResult
 from pydantic import Field
 
 from semantic_code_mcp.domain.globs import UnreadableGlobError, read_glob
@@ -50,14 +51,21 @@ PATH_GLOB_DESCRIPTION = (
     " with the reason."
 )
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
+PROJECT_PATH_DESCRIPTION = (
+    "Absolute path to the project, or to a directory inside its git repository. Left out,"
+    " the client's workspace root: the directory Claude Code was started in."
+)
+# A tool's own parameter that names the project, which the client's roots stand in for
+PROJECT_PATH_PARAMETER = "project_path"
 
 
 # A tool's parameters are its input schema, which an agent fills in flat (ADR 006, D10)
 async def search_code(  # noqa: PLR0913
     *,
     query: str,
-    project_path: str,
     ctx: Context[ProjectRegistry],
+    roots: Annotated[ListRootsResult, Resolve(client_roots)],
+    project_path: Annotated[str | None, Field(description=PROJECT_PATH_DESCRIPTION)] = None,
     limit: Annotated[int, Field(ge=1, le=MAX_RESULTS)] = DEFAULT_RESULTS,
     chunk_kinds: Annotated[list[ChunkKind] | None, Field(description=KINDS_DESCRIPTION)] = None,
     languages: Annotated[list[Language] | None, Field(description=LANGUAGES_DESCRIPTION)] = None,
@@ -82,7 +90,8 @@ async def search_code(  # noqa: PLR0913
     Args:
         query: Natural language description of what you're looking for.
         project_path: Absolute path to the project, or to a directory inside its git
-            repository, which keeps the search to that directory.
+            repository, which keeps the search to that directory; left out, the client's
+            workspace root.
         limit: Maximum number of results to return (default 10, at most 50).
         chunk_kinds: Only chunks of these kinds.
         languages: Only chunks of files in these languages.
@@ -100,7 +109,7 @@ async def search_code(  # noqa: PLR0913
         # Read before git is asked anything, so a glob refused costs nothing
         included = given_glob(path_glob)
         excluded = given_glob(exclude_glob)
-        location = await located_project(ctx, project_path)
+        location = await located_project(ctx, project_directory(project_path, roots))
         services = project_services(ctx, location.root)
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
@@ -119,8 +128,9 @@ async def search_code(  # noqa: PLR0913
 
 async def index_codebase(
     *,
-    project_path: str,
     ctx: Context[ProjectRegistry],
+    roots: Annotated[ListRootsResult, Resolve(client_roots)],
+    project_path: Annotated[str | None, Field(description=PROJECT_PATH_DESCRIPTION)] = None,
     force: bool = False,
 ) -> IndexCodebaseResponse:
     """Index a codebase for semantic search.
@@ -135,14 +145,14 @@ async def index_codebase(
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
             indexes the whole repository, unless the repository ignores it or holds the
-            user's home directory.
+            user's home directory. Left out, the client's workspace root.
         force: If True, re-index all files regardless of changes.
 
     Returns:
         The root of the project indexed, and what the run indexed and deleted.
     """
     with failures_as_tool_errors():
-        location = await located_project(ctx, project_path)
+        location = await located_project(ctx, project_directory(project_path, roots))
         services = project_services(ctx, location.root)
         report = await services.indexing.index(
             location.root, force=force, progress=ProgressReporter(ctx.report_progress)
@@ -152,8 +162,9 @@ async def index_codebase(
 
 async def index_status(
     *,
-    project_path: str,
     ctx: Context[ProjectRegistry],
+    roots: Annotated[ListRootsResult, Resolve(client_roots)],
+    project_path: Annotated[str | None, Field(description=PROJECT_PATH_DESCRIPTION)] = None,
 ) -> IndexStatusResponse:
     """Get the index status for a project.
 
@@ -175,16 +186,51 @@ async def index_status(
         counts of files and chunks.
     """
     with failures_as_tool_errors():
-        location = await located_project(ctx, project_path)
+        location = await located_project(ctx, project_directory(project_path, roots))
         services = project_services(ctx, location.root)
         status = await services.indexing.status(location.root)
         return present_status(status, location.root)
 
 
-async def located_project(ctx: Context[ProjectRegistry], project_path: str) -> ProjectLocation:
+def client_roots(
+    ctx: Context[ProjectRegistry], project_path: str | None = None
+) -> ListRoots | ListRootsResult:
+    """The client's workspace roots, asked of it only where a tool names no project_path;
+    a client that declares no roots is told to name one."""
+    if project_path is not None:
+        return ListRootsResult(roots=[])
+    capabilities = ctx.client_capabilities
+    if capabilities is None or capabilities.roots is None:
+        message = f"Give {PROJECT_PATH_PARAMETER}: this client names no workspace root"
+        raise ToolError(message)
+    return ListRoots()
+
+
+def project_directory(project_path: str | None, roots: ListRootsResult) -> Path:
+    """The directory a tool was asked about: the path it was given, else the client's one
+    workspace root; or a tool error saying why neither will do."""
+    if project_path is not None:
+        return existing_directory(project_path)
+    uris = [str(root.uri) for root in roots.roots]
+    if len(uris) != 1:
+        message = (
+            f"Give {PROJECT_PATH_PARAMETER}: the client names {len(uris)} workspace roots, "
+            f"not one ({', '.join(uris)})"
+        )
+        raise ToolError(message)
+    # A root is a file URI: the protocol refuses any other before a tool sees it
+    root = Path.from_uri(uris[0])
+    if not root.is_dir():
+        message = (
+            f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {root}, is no directory"
+        )
+        raise ToolError(message)
+    return root.resolve()
+
+
+async def located_project(ctx: Context[ProjectRegistry], directory: Path) -> ProjectLocation:
     """Where the directory a tool was asked about lies: its project's root and the
     directory under it, git asked in a worker thread."""
-    directory = existing_directory(project_path)
     registry = ctx.request_context.lifespan_context
     return await asyncio.to_thread(registry.locate, directory)
 
