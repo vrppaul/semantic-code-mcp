@@ -12,6 +12,9 @@ The store's interface speaks LanceDB, the index's life sits inside the LanceDB s
 
 ## Pending
 
+### A first search in seconds, not after the whole index
+The first search of a repository waits for its whole index, in one tool call: the owner's algotrading (1,399 files, 19,432 chunks) took 733 s, Sentry (87,694 chunks) about an hour, at about 26 chunks a second of embedding on a CPU; the speed target "a full index over 20 chunks a second" accepted that. These are the repositories where search helps an agent (ADR 008, pilot 5), so the product is unusable on first contact exactly where it is worth having: "Этот продукт нельзя использовать" (the owner, 2026-10-27). The index is kept per repository and machine, so the wait is paid once, and an edit re-indexes in about 150 ms; the first search is what fails. Ways out, strongest first: answer from the full-text index, built in seconds without the model, while the vectors are embedded in the background, and fuse the vectors in as they come; start indexing the session's workspace when the server starts; embed faster (the int8 export, about a quarter faster, measured in ADR 006 stage 7; a shorter input). Also the old background re-indexing: a search after a large change waits for the whole re-index, which answering from the old index while a new one builds would hide. Measure what an agent sees on a cold index with `evals agents` first, and set a target for the first answer on an unindexed repository. The owner has not yet said where this stands against fixing `evals agents` and the store's contract.
+
 ### Search quality: a bigger harness, a reranker, what is embedded
 Every ranking decision of ADR 006 rests on 66 chosen questions, where its criterion's step of 1.0 is about one question, judged by one judge per corpus with no agreement figure. A harness of 200 and more questions over more corpora and languages, with judge agreement, comes first; on it, a small cross-encoder reranking the first 30 hits (often the largest gain in code search, an estimated 20-40 ms on a CPU), and what the model embeds: a header of path, parent and signature, windows over bodies past the model's 256 tokens (13-30% of chunks), a class as its outline rather than its methods again (ADR 006, Q1 and Q2). A change of what is embedded builds every index again.
 
@@ -23,9 +26,6 @@ Each Claude Code session runs its own server: one model in memory each (about 55
 
 ### JavaScript, TypeScript and Go
 Web and systems projects are invisible to search today. Tree-sitter has the grammars. Wait for ADR 006's chunker base (span helper, fallback chunk, `CHUNKER_VERSION`) so new languages do not inherit its old holes, and spike tree-sitter tags queries as the per-language definition of a symbol first.
-
-### Background re-indexing
-A search after a large change waits for the whole re-index. Answering from the old index while a new one builds would hide that wait. The per-project lock and the files table it needed came with ADR 006's stage 5; a new index for another identity could be built beside the old one the same way.
 
 ### More tools: find_symbol, find_similar, list_indexed_files
 "Where is X defined" across languages, "code like this", and "what is indexed" are cheap given the index, and Grep answers the first only with every usage mixed in. ADR 006 defers them until the search surface settles.
