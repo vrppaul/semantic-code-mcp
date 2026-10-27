@@ -7,10 +7,10 @@ What we mean to build and why. How each epic is built lives in `docs/decisions/`
 ### Rebuild on mcp 2.x
 The published 0.4.0 does not start on mcp 2.x, the index dropped code without a word, search ranks prose over the code it describes, indexing runs 20–50× slower than our own target, and our gates passed without checking anything. `docs/decisions/006-rebuild-on-mcp-2.md` holds the plan in ten stages, from a hotfix to the skill and the plugin; the stages and their state live there.
 
-## Pending
-
 ### The index store behind a contract, and SQLite tried
 Swapping the store should be a class behind a tested contract, and today it is not: the interface speaks LanceDB, the index's life sits inside the LanceDB store, and the tests hold the implementation. LanceDB, made for large versioned datasets, cost most of the upkeep rules of ADR 006; SQLite's transactions, snapshots and exact full-text index fit an index replaced a file at a time. Done before the release, which builds every index again once anyway. `docs/decisions/007-storage-behind-a-contract.md` holds the plan.
+
+## Pending
 
 ### Search quality: a bigger harness, a reranker, what is embedded
 Every ranking decision of ADR 006 rests on 66 chosen questions, where its criterion's step of 1.0 is about one question, judged by one judge per corpus with no agreement figure. A harness of 200 and more questions over more corpora and languages, with judge agreement, comes first; on it, a small cross-encoder reranking the first 30 hits (often the largest gain in code search, an estimated 20-40 ms on a CPU), and what the model embeds: a header of path, parent and signature, windows over bodies past the model's 256 tokens (13-30% of chunks), a class as its outline rather than its methods again (ADR 006, Q1 and Q2). A change of what is embedded builds every index again.

@@ -1,6 +1,6 @@
 # 007: The index store behind a contract, and SQLite tried behind it
 
-**Status**: proposed
+**Status**: accepted
 **Date**: 2026-10-27
 **Continues**: 006 (D4 storage), before its release
 
@@ -9,21 +9,24 @@
 ADR 006 built the index on LanceDB, and a noticeable part of its stages 5 and 6 went into working around how LanceDB is made rather than into search: rows a write adds score on another scale until upkeep folds them into the full-text index, so every index run ends in upkeep; rows a write replaced keep weighing in that index's word statistics, so upkeep compacts once in 20 and at once past 5%; a reader failed when upkeep pruned the version it read, so versions live 10 s; pylance came in for the folding alone; LanceDB is held at 0.30.2 exactly (0.27's filtered full-text search lost matches, 0.32 to 0.40 scan vectors two to three times slower, 0.30.0 built in another Lance); and a write orders chunks, records and manifest, while every status reads the chunks' paths again to catch a write stopped between them. LanceDB is made for large columnar datasets written in versions; this index is thousands to about 100k rows, replaced a file at a time, read by other processes, and must give a reader a file's old chunks or its new ones. That is what SQLite is made for: a write in one transaction, readers on a snapshot beside one writer (WAL), and FTS5's full-text index kept exact row by row.
 
 Trying SQLite should be a matter of putting a second implementation behind the store's interface. Today it is not, though the store is injected (`StoreOpener`, chosen in `app.py`), import-linter keeps `lancedb` inside `storage/`, and the services, RRF fusion, the similarity floors and the name pass work on ranks and cosine similarity, so they would not change:
-- The interface speaks LanceDB: `IndexStore.keep_up()` is described as folding into the index's own indexes, pruning old versions and compacting.
+- The interface speaks LanceDB: `IndexStore.keep_up()` is described as folding into the index's own indexes, pruning old versions and compacting; `chunked_paths()` exists because a LanceDB write lays a file's chunks, then its record, then the manifest, and one stopped between them leaves chunks no record names; and `write` is described in that order.
 - The index's life is inside the LanceDB store: the directory of each identity and layout, the write lock beside it, the manifest, the use stamp, the sweep of unused indexes and of 0.4's leftovers, about 200 of `storage/lancedb.py`'s 810 lines, none of them about LanceDB. A second store would copy them.
-- The tests hold the implementation, not the contract: `tests/integration/test_lancedb_store.py` builds the class, the indexing tests build it through `open_index_store`, two of them edit its tables through `lancedb`, the fake of a cancelled write subclasses it, and unit tests import `scope_filter` and `cosine_similarities` from its module; evals import one of its constants.
+- The tests hold the implementation, not the contract: `tests/integration/test_lancedb_store.py` builds the class, the indexing tests build it through `open_index_store`, two of them edit its tables through `lancedb`, the fake of a cancelled write subclasses it, and unit tests import `scope_filter` and `cosine_similarities` from its module; evals import one of its constants. Tests build the store in 21 places and reach into it (its directory, its write lock) in 18.
 
-The release that follows ADR 006 builds every user's index again once, as the embedder's version is part of an index's identity. A change of the storage's schema made before it costs users nothing more; made after it, every user builds again. So the plan puts this work before the release. The owner asked for this record (2026-10-27); its steps wait for his word.
+The release that follows ADR 006 builds every user's index again once, as the embedder's version is part of an index's identity. A change of the storage's schema made before it costs users nothing more; made after it, every user builds again. So the plan puts this work before the release. The owner asked for this record and approved its steps on 2026-10-27: the SQLite probe before the release, as nothing presses, and compact hits in `search_code`'s answer before it too.
 
 ## Decision
 
 ### D1. A contract in the index's own terms
 
-`IndexStore` keeps its duties: the manifest, the files' records, the counts, the chunks' paths, stored vectors by chunk id, a write applied as a unit, and the candidates of both channels read from one consistent state. `keep_up()` becomes `end_run()`: the indexing service says what it knows, that a run has written its last slice, and each store decides what that asks of it. The hook stays, rather than folding into `write`, as LanceDB must fold rows after a run's last slice (ADR 006, stage 6: rows left unfolded score on another scale). The interface's documentation names no version, fragment or compaction.
+`IndexStore` keeps its duties: the manifest, the files' records, the counts, stored vectors by chunk id, a write applied as a unit, and the candidates of both channels read from one consistent state. Its documentation names no version, fragment, compaction or order of tables, and three members change:
+- `keep_up()` becomes `end_run()`: the indexing service says what it knows, that a run has written its last slice, and each store decides what that asks of it. The hook stays, rather than folding into `write`, as LanceDB must fold rows after a run's last slice (ADR 006, stage 6: rows left unfolded score on another scale). The service calls it after every run that wrote, a cancelled one too: today a run cancelled while its last write lands never asks for upkeep, and with no file left stale, no run comes to fold that write's rows until another edit [found by reading; a test shows it first].
+- `chunked_paths()` folds into `indexed_files()`, which reports, beside the record of each file, the paths the index holds chunks of without one, which a write stopped midway leaves in a store that lays chunks before records. LanceDB reads them as it does today; a store whose write is one transaction holds none. Planning asks the store one question where it asked two, and only the store that needs the read pays for it. What `indexed_files()` returns is a domain model, shown to the owner before it is written (AGENTS.md asks first).
+- `write` says what a reader finds, a file's old chunks or its new ones and never neither, and what a stopped write leaves, not the order one store lays its tables in.
 
 ### D2. The index's life in a component of its own
 
-`storage/index_directories.py` holds `IndexDirectory`: the directory of an index, named by its store's schema version and the identity's digest as today (`schema-<version>-<digest>`), and by a part naming the store's kind for any store but LanceDB; the write lock beside it; the manifest, written atomically; the stamp of use; the sweep of the project's unused indexes and 0.4's leftovers, under the rules ADR 006 settled (seven days, the lock taken without waiting, the rename out of reach). A store is built on a ready `IndexDirectory` and owns only its tables and its search. Each store's class names its kind and schema version, so another store, or another schema, is another directory, and the old one goes by the sweep: no migration. LanceDB's directories keep their names exactly, or every index would be built again for nothing. Import-linter's contract that keeps the write lock (filelock) in the store names `storage/index_directories.py` instead, and AGENTS.md's architecture lines change with it.
+`storage/index_directories.py` holds `IndexDirectory`: the directory of an index, named by its store's schema version and the identity's digest as today (`schema-<version>-<digest>`), with the store's kind after them for any store but LanceDB (`schema-<version>-<digest>-<kind>`), so the sweep's one pattern finds every kind's index; the write lock beside it; the manifest, written atomically; the stamp of use; the sweep of the project's unused indexes and 0.4's leftovers, under the rules ADR 006 settled (seven days, the lock taken without waiting, the rename out of reach). A store is built on a ready `IndexDirectory` and owns only its tables and its search. Each store's class names its kind and schema version, so another store, or another schema, is another directory, and the old one goes by the sweep: no migration. LanceDB's directories keep their names exactly, or every index would be built again for nothing. The sweep runs inside the read that finds the stamp an hour old, so a search can pay for removing a whole index [read, not measured]: the step measures that on an index of 100k chunks and takes the sweep off a request's path only if it costs more than a search's run-to-run spread. Import-linter's contract that keeps the write lock (filelock) in the store names `storage/index_directories.py` instead, and AGENTS.md's architecture lines change with it.
 
 ### D3. The composition root picks the store
 
@@ -41,34 +44,46 @@ Cosine similarity moves to `storage/similarity.py`. The reading of globs stays i
 - The indexing and search tests take their store from the factory; the two that edit tables directly are rewritten to what they mean; the cancelled write's fake wraps any store.
 - An import-linter contract keeps stores from importing one another.
 
+The factory comes first, before D2 changes how a store is built, so that change and every one after it touches one fixture rather than 21 places.
+
 ### D6. Versions held by what makes their output
 
-The version tests of ADR 006 hold the cases a hand-picked sample shows, and a review found nine chunker rules and the full-text index's settings outside it. Each version constant instead records a digest of what makes its output: for chunks, the chunkers' modules and the grammars' versions; for stored rows, `search_text.py`, the store's columns and its full-text index's parameters (as LanceDB's `index_stats` or FTS5's options give them); for vectors, the embedder's module and the versions of onnxruntime and tokenizers. A test fails when a digest moves without a new version, or without a recorded "output unchanged" for that digest. The samples stay, as the evidence of what changed.
+The version tests of ADR 006 hold the cases a hand-picked sample shows, and a review found nine chunker rules and the full-text index's settings outside it. Each version constant instead records a digest of what makes its output: for chunks, the chunkers' modules and the grammars' versions; for stored rows, `search_text.py`, the store's columns and its full-text index's parameters (as LanceDB's `index_stats` or FTS5's options give them); for vectors, the embedder's module and the versions of onnxruntime and tokenizers. The digest takes in the modules of the package those import too (`chunkers/base.py`, the domain's `Chunk`), or a change of a shared helper would pass unseen; so any change to them, even to a comment, asks its author whether the output moved. A test fails when a digest moves without a new version, or without a recorded "output unchanged" for that digest. The samples stay, as the evidence of what changed. D6 follows D7, as its digest of stored rows reads the full-text index's parameters from the store that stays.
 
 ### D7. SQLite, tried behind the contract
 
 `SqliteIndexStore`, a second implementation:
-- one database file in WAL mode; a write is one transaction (the files' chunks replaced, their records, the manifest), so the guard every status pays today, reading the chunks' paths again for a write stopped between chunks and records, costs it a plain query;
+- one database file in WAL mode; a write is one transaction (the files' chunks replaced, their records, the manifest), so the guard every status pays today, reading the chunks' paths again for a write stopped between chunks and records, costs it nothing;
 - the keyword channel on FTS5 over `search_text`, its tokenizer `unicode61`, with `porter` where it holds, checked to split identifiers as `search_text` expects and to keep stop words (ADR 006, stage 6);
 - vectors as float32 blobs, searched by a matrix kept in the process and read again when `PRAGMA data_version` says another connection wrote; `sqlite-vec` only if that fails a measure, as loading extensions is not in every Python build;
 - the scope as SQL, globs through a REGEXP function on Python's `re`.
 
-It is built as a second implementation behind the contract, on a branch or worktree, and reaches the main line only if taken. It passes the contract suite first. Then `evals quality` and `evals speed` run in turns against LanceDB through the server, on a cooled machine. SQLite is taken when, by ADR 006's criterion, neither kind of question nor either wording group loses 1.0 or more in chunk reciprocal-rank sum, bare names lose less than 1.0 and the off-topic questions get fewer than 10 results more; when warm search, a search after an edit and a full index are no slower beyond the spread of the turns; and when the install and the memory a server holds after its work are smaller. Then LanceDB, pylance and pyarrow go (the install, by estimate, from about 600 MB to about 250), the import at start grows lighter, an index opens in any `sqlite3`, and the store's kind names new directories. Otherwise LanceDB stays, and D1 to D6 stand on their own. The probe is bounded by these criteria, not run until SQLite wins, so the release does not drift.
+Known before the probe, and built in from its start:
+- FTS5 joins a query's words by AND, where LanceDB's full-text query joins them by OR (`MatchQuery`'s default), so a question would find almost nothing. The keyword channel splits the query into its words and joins them by OR, each quoted, which also keeps FTS5's own syntax out of an agent's question (`-x` in one failed with `no such column: x`, probed on SQLite 3.50.4).
+- The matrix and the full-text query read one state: the store reads `PRAGMA data_version` inside the transaction its full-text query runs in, and reloads the matrix there when another connection wrote. The value does not move for the connection's own writes, so a write marks its own matrix stale.
+- A write refreshes the matrix by the rows of the files it wrote, not whole: the whole matrix is 150 MB to read again at 100k chunks, against a target of 250 ms for a search after an edit, so the probe measures it at 100k chunks, not only on the corpora.
+- The scope applies to the matrix before it cuts, as a mask from one SQL query over the chunks' columns.
+- uv's CPython 3.14.3 on Linux has FTS5 (SQLite 3.50.4, probed); CI runs on Linux alone, so the macOS and Windows builds are checked before code is written.
+
+It is built as a second implementation behind the contract, on a branch or worktree, and reaches the main line only if taken. It passes the contract suite first. Then `evals quality` and `evals speed` run in turns against LanceDB through the server, on a cooled machine: `evals speed` gains the runs in turns this needs (ABBA, each begun as cool and idle as the machine gets within a cap), over the setting of D3, where stage 7 ran them from shell scripts outside the repository. SQLite is taken when, by ADR 006's criterion, neither kind of question nor either wording group loses 1.0 or more in chunk reciprocal-rank sum, bare names lose less than 1.0 and the off-topic questions get fewer than 10 results more; when warm search, a search after an edit and a full index are no slower beyond the spread of the turns; and when the install and the memory a server holds after its work are smaller. Then LanceDB, pylance and pyarrow go (the install, by estimate, from about 600 MB to about 250), the import at start grows lighter, an index opens in any `sqlite3`, and the store's kind names new directories. Otherwise LanceDB stays, and D1 to D6 stand on their own. The probe is bounded by these criteria, not run until SQLite wins, so the release does not drift.
 
 ### Order
 
 | Step | Content |
 |---|---|
-| 1 | D2: `IndexDirectory` out of the LanceDB store |
-| 2 | D1 and D4: `end_run`, the interface in the index's own terms, shared helpers out, evals without a store's constants |
-| 3 | D5: the contract suite and the factory |
-| 4 | D6: versions held by digests |
-| 5 | D7: SQLite behind the contract, measured in turns; the choice recorded here |
-| 6 | Markdown sections after a setext heading take their parent (ADR 006, open; a new `CHUNKER_VERSION`) |
-| 7 | A baseline of `evals speed` on the final code, on an idle machine |
-| 8 | The release, on the owner's word: the `pypi` environment's required reviewer, the version (0.5.0 proposed), the tag |
+| 1 | The break check of a test as a script of the repository: the testing rule asks that a rewritten test fail with its line broken, steps 2 to 5 move and rewrite tests, and the check lived in a session's scratch directory, which a reboot clears |
+| 2 | D5's factory: every test takes its store from one fixture; the contract suite's skeleton |
+| 3 | D2: `IndexDirectory` out of the LanceDB store |
+| 4 | D1 and D4: `end_run`, after a cancelled run too; `indexed_files()` with the unrecorded paths; the interface in the index's own terms; shared helpers out; evals without a store's constants |
+| 5 | D5's split: the contract suite, LanceDB's own tests, the import contract between stores |
+| 6 | D7: SQLite behind the contract, measured in turns; the choice recorded here |
+| 7 | D6: versions held by digests |
+| 8 | Markdown sections after a setext heading take their parent (ADR 006, open; a new `CHUNKER_VERSION`), the first change D6's test holds |
+| 9 | Compact hits in `search_code`'s answer (TODO.md, "What an agent gets"), in an ADR of its own: a change of a tool's answer, made once, before the release |
+| 10 | A baseline of `evals speed` on the final code, on an idle machine |
+| 11 | The release, on the owner's word: the `pypi` environment's required reviewer, the version (0.5.0 proposed), the tag |
 
-Each step is a chunk of work reviewed before the next. Steps 1 to 3 change no behaviour: every test still holds what it held, moved onto the factory; the two that edited LanceDB's tables are rewritten to what they meant, and the cancelled write's fake wraps any store. By estimate, steps 1 to 3 take about a session, the SQLite probe half of one, and a full swap one to two.
+Each step is a chunk of work reviewed before the next. Steps 2 to 5 change no behaviour but the fold after a cancelled run: every test still holds what it held, moved onto the factory; the two that edited LanceDB's tables are rewritten to what they meant, and the cancelled write's fake wraps any store. By estimate, steps 1 to 5 take about a session, the SQLite probe half of one to one, and a full swap one to two.
 
 ## Alternatives Considered
 
