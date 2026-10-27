@@ -100,6 +100,19 @@ def client(test_settings: Settings, embedder: OnnxEmbedder) -> Client:
     return Client(create_app(test_settings, embedder=embedder), mode="legacy")
 
 
+async def test_only_the_search_tool_asks_to_come_with_the_prompt(client: Client):
+    """Claude Code defers a server's tools behind its tool search unless a tool asks
+    otherwise; an agent that must look a tool up first spends a turn on it."""
+    async with client:
+        tools = (await client.list_tools()).tools
+
+    assert {tool.name: tool.meta for tool in tools} == {
+        "search_code": {"anthropic/alwaysLoad": True},
+        "index_codebase": None,
+        "index_status": None,
+    }
+
+
 async def test_search_returns_the_function_the_query_describes(project: Path, client: Client):
     async with client:
         result = await client.call_tool(

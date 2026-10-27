@@ -27,6 +27,11 @@ PACKAGE_NAME = "semantic-code-mcp"
 # How long a write waits while another server process writes the same index; a write
 # takes seconds at most, embedding having happened before it
 WRITE_LOCK_TIMEOUT_SECONDS = 60.0
+# The key of a tool's `_meta` that asks Claude Code to load the tool with the prompt, not
+# behind its tool search: there, an agent spends a turn looking the tool up, and on a
+# repository it did not know it took the search in 10 of 15 sessions against 15 of 15
+# with the tool loaded (ADR 008, pilots 5 and 6)
+ALWAYS_LOAD_KEY = "anthropic/alwaysLoad"
 # The level MCPServer sets Python's own logging to, with a handler on stderr: the records
 # of the libraries below it, as httpx's for each model file the hub fetches, would land
 # among the server's JSON lines
@@ -49,7 +54,10 @@ def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegis
         middleware=middleware,
         log_level=LIBRARY_LOG_LEVEL,
     )
-    for tool in (search_code, index_codebase, index_status):
+    server.add_tool(search_code, meta={ALWAYS_LOAD_KEY: True})
+    # Indexing runs inside every search, so an agent seldom needs these: they wait behind
+    # the client's tool search rather than fill every request
+    for tool in (index_codebase, index_status):
         server.add_tool(tool)
     return server
 

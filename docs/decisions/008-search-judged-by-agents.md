@@ -47,6 +47,23 @@ An agent's path through a task varies from run to run, so each task runs several
 
 4. The same, the server's MCP config marked `alwaysLoad`, so Claude Code puts its tools in the prompt rather than behind tool search: 9 of 9 right, 8 of them in 2 turns and one search, no `ToolSearch`. Per session on click $0.056-0.064 (the first $0.118, as its cache was new), on this repository $0.062-0.077: within the own tools' range here, a quarter above it on click. Claude Code reads a tool's own `_meta` too (`anthropic/alwaysLoad`, `anthropic/searchHint`), so the server can ask for it without the user's config; loaded always, the tools' descriptions sit in every request of every session, searched or not.
 
+5. The owner's algotrading repository, private, so no model has seen it: 1,399 files indexed, 19,432 chunks. Fifteen questions written from chunks sampled at random (eleven of code, four of documentation), worded without their names, each once in three arms, the server marked `alwaysLoad`:
+
+   | | own tools | with search | search first |
+   |---|---|---|---|
+   | right | 12 of 15 | 14 of 15 | 14 of 15 |
+   | turns, mean (range) | 4.7 (3-9) | 2.1 (2-3) | 2.0 |
+   | context read from cache, mean | 107k | 49k | 49k |
+   | cost, mean | $0.116 | $0.103 | $0.103 |
+   | time, mean | 15.8 s | 11.7 s | 10.7 s |
+   | sessions that searched | 0 | 15 | 15 |
+
+   Unprompted, the agent took `search_code` in every session: here the search halved the turns and the context read, and cut the cost by a tenth and the time by a quarter. The one answer scored wrong in the search arms, `StrategyRepository.get_enabled_by_setup_id` for a question that asks for the enabled strategies, is right by its words and goes into the key; of the own tools' three, one took a method of the right class and one another section of the right file.
+
+6. The same fifteen, with search, its tools deferred as Claude Code defers them by default: 14 of 15 right, the search taken in 10 of 15 sessions (Grep in the rest), 2.7 turns and 74k of context read on average. So an unknown repository is what makes an agent search; a tool in the prompt makes it search every time and spares the turn of looking the tool up. The server now marks `search_code` so (`_meta` `anthropic/alwaysLoad`), and three of those questions asked again with no `alwaysLoad` in the config each went to the search at once, in 2 turns.
+
+   A session's cost as Claude Code reports it is a third to a half the writing of the prompt into the cache, at twice the price of input, and how much a session writes depends on the order sessions run in: about 24k tokens each in pilot 5, whose arms took turns, against 11.5k in pilot 6, which ran one arm. Costs are compared within one run alone; across runs, the turns and the context read are.
+
 The first 31 sessions cost about $1.8 as Claude Code reports cost, at 7 to 22 s each, and moved the five-hour window by about two points with the author's own work beside them. So on repositories of 60 to 130 files an agent with Grep finds what these questions ask in one search of its own and never picks this server, skill or not; made to use it, the server finds the same answers in one call, at the same cost or more. What remains to measure is where Grep's guesses fail: a repository of thousands of files, whose words a model cannot guess and does not know, with questions keyed for it; and what compact hits save of the search's answer.
 
 ## Alternatives Considered
