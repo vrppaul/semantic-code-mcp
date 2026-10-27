@@ -1,6 +1,6 @@
 # 007: The index store behind a contract, and SQLite tried behind it
 
-**Status**: accepted
+**Status**: accepted; D7, SQLite, turned down on its spike (2026-10-27)
 **Date**: 2026-10-27
 **Continues**: 006 (D4 storage), before its release
 
@@ -70,20 +70,29 @@ Known before the probe, and built in from its start:
 
 It is built as a second implementation behind the contract, on a branch or worktree, and reaches the main line only if taken. It passes the contract suite first. Then `evals quality` and `evals speed` run in turns against LanceDB through the server, on a cooled machine: `evals speed` gains the runs in turns this needs (ABBA, each begun as cool and idle as the machine gets within a cap), over the setting of D3, where stage 7 ran them from shell scripts outside the repository. SQLite is taken when, by ADR 006's criterion, neither kind of question nor either wording group loses 1.0 or more in chunk reciprocal-rank sum, bare names lose less than 1.0 and the off-topic questions get fewer than 10 results more; when warm search, a search after an edit and a full index are no slower beyond the spread of the turns, on the corpora and at 100k chunks; when agents find their answers as often, at no more tokens, as with LanceDB (step 1); and when the install and the memory a server holds after its work are smaller. Then LanceDB, pylance and pyarrow go (the install, by estimate, from about 600 MB to about 250), the import at start grows lighter, an index opens in any `sqlite3`, and the store's kind names new directories. Otherwise LanceDB stays, and D1 to D6 stand on their own. The probe is bounded by these criteria, not run until SQLite wins, so the release does not drift.
 
+### D7's result: SQLite turned down (2026-10-27)
+
+A throwaway spike at 100k chunks (windows of 12 lines of the installed packages' Python, the harness's 66 questions, SQLite 3.50.4, `unicode61`):
+- The keyword channel: FTS5 with every word of a question joined by OR took 96 ms at the median, 135 at p90 and 385 at most, against 7, 11 and 16 for LanceDB 0.30.2 on the same rows; with the stop words left out of the query, 14.5, 40 and 77; with the words of more than 5% of the chunks left out, 33, 68 and 112. On one query the engines rank alike: FTS5's first 20 with every word shared 91% with LanceDB's, the fast forms 62-63% with FTS5's own.
+- The fast form costs ranking: leaving the stop words out of the query, tried on LanceDB through `evals quality`, lost 1.75 in chunk reciprocal-rank sum on code questions (37.09 to 35.33) and 2.5 on documentation (12.0 to 9.5), and the near off-topic questions got 26 results against 19, failing ADR 006's criterion on both kinds.
+- The matrix held: read whole in 263 ms, refreshed by rows after another connection's edit of 50 chunks in 27 ms (most of it copying the matrix, which spare rows would avoid), searched in 6 ms, 12 within a scope of 30%.
+
+So SQLite's keyword channel is as good and 13 times slower at 100k chunks, or as fast and worse: D7 ends, and LanceDB stays. What SQLite would bring beside speed, a write in one transaction, would spare the store's code a guard that already works (the chunks' paths read again at each status, 29 ms at 100k chunks) and nothing a user sees; the owner saw no reason in it either (2026-10-27). Not measured: the full form at the usual 2k to 20k chunks, where its cost, which grows with the rows a word matches, may fit the targets; with a slower worst case and no gain a user sees, it was not pursued.
+
+With one store, D1 to D6 shrink: D2's directories need no kind in their names, D3's setting never comes, D5's suite runs over LanceDB from one fixture with no parameter of stores, and no contract between stores is needed; D6's digest of stored rows reads LanceDB's `index_stats`. D1's flag in the files table may replace the read of the chunks' paths, weighed in its step.
+
 ### Order
 
 | Step | Content |
 |---|---|
 | 1 | Search judged by agents, in an ADR of its own: agents given questions whose answers the harness keys, with Grep alone and with this search, scored by their answers, tokens and tool calls, each question asked several times; a pilot of about ten sessions first, to price a run on the owner's subscription before any larger one. It comes first, as no change of the product is shown to help an agent without it |
-| 2 | D5's factory: every test takes its store from one fixture; the contract suite's skeleton |
+| 2 | D5's fixture: every test takes its store from one fixture |
 | 3 | D2: `IndexDirectory` out of the LanceDB store |
 | 4 | D1 and D4: the fold inside a run's last write; `indexed_files()` with the unrecorded paths; the interface in the index's own terms; shared helpers out; evals without a store's constants |
-| 5 | D5's split: the contract suite, LanceDB's own tests, the import contract between stores |
-| 6 | A spike of D7's two risks at 100k chunks, in throwaway code: a form of FTS5's query within LanceDB's speed, and the matrix refreshed by rows for another process's writes. If either cannot be held, D7 ends here; steps 2 to 5 stand on their own |
-| 7 | D7: SQLite behind the contract, measured in turns and by agents; the choice recorded here |
-| 8 | D6: versions held by digests |
+| 5 | D5's split: the contract's tests apart from LanceDB's own |
+| 6 | D6: versions held by digests |
 
-The steps fall into chunks of work, each reviewed once, over its whole range, after its last commit: search judged by agents (1), the store made swappable (2 to 5), SQLite (6, 7), the digests (8). Steps 2 to 5 change no behaviour but the fold after a cancelled run: every test still holds what it held, moved onto the factory; the two that edited LanceDB's tables are rewritten to what they meant, and the cancelled write's fake wraps any store. By estimate, steps 2 to 5 take about a session, the SQLite probe half of one to one, and a full swap one to two. What comes after them before the release, and is not the store's, is in ADR 006's stages.
+The spike of D7 ran and ended it (above). The steps fall into chunks of work, each reviewed once, over its whole range, after its last commit: search judged by agents (1), the store's contract (2 to 5), the digests (6). Steps 2 to 5 change no behaviour but the fold after a cancelled run: every test still holds what it held, moved onto the fixture; the two that edited LanceDB's tables are rewritten to what they meant, and the cancelled write's fake wraps any store. By estimate, steps 2 to 5 take about a session. What comes after them before the release, and is not the store's, is in ADR 006's stages.
 
 ## Alternatives Considered
 
@@ -95,8 +104,6 @@ The steps fall into chunks of work, each reviewed once, over its whole range, af
 
 ## Consequences
 
-- A second store, or a third, is a class behind a tested contract, and `storage/lancedb.py` holds only what is LanceDB's.
-- With SQLite, each server process holds its index's vectors in memory: about 150 MB at 100k chunks in float32 (38 MB in int8), 3 to 30 MB at the usual 2k to 20k. Past a few hundred thousand chunks a scan grows slow, and an ANN index comes in.
-- The keyword channel's ranking moves with the engine: only the harness says whether it holds.
-- Done before the release, a new kind of store costs users nothing beyond the one rebuild the release brings.
-- If SQLite is taken, ADR 006's open item on the upkeep counter and TODO's "LanceDB index tuning" fall away. A daemon per user, which would give each index one writer and a file watcher, is a decision of its own after the release.
+- A second store, should one come, is a class behind a tested contract, and `storage/lancedb.py` holds only what is LanceDB's.
+- LanceDB stays, and with it its upkeep, its pin at 0.30.2, pylance and pyarrow in the install, ADR 006's open item on the upkeep counter and TODO's "LanceDB index tuning".
+- A daemon per user, which would give each index one writer and a file watcher, is a decision of its own after the release.

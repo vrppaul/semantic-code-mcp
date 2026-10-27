@@ -324,7 +324,7 @@ The project rules say to ask before changing the storage schema, the tool signat
 
 ### Stages
 
-Progress: stages 0–7 are done on branch `rebuild-on-mcp-2` (0–4 on 2026-10-25, 5 and 6 on 2026-10-26, 7 on 2026-10-27); stage 8 is built and has had its final review (the Fable review of stages 5 to 8, 2026-10-27); what stays open before the release is listed under "Open, and left as they are for now", and ADR 007 (the index store behind a contract, SQLite tried) comes before it too. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
+Progress: stages 0–7 are done on branch `rebuild-on-mcp-2` (0–4 on 2026-10-25, 5 and 6 on 2026-10-26, 7 on 2026-10-27); stage 8 is built and has had its final review (the Fable review of stages 5 to 8, 2026-10-27); what stays open before the release is listed under "Open, and left as they are for now", and ADR 007 (the index store behind a contract; SQLite tried behind it and turned down) comes before it too. Stage 4 also landed the D10 parts that need no new search features (`ToolError`, one return type per tool, `include_debug`, the `limit` cap) and D11's settings clean-up; D3's new chunk fields wait for the storage schema of stage 5.
 
 As built, stage 4 differs from D2, D7, D8, D10 and D11 in these points:
 - `cli.py` builds `Settings` and configures logging; `app.py` builds the server, and its lifespan yields the `ProjectRegistry` itself rather than an `AppContext` around it.
