@@ -1,0 +1,30 @@
+name: Fresh resolve
+
+# `uvx semantic-code-mcp` ignores uv.lock and resolves the newest versions within the
+# bounds of pyproject.toml (ADR 006, D14). Once a week, this runs the suite on that
+# resolve, so a dependency's new release that breaks the server is seen before a user
+# installs it, and not only when the lock next moves.
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      # The newest versions within the bounds, as a fresh install takes them
+      - run: uv lock --upgrade
+      - run: git diff --stat uv.lock
+      - run: uv sync
+      # The tests load the real embedding model; keep its download between runs
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-all-MiniLM-L6-v2
+      - run: uv run pytest -v
