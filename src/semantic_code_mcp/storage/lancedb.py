@@ -2,10 +2,11 @@
 each file they came from, and the manifest of what built them.
 
 A project's index directory holds an index for each identity — the model and its
-revision, the chunker version — and layout, each in a directory of its own named after
-them, with its write lock beside it. So a session of another model, revision or version,
-or a server upgraded or rolled back, uses an index of its own and never builds this one
-again; switching back finds the old one still there.
+revision, the embedder's version, the chunker's version — and layout, each in a
+directory of its own named after them, with its write lock beside it. So a session of
+another model, revision or version, or a server upgraded or rolled back, uses an index
+of its own and never builds this one again; switching back finds the old one still
+there.
 
 An index nobody used for UNUSED_INDEX_RETENTION is removed, and so is what 0.4 kept
 directly in the project's directory. A write renames a new manifest into the index's

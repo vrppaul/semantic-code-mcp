@@ -7,8 +7,8 @@ time, each slice's chunks taking the place of what the index held of those files
 reader always finds every file's old chunks or its new ones, and a run stopped midway
 keeps the slices it wrote. A chunk whose text the index holds already keeps its stored
 vector, so an edit embeds only the chunks it changed; a forced run embeds everything
-again. The index is the one of this server's model and chunker version; the store keeps
-those of others apart.
+again. The index is the one of this server's model, embedder version and chunker
+version; the store keeps those of others apart.
 """
 
 import asyncio
