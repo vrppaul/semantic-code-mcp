@@ -27,11 +27,14 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - run: uv sync
-      # The tests load the real embedding model; keep its download between runs
+      # The tests load the real embedding model; keep its download between runs. The
+      # embedder's module pins the model's revision, so a new pin saves a new entry,
+      # starting from the last one
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/huggingface
-          key: huggingface-all-MiniLM-L6-v2
+          key: huggingface-${{ hashFiles('src/semantic_code_mcp/embedding.py') }}
+          restore-keys: huggingface-
       - run: uv run pytest -v
 
   build:

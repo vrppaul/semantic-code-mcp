@@ -14,17 +14,16 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  # The suite ran on the lock; a user's `uvx` takes the newest versions within the
-  # bounds instead. A release ships only a lock a fresh resolve would leave as it is,
-  # so what the suite and the harness ran on is what users install (ADR 006, D14):
-  # move the lock (`uv lock --upgrade`) and run everything on it before tagging
+  # The suite ran on the lock; a user's `uvx` takes the newest runtime versions within
+  # the bounds instead. A release ships only a lock whose runtime packages a fresh
+  # resolve takes, so what the suite and the harness ran on is what users install
+  # (ADR 006, D14). The same check runs before tagging (.claude/rules/publishing.md)
   fresh-lock:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-      - run: uv lock --upgrade
-      - run: git diff --exit-code uv.lock
+      - run: uv run --no-project python scripts/check_fresh_lock.py
 
   publish:
     name: Build and publish
