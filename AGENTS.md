@@ -22,7 +22,7 @@ Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers (all-Mini
 ## How we work
 
 - **The plan is ADR 006.** `docs/decisions/006-rebuild-on-mcp-2.md` holds the stages; work follows them and the ADR changes when the plan does.
-- **Small chunks.** One logical piece at a time, committed on its own, then reviewed by an independent reviewer before the next.
+- **Small chunks.** One logical piece at a time, committed on its own, then reviewed by an independent reviewer (`.claude/agents/search-reviewer.md`) before the next.
 - **Tests hold behaviour.** A behaviour someone can name gets a test first, seen failing, at the cheapest level: `.claude/rules/testing.md`.
 - **Review before presenting.** Read every changed line: the right layer? redundant work? every line needed?
 - **Speed and search quality are measured**, never judged by feel; a change to either says its numbers.
