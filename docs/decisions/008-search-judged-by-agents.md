@@ -68,6 +68,20 @@ An agent's path through a task varies from run to run, so each task runs several
 
 The first 31 sessions cost about $1.8 as Claude Code reports cost, at 7 to 22 s each, and moved the five-hour window by about two points with the author's own work beside them. So on repositories of 60 to 130 files an agent with Grep finds what these questions ask in one search of its own and never picks this server, skill or not; made to use it, the server finds the same answers in one call, at the same cost or more. What remains to measure is where Grep's guesses fail: a repository of thousands of files, whose words a model cannot guess and does not know, with questions keyed for it; and what compact hits save of the search's answer.
 
+
+### Open, from the review of `d215faa..6c1cd97` (2026-10-27, ACCEPT WITH FIXES)
+
+The harness's verdicts are not yet to be trusted; before another run spends the subscription:
+- **Scoring.** `symbol_matches` rewards a qualified answer and reads no key's parent: `StrategyRepository.get_enabled_by_setup_id` scored right and `get_enabled_by_setup_id` wrong for one method, which favours the search arm, as hits carry the parent; `Choice.convert` passes a key `convert` of `_NumberRangeBase`; `put_if_absent()` fails. Resolve an answer to the chunks of the file it names (the chunker gives name and parent) and match keys as `evals quality` does, the parent where a key gives one; a bare name of several parents goes to judging; the member rule, if kept, holds bare and qualified names alike.
+- **Context and cost.** Claude Code's cost fits $2 a million input, $0.10 cache read, $4 cache write (1h) and $10 output on Sonnet: cache writes are 64-94% of a session's cost, not "a third to a half" (pilot 6 above), and what one session writes a later one reads. Report whole prompt tokens (input, cache read and cache write) as the context; take the arms in alternating order per question; drop cost from comparisons or price all prompt tokens at one rate. Whole prompt tokens shrink the gaps reported above: compact hits 81k against 73k, pilot 6 against 5 86k against 72k.
+- **Failures.** A timeout reads as a session of 0 turns and $0; `is_error`, `subtype` and the exit code are never read, so a lapsed login or a spent limit reads as cheap wrong sessions and the run exits 0. An outcome per session (answered, no answer, timed out, failed), failed ones kept out of the means, the run stopped on an error result.
+- **Raw data.** Keep each session's stream-json and each run's report under the run's own name (git-ignored), so a judged key rescores without new sessions.
+- **Noise (D4, D5).** No question has been asked twice; the summary holds means alone. Add per-question wins, ties and losses in turns and prompt tokens; settle D5 by asking algotrading's fifteen three times.
+- **Isolation (D3).** The corpus's own CLAUDE.md, AGENTS.md, `.claude/rules/`, skills, commands and settings reach every session, beside the account's synced skills; Sentry ships `.claude/settings.json`. Shut project settings out (`--setting-sources user`), say in D3 whether the corpus's instructions stay (real users have them), pass a minimal environment (an `ANTHROPIC_API_KEY` would bill the API), refuse a session whose init shows an API key.
+- **Defaults.** With no `--corpus`, `agents` asks click, fd and this repository, which show no signal (about 130 sessions): require a corpus. Record the model and Claude Code's version from the init event, not the alias.
+- **Figures above.** Pilot 5's "right" row matches neither scorer; with the member rule the gap on algotrading is one question (q13): the gain there is turns, prompt and time, not correctness.
+- **What the harness hides.** It keeps the index warm; algotrading's first index took 733 s and Sentry's about an hour, so search helps most where the first session waits longest. And an arm cannot yet name another build of the server.
+
 ## Alternatives Considered
 
 - **The owner's own configuration.** His instructions, hooks and plugins would reach every session, and his `CLAUDE.md` asks the agent to wait for his word.
