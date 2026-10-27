@@ -7,6 +7,7 @@ paths:
 
 The gates of our own, which no linter here can be told to keep. How each is built is said at its top.
 
+- A script here is a gate pre-commit or CI runs; nothing else is committed here.
 - A script says at its top why it exists and how it is run, what it prints and every code it exits with.
 - It is run in the repository's root and does its whole job in one process start.
 - A gate taken from claude-review says so at its top, and what it left out.

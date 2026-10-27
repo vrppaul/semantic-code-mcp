@@ -22,7 +22,9 @@ Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers (all-Mini
 ## How we work
 
 - **The plan is ADR 006.** `docs/decisions/006-rebuild-on-mcp-2.md` holds the stages; work follows them and the ADR changes when the plan does.
-- **Small chunks.** One logical piece at a time, committed on its own, then reviewed by an independent reviewer (`.claude/agents/search-reviewer.md`) before the next.
+- **Chunks of work.** A chunk is a large block of the plan, a group of an ADR's steps, in many commits; an independent reviewer (`.claude/agents/search-reviewer.md`) reads its whole range once, before the next starts.
+- **Product first.** Effort goes to what users get, and to what measures or gates it: `evals/` and the gates pre-commit or CI runs.
+- A helper for the author's own work (a probe, a runner, a check run by hand) is throwaway code in the session's scratch directory: no tests, no review, never committed; where git, pytest or shell does the job, none is written.
 - **Tests hold behaviour.** A behaviour someone can name gets a test first, seen failing, at the cheapest level: `.claude/rules/testing.md`.
 - **Review before presenting.** Read every changed line: the right layer? redundant work? every line needed?
 - **Speed and search quality are measured**, never judged by feel; a change to either says its numbers.
