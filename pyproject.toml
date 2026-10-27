@@ -323,4 +323,7 @@ ignore_names = [
     "symbol",
     "logical_cores",
     "python",
+    # The recorders of what each version made, which the version tests compare: run by hand
+    "record_chunks",
+    "record_vectors",
 ]

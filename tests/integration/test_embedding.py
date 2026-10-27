@@ -2,6 +2,8 @@
 
 import json
 import shutil
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import huggingface_hub.constants
@@ -10,10 +12,12 @@ import onnx
 import pytest
 from huggingface_hub import hf_hub_download
 from onnx import TensorProto, helper
+from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.embedding import (
     ALL_MINILM_L6_V2_REVISION,
     ATTENTION_MASK,
+    EMBEDDER_VERSION,
     INPUT_IDS,
     MODULES_FILE,
     ONNX_MODEL_FILE,
@@ -35,6 +39,11 @@ from tests.fakes import EMBEDDING_DIMENSION
 REFERENCE_VECTORS = Path(__file__).parent.parent / "data" / "all_minilm_l6_v2_vectors.json"
 # How far a component may stray from the reference: batching alone moves it by 6e-8
 COMPONENT_TOLERANCE = 1e-5
+# A few texts, and the vectors each EMBEDDER_VERSION made of them under every way the
+# embedder reads a model; a vector's leading components, which any change of reading moves
+RECORDED_VECTORS = Path(__file__).parent.parent / "data" / "embedder_outputs.json"
+LEADING_COMPONENTS = 16
+RECORD_INDENT = 2
 HUB_REPOSITORY = f"sentence-transformers/{MODEL_NAME}"
 # The files the embedder reads of a model, which a test copies into a directory
 MODEL_FILES = (
@@ -227,6 +236,87 @@ def drop_token_types(path: Path) -> None:
     onnx.save(export, str(path))
 
 
+class ReadingVectors(BaseModel):
+    """What one way of reading the model made of each text: its vector's leading components."""
+
+    model_config = ConfigDict(frozen=True)
+
+    reading: str
+    leading_components: list[list[float]]
+
+
+class RecordedVectors(BaseModel):
+    """Texts, and what each EMBEDDER_VERSION made of them under every way of reading."""
+
+    model_config = ConfigDict(frozen=True)
+
+    texts: list[str]
+    vectors: dict[int, list[ReadingVectors]]
+
+
+def published_model(_directory: Path) -> str:
+    """The default model as its hub repository holds it."""
+    return MODEL_NAME
+
+
+def lowercasing_model(directory: Path) -> str:
+    """The default model, its config saying to lowercase over a tokenizer that keeps case."""
+    return str(copy_with_case(directory, LOWERCASING_CONFIG, CASE_KEEPING_NORMALIZER))
+
+
+def model_of_no_limit(directory: Path) -> str:
+    """The default model, naming no limit of its own over a tokenizer that names none."""
+    copy_of_the_model(directory)
+    (directory / SENTENCE_BERT_CONFIG_FILE).write_text(json.dumps(NO_LIMIT_OF_ITS_OWN))
+    (directory / TOKENIZER_CONFIG_FILE).write_text(json.dumps(NO_TOKENIZER_LIMIT))
+    return str(directory)
+
+
+def model_without_token_types(directory: Path) -> str:
+    """The default model, its export taking no token types."""
+    copy_of_the_model(directory)
+    drop_token_types(directory / ONNX_MODEL_FILE)
+    return str(directory)
+
+
+# Each way the embedder reads a model that the default model can be made to show, by a
+# name that is also its directory's, and what makes such a model there
+READINGS: dict[str, Callable[[Path], str]] = {
+    "published": published_model,
+    "lowercasing": lowercasing_model,
+    "no-limit": model_of_no_limit,
+    "no-token-types": model_without_token_types,
+}
+
+
+def readings_of(texts: list[str], directory: Path) -> list[ReadingVectors]:
+    """What every way of reading the model makes of the texts, each model made under the
+    directory."""
+    return [
+        ReadingVectors(
+            reading=reading,
+            leading_components=OnnxEmbedder(model_at(directory / reading))
+            .embed_documents(texts)[:, :LEADING_COMPONENTS]
+            .tolist(),
+        )
+        for reading, model_at in READINGS.items()
+    ]
+
+
+def record_vectors() -> None:
+    """Record what every way of reading makes of the texts under the current
+    EMBEDDER_VERSION. Run it by hand from the repository's root, through `uv run python -c`
+    and an import of this module. A version recorded before keeps what it made: bump the
+    version rather than record over it."""
+    recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text())
+    with tempfile.TemporaryDirectory() as directory:
+        readings = readings_of(recorded.texts, Path(directory))
+    updated = RecordedVectors(
+        texts=recorded.texts, vectors=recorded.vectors | {EMBEDDER_VERSION: readings}
+    )
+    RECORDED_VECTORS.write_text(updated.model_dump_json(indent=RECORD_INDENT) + "\n")
+
+
 def test_the_model_is_not_loaded_before_the_first_text():
     assert OnnxEmbedder(MODEL_NAME).is_loaded is False
 
@@ -257,6 +347,23 @@ def test_the_vectors_are_those_sentence_transformers_gave(embedder: OnnxEmbedder
     vectors = embedder.embed_documents(reference["texts"])
 
     assert numpy.allclose(vectors, reference["vectors"], atol=COMPONENT_TOLERANCE)
+
+
+def test_the_embedder_s_version_names_the_vectors_it_makes(tmp_path: Path):
+    """An index holds the vectors of one EMBEDDER_VERSION, so a change to how the embedder
+    reads a model needs a new version, whose vectors `record_vectors` records; none
+    recorded fails here."""
+    recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text())
+
+    readings = readings_of(recorded.texts, tmp_path)
+
+    expected = recorded.vectors.get(EMBEDDER_VERSION, [])
+    assert [reading.reading for reading in readings] == [reading.reading for reading in expected]
+    assert numpy.allclose(
+        [reading.leading_components for reading in readings],
+        [reading.leading_components for reading in expected],
+        atol=COMPONENT_TOLERANCE,
+    )
 
 
 def test_a_model_in_a_directory_embeds_as_the_hub_s(embedder: OnnxEmbedder, tmp_path: Path):
