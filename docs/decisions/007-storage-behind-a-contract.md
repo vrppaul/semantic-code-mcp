@@ -13,7 +13,7 @@ Trying SQLite should be a matter of putting a second implementation behind the s
 - The index's life is inside the LanceDB store: the directory of each identity and layout, the write lock beside it, the manifest, the use stamp, the sweep of unused indexes and of 0.4's leftovers, about 200 of `storage/lancedb.py`'s 810 lines, none of them about LanceDB. A second store would copy them.
 - The tests hold the implementation, not the contract: `tests/integration/test_lancedb_store.py` builds the class, the indexing tests build it through `open_index_store`, two of them edit its tables through `lancedb`, the fake of a cancelled write subclasses it, and unit tests import `scope_filter` and `cosine_similarities` from its module; evals import one of its constants. Tests build the store in 21 places and reach into it (its directory, its write lock) in 18.
 
-The release that follows ADR 006 builds every user's index again once, as the embedder's version is part of an index's identity. A change of the storage's schema made before it costs users nothing more; made after it, every user builds again. So the plan puts this work before the release. The owner asked for this record and approved its steps on 2026-10-27: the SQLite probe before the release, as nothing presses, and compact hits in `search_code`'s answer before it too.
+The release that follows ADR 006 builds every user's index again once, as the embedder's version is part of an index's identity. A change of the storage's schema made before it costs users nothing more; made after it, every user builds again. So the plan puts this work before the release. The owner asked for this record and approved its steps on 2026-10-27: the SQLite probe before the release, as nothing presses, and compact hits in `search_code`'s answer before it too; and asked that search be judged by agents using it, as the harness ranks chunks but cannot say whether an agent finds its answer sooner.
 
 ## Decision
 
@@ -65,7 +65,7 @@ Known before the probe, and built in from its start:
 - The scope applies to the matrix before it cuts, as a mask from one SQL query over the chunks' columns.
 - uv's CPython 3.14.3 on Linux has FTS5 (SQLite 3.50.4, probed); CI runs on Linux alone, so the macOS and Windows builds are checked before code is written.
 
-It is built as a second implementation behind the contract, on a branch or worktree, and reaches the main line only if taken. It passes the contract suite first. Then `evals quality` and `evals speed` run in turns against LanceDB through the server, on a cooled machine: `evals speed` gains the runs in turns this needs (ABBA, each begun as cool and idle as the machine gets within a cap), over the setting of D3, where stage 7 ran them from shell scripts outside the repository. SQLite is taken when, by ADR 006's criterion, neither kind of question nor either wording group loses 1.0 or more in chunk reciprocal-rank sum, bare names lose less than 1.0 and the off-topic questions get fewer than 10 results more; when warm search, a search after an edit and a full index are no slower beyond the spread of the turns; and when the install and the memory a server holds after its work are smaller. Then LanceDB, pylance and pyarrow go (the install, by estimate, from about 600 MB to about 250), the import at start grows lighter, an index opens in any `sqlite3`, and the store's kind names new directories. Otherwise LanceDB stays, and D1 to D6 stand on their own. The probe is bounded by these criteria, not run until SQLite wins, so the release does not drift.
+It is built as a second implementation behind the contract, on a branch or worktree, and reaches the main line only if taken. It passes the contract suite first. Then `evals quality` and `evals speed` run in turns against LanceDB through the server, on a cooled machine: `evals speed` gains the runs in turns this needs (ABBA, each begun as cool and idle as the machine gets within a cap), over the setting of D3, where stage 7 ran them from shell scripts outside the repository. SQLite is taken when, by ADR 006's criterion, neither kind of question nor either wording group loses 1.0 or more in chunk reciprocal-rank sum, bare names lose less than 1.0 and the off-topic questions get fewer than 10 results more; when warm search, a search after an edit and a full index are no slower beyond the spread of the turns; when agents find their answers as often, at no more tokens, as with LanceDB (step 6); and when the install and the memory a server holds after its work are smaller. Then LanceDB, pylance and pyarrow go (the install, by estimate, from about 600 MB to about 250), the import at start grows lighter, an index opens in any `sqlite3`, and the store's kind names new directories. Otherwise LanceDB stays, and D1 to D6 stand on their own. The probe is bounded by these criteria, not run until SQLite wins, so the release does not drift.
 
 ### Order
 
@@ -76,12 +76,13 @@ It is built as a second implementation behind the contract, on a branch or workt
 | 3 | D2: `IndexDirectory` out of the LanceDB store |
 | 4 | D1 and D4: `end_run`, after a cancelled run too; `indexed_files()` with the unrecorded paths; the interface in the index's own terms; shared helpers out; evals without a store's constants |
 | 5 | D5's split: the contract suite, LanceDB's own tests, the import contract between stores |
-| 6 | D7: SQLite behind the contract, measured in turns; the choice recorded here |
-| 7 | D6: versions held by digests |
-| 8 | Markdown sections after a setext heading take their parent (ADR 006, open; a new `CHUNKER_VERSION`), the first change D6's test holds |
-| 9 | Compact hits in `search_code`'s answer (TODO.md, "What an agent gets"), in an ADR of its own: a change of a tool's answer, made once, before the release |
-| 10 | A baseline of `evals speed` on the final code, on an idle machine |
-| 11 | The release, on the owner's word: the `pypi` environment's required reviewer, the version (0.5.0 proposed), the tag |
+| 6 | Search judged by agents, in an ADR of its own: agents given questions whose answers the harness keys, with Grep alone and with this search, scored by their answers, tokens and tool calls, each question asked several times; a pilot of about ten sessions first, to price a run on the owner's subscription before any larger one |
+| 7 | D7: SQLite behind the contract, measured in turns and by agents; the choice recorded here |
+| 8 | D6: versions held by digests |
+| 9 | Markdown sections after a setext heading take their parent (ADR 006, open; a new `CHUNKER_VERSION`), the first change D6's test holds |
+| 10 | Compact hits in `search_code`'s answer (TODO.md, "What an agent gets"), in an ADR of its own, judged by agents: a change of a tool's answer, made once, before the release |
+| 11 | A baseline of `evals speed` on the final code, on an idle machine |
+| 12 | The release, on the owner's word: the `pypi` environment's required reviewer, the version (0.5.0 proposed), the tag |
 
 Each step is a chunk of work reviewed before the next. Steps 2 to 5 change no behaviour but the fold after a cancelled run: every test still holds what it held, moved onto the factory; the two that edited LanceDB's tables are rewritten to what they meant, and the cancelled write's fake wraps any store. By estimate, steps 1 to 5 take about a session, the SQLite probe half of one to one, and a full swap one to two.
 
