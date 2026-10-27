@@ -305,14 +305,14 @@ def readings_of(texts: list[str], directory: Path) -> list[ReadingVectors]:
 
 def record_vectors() -> None:
     """Record what every way of reading makes of the texts under the current
-    EMBEDDER_VERSION. Run it by hand from the repository's root, through `uv run python -c`
-    and an import of this module. A version recorded before keeps what it made: bump the
-    version rather than record over it."""
+    EMBEDDER_VERSION, unless that version is recorded already: it keeps what it made, so a
+    change of vectors needs a new version. Run it by hand from the repository's root,
+    through `uv run python -c` and an import of this module."""
     recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text())
     with tempfile.TemporaryDirectory() as directory:
         readings = readings_of(recorded.texts, Path(directory))
     updated = RecordedVectors(
-        texts=recorded.texts, vectors=recorded.vectors | {EMBEDDER_VERSION: readings}
+        texts=recorded.texts, vectors={EMBEDDER_VERSION: readings} | recorded.vectors
     )
     RECORDED_VECTORS.write_text(updated.model_dump_json(indent=RECORD_INDENT) + "\n")
 

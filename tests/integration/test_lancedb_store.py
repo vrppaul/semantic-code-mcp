@@ -2,6 +2,7 @@
 
 import os
 import re
+import tempfile
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
@@ -12,6 +13,7 @@ import pyarrow
 import pytest
 from filelock import FileLock, Timeout
 from hypothesis import HealthCheck, given, settings, strategies
+from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.models import (
     WHOLE_PROJECT,
@@ -42,6 +44,7 @@ from semantic_code_mcp.storage.lancedb import (
     USE_STAMP_FILE,
     LanceDBIndexStore,
 )
+from semantic_code_mcp.storage.search_text import search_text
 from tests.fakes import EMBEDDING_DIMENSION
 from tests.helpers import (
     chunks_fragments,
@@ -58,6 +61,10 @@ LIMIT = 10
 # A text no chunk's words match, so a search finds by vector alone
 NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
+# A few chunks, and what each SCHEMA_VERSION stored of them: each chunk's search text and
+# each table's columns
+RECORDED_SCHEMA = Path(__file__).parent.parent / "data" / "schema_outputs.json"
+RECORD_INDENT = 2
 # A retention no version is young enough for, and one every version a test makes is: under
 # the first upkeep prunes every version but the latest, under the second none
 NO_RETENTION = timedelta(0)
@@ -130,6 +137,77 @@ def vectors_of(*rows: list[float]) -> numpy.ndarray:
     return numpy.array(rows, dtype=numpy.float32)
 
 
+class StoredColumn(BaseModel):
+    """A column of a table, by its name and its Arrow type."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    type: str
+
+
+class StoredTable(BaseModel):
+    """A table of an index, by its name and its columns in their order."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    columns: list[StoredColumn]
+
+
+class StoredSchema(BaseModel):
+    """What the store keeps of some chunks: the text its keyword channel searches of each,
+    and its tables' columns."""
+
+    model_config = ConfigDict(frozen=True)
+
+    search_texts: list[str]
+    tables: list[StoredTable]
+
+
+class RecordedSchema(BaseModel):
+    """Chunks, and what each SCHEMA_VERSION stored of them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunks: list[Chunk]
+    schemas: dict[int, StoredSchema]
+
+
+def stored_schema(chunks: list[Chunk], store: LanceDBIndexStore) -> StoredSchema:
+    """What the store keeps of the chunks once it has written them."""
+    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
+    database = lancedb.connect(str(store.directory))
+    tables = [
+        StoredTable(
+            name=name,
+            columns=[
+                StoredColumn(name=field.name, type=str(field.type))
+                for field in database.open_table(name).schema
+            ],
+        )
+        for name in (CHUNKS_TABLE, FILES_TABLE)
+    ]
+    return StoredSchema(search_texts=[search_text(chunk) for chunk in chunks], tables=tables)
+
+
+def record_schema() -> None:
+    """Record what the store keeps of the chunks under the current SCHEMA_VERSION, unless
+    that version is recorded already: it keeps what it stored, so a change of columns or of
+    what one is made from needs a new version. Run it by hand from the repository's root,
+    through `uv run python -c` and an import of this module."""
+    recorded = RecordedSchema.model_validate_json(RECORDED_SCHEMA.read_text())
+    with tempfile.TemporaryDirectory() as directory:
+        store = LanceDBIndexStore(
+            Path(directory), IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+        )
+        schema = stored_schema(recorded.chunks, store)
+    updated = RecordedSchema(
+        chunks=recorded.chunks, schemas={SCHEMA_VERSION: schema} | recorded.schemas
+    )
+    RECORDED_SCHEMA.write_text(updated.model_dump_json(indent=RECORD_INDENT) + "\n")
+
+
 def query_of(text: str) -> SearchQuery:
     """A query of the whole project."""
     return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
@@ -168,6 +246,17 @@ def filled_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
         vectors_of(TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY),
     )
     return store
+
+
+def test_the_schema_s_version_names_what_the_store_keeps(store: LanceDBIndexStore):
+    """An index holds the tables of one SCHEMA_VERSION, so a change to their columns or to
+    what one is made from, the search text among them, needs a new version, whose output
+    `record_schema` records; none recorded fails here."""
+    recorded = RecordedSchema.model_validate_json(RECORDED_SCHEMA.read_text())
+
+    schema = stored_schema(recorded.chunks, store)
+
+    assert schema == recorded.schemas.get(SCHEMA_VERSION)
 
 
 def test_vector_search_ranks_the_nearest_chunk_first(filled_store: LanceDBIndexStore):

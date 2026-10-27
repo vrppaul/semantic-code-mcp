@@ -39,15 +39,16 @@ def chunks_of(sources: dict[str, str], project_root: Path) -> list[Chunk]:
 
 
 def record_chunks() -> None:
-    """Record what the chunkers make of the files under the current CHUNKER_VERSION. Run it
-    by hand from the repository's root, through `uv run python -c` and an import of this
-    module. A version recorded before keeps what it made: bump the version rather than
-    record over it."""
+    """Record what the chunkers make of the files under the current CHUNKER_VERSION, unless
+    that version is recorded already: it keeps what it made, so a change of chunks needs a
+    new version. Run it by hand from the repository's root, through `uv run python -c` and
+    an import of this module; files added to the record are recorded for the current
+    version once its entry is taken out."""
     recorded = RecordedChunks.model_validate_json(RECORDED_CHUNKS.read_text())
     with tempfile.TemporaryDirectory() as project_root:
         chunks = chunks_of(recorded.sources, Path(project_root))
     updated = RecordedChunks(
-        sources=recorded.sources, chunks=recorded.chunks | {CHUNKER_VERSION: chunks}
+        sources=recorded.sources, chunks={CHUNKER_VERSION: chunks} | recorded.chunks
     )
     RECORDED_CHUNKS.write_text(updated.model_dump_json(indent=RECORD_INDENT) + "\n")
 

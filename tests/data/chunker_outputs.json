@@ -1,21 +1,33 @@
 {
   "sources": {
-    "shapes.md": "# Shapes\n\nShapes on a plane, to hold what the chunkers make of a file.\n\n## Install\n\nRun the installer.\n\n### On Linux\n\nUse the package.\n\n##\n\nText under an empty heading.\n\n## Usage\n\nCall `area` with a radius.\n",
-    "shapes.py": "\"\"\"Shapes on a plane, to hold what the chunkers make of a file.\"\"\"\n\nimport math\nfrom dataclasses import dataclass\n\n\ndef area(radius: float) -> float:\n    \"\"\"The area of a circle.\"\"\"\n    return math.pi * radius**2\n\n\nclass Shape:\n    \"\"\"A shape on a plane.\"\"\"\n\n    sides = 0\n\n    def perimeter(self) -> float:\n        return 0.0\n\n    class Corner:\n        def angle(self) -> float:\n            return 90.0\n\n\n@dataclass\nclass Square(Shape):\n    side: float\n\n    async def scaled(self, factor: float) -> \"Square\":\n        return Square(self.side * factor)\n",
-    "shapes.rs": "//! Shapes on a plane, to hold what the chunkers make of a file.\n\nmod geometry {\n    pub struct Point {\n        pub x: f64,\n        pub y: f64,\n    }\n\n    impl Point {\n        pub fn distance(&self, other: &Point) -> f64 {\n            ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n        }\n    }\n\n    pub trait Area {\n        fn area(&self) -> f64;\n    }\n\n    pub enum Shape {\n        Circle(f64),\n        Square(f64),\n    }\n}\n\nfn main() {\n    println!(\"shapes\");\n}\n"
+    "settings.py": "\"\"\"Settings of the shapes, with no definition among them.\"\"\"\n\nUNIT = \"cm\"\nPRECISION = 3\n",
+    "shapes.md": "A preamble before any heading.\n\nShapes\n======\n\nShapes on a plane, to hold what the chunkers make of a file.\n\n## Install\n\nRun the installer.\n\n### On Linux\n\nUse the package.\n\n##\n\nText under an empty heading.\n\n## Usage\n\nCall `area` with a radius.\n",
+    "shapes.py": "# A comment above the module's docstring, which still opens the module.\n\"\"\"Shapes on a plane, to hold what the chunkers make of a file.\"\"\"\n\nimport functools\nimport math\nfrom dataclasses import dataclass\n\n\ndef area(radius: float) -> float:\n    \"\"\"The area of a circle.\"\"\"\n    return math.pi * radius**2\n\n\nclass Shape:\n    \"\"\"A shape on a plane.\"\"\"\n\n    sides = 0\n\n    def perimeter(self) -> float:\n        return 0.0\n\n    @property\n    def label(self) -> str:\n        return type(self).__name__\n\n    class Corner:\n        def angle(self) -> float:\n            return 90.0\n\n\n@dataclass(frozen=True)\n# A comment between the decorators, which stays with the class.\n@functools.total_ordering\nclass Square(Shape):\n    side: float\n\n    async def scaled(self, factor: float) -> \"Square\":\n        def doubled(value: float) -> float:\n            return value * 2\n\n        return Square(doubled(self.side) * factor)\n",
+    "shapes.rs": "//! Shapes on a plane, to hold what the chunkers make of a file.\n#![allow(dead_code)]\n\nuse std::fmt;\n\nmod geometry {\n    /// A point on the plane.\n    #[derive(Debug, Clone, Copy)]\n    pub struct Point {\n        pub x: f64,\n        pub y: f64,\n    }\n\n    impl Point {\n        pub fn distance(&self, other: &Point) -> f64 {\n            ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n        }\n    }\n\n    pub trait Area {\n        fn area(&self) -> f64;\n\n        fn doubled(&self) -> f64 {\n            self.area() * 2.0\n        }\n    }\n\n    pub enum Shape {\n        Circle(f64),\n        Square(f64),\n    }\n}\n\npub struct Stack<T> {\n    items: Vec<T>,\n}\n\nimpl<T> Stack<T> {\n    pub fn push(&mut self, item: T) {\n        self.items.push(item);\n    }\n}\n\nimpl fmt::Display for Stack<i32> {\n    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\n        write!(formatter, \"{} items\", self.items.len())\n    }\n}\n\npub struct Handle(*const u8);\n\nimpl !Send for Handle {}\n\nimpl fmt::Pointer for &Handle {\n    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\n        write!(formatter, \"{:p}\", self.0)\n    }\n}\n\npub enum Level {\n    Low,\n    High,\n}\n\nimpl From<u8> for Level {\n    fn from(value: u8) -> Self {\n        if value > 0 { Level::High } else { Level::Low }\n    }\n}\n\nfn main() {\n    println!(\"shapes\");\n}\n"
   },
   "chunks": {
     "3": [
       {
-        "chunk_id": "ce2d35195df2a7d3baeb98e5d29a95d9",
+        "chunk_id": "ce45af4b5ef1006462bbf06926965837",
+        "path": "settings.py",
+        "language": "python",
+        "kind": "module",
+        "name": "settings",
+        "parent": null,
+        "line_start": 1,
+        "line_end": 4,
+        "content": "\"\"\"Settings of the shapes, with no definition among them.\"\"\"\n\nUNIT = \"cm\"\nPRECISION = 3"
+      },
+      {
+        "chunk_id": "8956424957e13eca419ee696c69edb51",
         "path": "shapes.md",
         "language": "markdown",
         "kind": "section",
         "name": "Shapes",
         "parent": null,
         "line_start": 1,
-        "line_end": 3,
-        "content": "# Shapes\n\nShapes on a plane, to hold what the chunkers make of a file."
+        "line_end": 6,
+        "content": "A preamble before any heading.\n\nShapes\n======\n\nShapes on a plane, to hold what the chunkers make of a file."
       },
       {
         "chunk_id": "066b43522265186be029a1f8c37c7538",
@@ -23,9 +35,9 @@
         "language": "markdown",
         "kind": "section",
         "name": "Install",
-        "parent": "Shapes",
-        "line_start": 5,
-        "line_end": 7,
+        "parent": null,
+        "line_start": 8,
+        "line_end": 10,
         "content": "## Install\n\nRun the installer."
       },
       {
@@ -34,9 +46,9 @@
         "language": "markdown",
         "kind": "section",
         "name": "On Linux",
-        "parent": "Shapes > Install",
-        "line_start": 9,
-        "line_end": 11,
+        "parent": "Install",
+        "line_start": 12,
+        "line_end": 14,
         "content": "### On Linux\n\nUse the package."
       },
       {
@@ -45,9 +57,9 @@
         "language": "markdown",
         "kind": "module",
         "name": "shapes",
-        "parent": "Shapes",
-        "line_start": 13,
-        "line_end": 15,
+        "parent": null,
+        "line_start": 16,
+        "line_end": 18,
         "content": "##\n\nText under an empty heading."
       },
       {
@@ -56,9 +68,9 @@
         "language": "markdown",
         "kind": "section",
         "name": "Usage",
-        "parent": "Shapes",
-        "line_start": 17,
-        "line_end": 19,
+        "parent": null,
+        "line_start": 20,
+        "line_end": 22,
         "content": "## Usage\n\nCall `area` with a radius."
       },
       {
@@ -68,8 +80,8 @@
         "kind": "module",
         "name": "shapes",
         "parent": null,
-        "line_start": 1,
-        "line_end": 1,
+        "line_start": 2,
+        "line_end": 2,
         "content": "\"\"\"Shapes on a plane, to hold what the chunkers make of a file.\"\"\""
       },
       {
@@ -79,20 +91,20 @@
         "kind": "function",
         "name": "area",
         "parent": null,
-        "line_start": 7,
-        "line_end": 9,
+        "line_start": 9,
+        "line_end": 11,
         "content": "def area(radius: float) -> float:\n    \"\"\"The area of a circle.\"\"\"\n    return math.pi * radius**2"
       },
       {
-        "chunk_id": "f2e11c3b4fded4f555e1885a1914a998",
+        "chunk_id": "647cc5d7f0f65a71d490348b217d5519",
         "path": "shapes.py",
         "language": "python",
         "kind": "class",
         "name": "Shape",
         "parent": null,
-        "line_start": 12,
-        "line_end": 22,
-        "content": "class Shape:\n    \"\"\"A shape on a plane.\"\"\"\n\n    sides = 0\n\n    def perimeter(self) -> float:\n        return 0.0\n\n    class Corner:\n        def angle(self) -> float:\n            return 90.0"
+        "line_start": 14,
+        "line_end": 28,
+        "content": "class Shape:\n    \"\"\"A shape on a plane.\"\"\"\n\n    sides = 0\n\n    def perimeter(self) -> float:\n        return 0.0\n\n    @property\n    def label(self) -> str:\n        return type(self).__name__\n\n    class Corner:\n        def angle(self) -> float:\n            return 90.0"
       },
       {
         "chunk_id": "f690cb5ed116912dfa941003a5e9cf1b",
@@ -101,9 +113,20 @@
         "kind": "method",
         "name": "perimeter",
         "parent": "Shape",
-        "line_start": 17,
-        "line_end": 18,
+        "line_start": 19,
+        "line_end": 20,
         "content": "    def perimeter(self) -> float:\n        return 0.0"
+      },
+      {
+        "chunk_id": "05a76682052c850af50f3c57b295e5af",
+        "path": "shapes.py",
+        "language": "python",
+        "kind": "method",
+        "name": "label",
+        "parent": "Shape",
+        "line_start": 22,
+        "line_end": 24,
+        "content": "    @property\n    def label(self) -> str:\n        return type(self).__name__"
       },
       {
         "chunk_id": "8db4b60e269be15e04cdb054a36f26b3",
@@ -112,8 +135,8 @@
         "kind": "class",
         "name": "Corner",
         "parent": "Shape",
-        "line_start": 20,
-        "line_end": 22,
+        "line_start": 26,
+        "line_end": 28,
         "content": "    class Corner:\n        def angle(self) -> float:\n            return 90.0"
       },
       {
@@ -123,31 +146,31 @@
         "kind": "method",
         "name": "angle",
         "parent": "Shape.Corner",
-        "line_start": 21,
-        "line_end": 22,
+        "line_start": 27,
+        "line_end": 28,
         "content": "        def angle(self) -> float:\n            return 90.0"
       },
       {
-        "chunk_id": "0f9944a797a233ded0e986448193a17c",
+        "chunk_id": "035eaded8bbf7a412c57d9c5c1b6e528",
         "path": "shapes.py",
         "language": "python",
         "kind": "class",
         "name": "Square",
         "parent": null,
-        "line_start": 25,
-        "line_end": 30,
-        "content": "@dataclass\nclass Square(Shape):\n    side: float\n\n    async def scaled(self, factor: float) -> \"Square\":\n        return Square(self.side * factor)"
+        "line_start": 31,
+        "line_end": 41,
+        "content": "@dataclass(frozen=True)\n# A comment between the decorators, which stays with the class.\n@functools.total_ordering\nclass Square(Shape):\n    side: float\n\n    async def scaled(self, factor: float) -> \"Square\":\n        def doubled(value: float) -> float:\n            return value * 2\n\n        return Square(doubled(self.side) * factor)"
       },
       {
-        "chunk_id": "7251570d6a2b9378abeca1746685648c",
+        "chunk_id": "a1ac5dc54fe0a82543971fa76963e656",
         "path": "shapes.py",
         "language": "python",
         "kind": "method",
         "name": "scaled",
         "parent": "Square",
-        "line_start": 29,
-        "line_end": 30,
-        "content": "    async def scaled(self, factor: float) -> \"Square\":\n        return Square(self.side * factor)"
+        "line_start": 37,
+        "line_end": 41,
+        "content": "    async def scaled(self, factor: float) -> \"Square\":\n        def doubled(value: float) -> float:\n            return value * 2\n\n        return Square(doubled(self.side) * factor)"
       },
       {
         "chunk_id": "c3ffb0ebbcf219adbf3bfeeed923ac1b",
@@ -161,15 +184,15 @@
         "content": "//! Shapes on a plane, to hold what the chunkers make of a file."
       },
       {
-        "chunk_id": "3f06d782b03525504209e00f7df50bcb",
+        "chunk_id": "12780da0c2cbb9f6b51ae98557bf500b",
         "path": "shapes.rs",
         "language": "rust",
         "kind": "class",
         "name": "Point",
         "parent": "geometry",
-        "line_start": 4,
-        "line_end": 7,
-        "content": "    pub struct Point {\n        pub x: f64,\n        pub y: f64,\n    }"
+        "line_start": 7,
+        "line_end": 12,
+        "content": "    /// A point on the plane.\n    #[derive(Debug, Clone, Copy)]\n    pub struct Point {\n        pub x: f64,\n        pub y: f64,\n    }"
       },
       {
         "chunk_id": "c9e714feb0bed961e09b8e4de1c8b521",
@@ -178,8 +201,8 @@
         "kind": "class",
         "name": "Point",
         "parent": "geometry",
-        "line_start": 9,
-        "line_end": 13,
+        "line_start": 14,
+        "line_end": 18,
         "content": "    impl Point {\n        pub fn distance(&self, other: &Point) -> f64 {\n            ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n        }\n    }"
       },
       {
@@ -189,20 +212,20 @@
         "kind": "method",
         "name": "distance",
         "parent": "geometry::Point",
-        "line_start": 10,
-        "line_end": 12,
+        "line_start": 15,
+        "line_end": 17,
         "content": "        pub fn distance(&self, other: &Point) -> f64 {\n            ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n        }"
       },
       {
-        "chunk_id": "c07ec62a5bfb2f4f7ca48f78ca4a090a",
+        "chunk_id": "2064f2f8b7d59d5349ab708682d0fc6b",
         "path": "shapes.rs",
         "language": "rust",
         "kind": "class",
         "name": "Area",
         "parent": "geometry",
-        "line_start": 15,
-        "line_end": 17,
-        "content": "    pub trait Area {\n        fn area(&self) -> f64;\n    }"
+        "line_start": 20,
+        "line_end": 26,
+        "content": "    pub trait Area {\n        fn area(&self) -> f64;\n\n        fn doubled(&self) -> f64 {\n            self.area() * 2.0\n        }\n    }"
       },
       {
         "chunk_id": "1aed79d7019a8a9fede96aee963c58ec",
@@ -211,9 +234,20 @@
         "kind": "method",
         "name": "area",
         "parent": "geometry::Area",
-        "line_start": 16,
-        "line_end": 16,
+        "line_start": 21,
+        "line_end": 21,
         "content": "        fn area(&self) -> f64;"
+      },
+      {
+        "chunk_id": "a8a15aa63787ed5454a11160e5a9b52f",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "method",
+        "name": "doubled",
+        "parent": "geometry::Area",
+        "line_start": 23,
+        "line_end": 25,
+        "content": "        fn doubled(&self) -> f64 {\n            self.area() * 2.0\n        }"
       },
       {
         "chunk_id": "5ca35a400068fbcfece31abdbdc7cd5b",
@@ -222,9 +256,141 @@
         "kind": "class",
         "name": "Shape",
         "parent": "geometry",
-        "line_start": 19,
-        "line_end": 22,
+        "line_start": 28,
+        "line_end": 31,
         "content": "    pub enum Shape {\n        Circle(f64),\n        Square(f64),\n    }"
+      },
+      {
+        "chunk_id": "504fd4ad70a871b9f8a32dac719b947c",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "Stack",
+        "parent": null,
+        "line_start": 34,
+        "line_end": 36,
+        "content": "pub struct Stack<T> {\n    items: Vec<T>,\n}"
+      },
+      {
+        "chunk_id": "1201650a5349cc49189d2756017435d8",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "Stack",
+        "parent": null,
+        "line_start": 38,
+        "line_end": 42,
+        "content": "impl<T> Stack<T> {\n    pub fn push(&mut self, item: T) {\n        self.items.push(item);\n    }\n}"
+      },
+      {
+        "chunk_id": "c727485afb19db78a372da42a48e3d76",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "method",
+        "name": "push",
+        "parent": "Stack",
+        "line_start": 39,
+        "line_end": 41,
+        "content": "    pub fn push(&mut self, item: T) {\n        self.items.push(item);\n    }"
+      },
+      {
+        "chunk_id": "3948eed8773d8a95b81ca7bafda33fe2",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "Display for Stack",
+        "parent": null,
+        "line_start": 44,
+        "line_end": 48,
+        "content": "impl fmt::Display for Stack<i32> {\n    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\n        write!(formatter, \"{} items\", self.items.len())\n    }\n}"
+      },
+      {
+        "chunk_id": "541b4486cf48668af15f3d11f68abbc1",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "method",
+        "name": "fmt",
+        "parent": "Display for Stack",
+        "line_start": 45,
+        "line_end": 47,
+        "content": "    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\n        write!(formatter, \"{} items\", self.items.len())\n    }"
+      },
+      {
+        "chunk_id": "fe23dc0c1256ac7b4f051d1b30395960",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "Handle",
+        "parent": null,
+        "line_start": 50,
+        "line_end": 50,
+        "content": "pub struct Handle(*const u8);"
+      },
+      {
+        "chunk_id": "cc8a0e57c75365207bd051d260098643",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "!Send for Handle",
+        "parent": null,
+        "line_start": 52,
+        "line_end": 52,
+        "content": "impl !Send for Handle {}"
+      },
+      {
+        "chunk_id": "5628e9a013c1306b9c5092c3eb47c2b0",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "Pointer for Handle",
+        "parent": null,
+        "line_start": 54,
+        "line_end": 58,
+        "content": "impl fmt::Pointer for &Handle {\n    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\n        write!(formatter, \"{:p}\", self.0)\n    }\n}"
+      },
+      {
+        "chunk_id": "0ee4b6bc81df4a008c3a6ebc06571667",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "method",
+        "name": "fmt",
+        "parent": "Pointer for Handle",
+        "line_start": 55,
+        "line_end": 57,
+        "content": "    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\n        write!(formatter, \"{:p}\", self.0)\n    }"
+      },
+      {
+        "chunk_id": "35d0001cf537ce9797d6fb37324a1c78",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "Level",
+        "parent": null,
+        "line_start": 60,
+        "line_end": 63,
+        "content": "pub enum Level {\n    Low,\n    High,\n}"
+      },
+      {
+        "chunk_id": "863aa76a8970da9212806e6de0bc0497",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "class",
+        "name": "From<u8> for Level",
+        "parent": null,
+        "line_start": 65,
+        "line_end": 69,
+        "content": "impl From<u8> for Level {\n    fn from(value: u8) -> Self {\n        if value > 0 { Level::High } else { Level::Low }\n    }\n}"
+      },
+      {
+        "chunk_id": "97c19ba38930531844a14991f184f846",
+        "path": "shapes.rs",
+        "language": "rust",
+        "kind": "method",
+        "name": "from",
+        "parent": "From<u8> for Level",
+        "line_start": 66,
+        "line_end": 68,
+        "content": "    fn from(value: u8) -> Self {\n        if value > 0 { Level::High } else { Level::Low }\n    }"
       },
       {
         "chunk_id": "9e4cd68108d20b3c5813d0d5978e945a",
@@ -233,8 +399,8 @@
         "kind": "function",
         "name": "main",
         "parent": null,
-        "line_start": 25,
-        "line_end": 27,
+        "line_start": 71,
+        "line_end": 73,
         "content": "fn main() {\n    println!(\"shapes\");\n}"
       }
     ]

@@ -319,11 +319,15 @@ ignore_names = [
     # Pydantic's own setting, and the class a validator classmethod is handed
     "model_config",
     "cls",
-    # Compared as part of a whole model, never read by name: an answer, a machine
+    # Compared as part of a whole model, never read by name: an answer, a machine, what a
+    # schema version stored
     "symbol",
     "logical_cores",
     "python",
+    "columns",
+    "search_texts",
     # The recorders of what each version made, which the version tests compare: run by hand
     "record_chunks",
     "record_vectors",
+    "record_schema",
 ]

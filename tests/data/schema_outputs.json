@@ -1,0 +1,114 @@
+{
+  "chunks": [
+    {
+      "chunk_id": "server-error",
+      "path": "src/http/errors.py",
+      "language": "python",
+      "kind": "class",
+      "name": "HTTPServerError",
+      "parent": null,
+      "line_start": 3,
+      "line_end": 9,
+      "content": "class HTTPServerError(RuntimeError):\n    \"\"\"A 5xx answer, kept with its retryAfter header.\"\"\"\n\n    def __init__(self, status_code: int, retry_after: float | None) -> None:\n        self.status_code = status_code\n        self.retry_after = retry_after\n"
+    },
+    {
+      "chunk_id": "point-distance",
+      "path": "src/geometry.rs",
+      "language": "rust",
+      "kind": "method",
+      "name": "distance",
+      "parent": "geometry::Point",
+      "line_start": 14,
+      "line_end": 16,
+      "content": "pub fn distance(&self, other: &Point) -> f64 {\n    ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n}"
+    },
+    {
+      "chunk_id": "guide-install",
+      "path": "docs/guide.md",
+      "language": "markdown",
+      "kind": "section",
+      "name": "On Linux",
+      "parent": "Guide > Install",
+      "line_start": 12,
+      "line_end": 15,
+      "content": "### On Linux\n\nRun `pipx install semantic-code-mcp`, then the server's `--help`."
+    }
+  ],
+  "schemas": {
+    "5": {
+      "search_texts": [
+        "class HTTPServerError(RuntimeError):\n    \"\"\"A 5xx answer, kept with its retryAfter header.\"\"\"\n\n    def __init__(self, status_code: int, retry_after: float | None) -> None:\n        self.status_code = status_code\n        self.retry_after = retry_after\n\nHTTPServerError\nHTTP Server Error",
+        "pub fn distance(&self, other: &Point) -> f64 {\n    ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n}\ndistance\ngeometry Point",
+        "### On Linux\n\nRun `pipx install semantic-code-mcp`, then the server's `--help`.\nOn Linux\nGuide Install"
+      ],
+      "tables": [
+        {
+          "name": "chunks",
+          "columns": [
+            {
+              "name": "chunk_id",
+              "type": "string"
+            },
+            {
+              "name": "vector",
+              "type": "fixed_size_list<item: float>[384]"
+            },
+            {
+              "name": "path",
+              "type": "string"
+            },
+            {
+              "name": "language",
+              "type": "string"
+            },
+            {
+              "name": "kind",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "parent",
+              "type": "string"
+            },
+            {
+              "name": "line_start",
+              "type": "int32"
+            },
+            {
+              "name": "line_end",
+              "type": "int32"
+            },
+            {
+              "name": "content",
+              "type": "string"
+            },
+            {
+              "name": "search_text",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "files",
+          "columns": [
+            {
+              "name": "path",
+              "type": "string"
+            },
+            {
+              "name": "mtime_ns",
+              "type": "int64"
+            },
+            {
+              "name": "size_bytes",
+              "type": "int64"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
