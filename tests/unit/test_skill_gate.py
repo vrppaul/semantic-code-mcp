@@ -104,3 +104,101 @@ def test_a_dotted_path_is_known_only_as_a_run_of_fields_an_answer_holds():
         ("debug", "file_path"),
     ]
     assert [path in runs for path in asked] == [True, True, True, True, False]
+
+
+# A server of one tool, and texts that agree with it: each check of the gate has a break
+SEARCH_DESCRIPTION = (
+    "Search python code.\n\nArgs:\n    query: What the code does.\n    languages: Only these.\n"
+)
+INSTRUCTIONS = "Use `search` for python code."
+SKILL = (
+    "Call `search` with `query` and `languages` (`python`); read `results` (`file_path`)"
+    " and `debug.timings.total_ms`."
+)
+
+
+def surface_of(description: str, instructions: str) -> object:
+    """The one-tool server's surface, with the tool's description and instructions given."""
+    tool = Tool(
+        name="search",
+        description=description,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "languages": {"type": "array", "items": {"enum": ["python"]}},
+            },
+        },
+        output_schema=ANSWER_SCHEMA,
+    )
+    return check_skill.ServerSurface(tools=(tool,), instructions=instructions)
+
+
+def test_texts_that_agree_with_the_server_pass_the_gate():
+    assert check_skill.disagreements(surface_of(SEARCH_DESCRIPTION, INSTRUCTIONS), SKILL) == []
+
+
+@pytest.mark.parametrize(
+    ("description", "instructions", "skill", "found"),
+    [
+        pytest.param(
+            SEARCH_DESCRIPTION,
+            INSTRUCTIONS,
+            SKILL.replace("`query`", "`query` and `limt`"),
+            ["limt, named in skills/semantic-search/SKILL.md, is none of the server's"],
+            id="a name the server lacks",
+        ),
+        pytest.param(
+            SEARCH_DESCRIPTION,
+            INSTRUCTIONS,
+            SKILL.replace("`file_path`", "`file_path`, `debug.file_path`"),
+            [
+                (
+                    "debug.file_path, named in skills/semantic-search/SKILL.md,"
+                    " is no path of the server's fields"
+                )
+            ],
+            id="a path no answer holds",
+        ),
+        pytest.param(
+            SEARCH_DESCRIPTION,
+            INSTRUCTIONS,
+            SKILL.replace("`query` and ", ""),
+            ["skills/semantic-search/SKILL.md names no query"],
+            id="a parameter the skill leaves out",
+        ),
+        pytest.param(
+            SEARCH_DESCRIPTION.replace("    query:", "    question:"),
+            INSTRUCTIONS,
+            SKILL,
+            [
+                "search's description gives an argument question, which the tool lacks",
+                "search's description gives no argument query",
+            ],
+            id="an argument the tool lacks",
+        ),
+        pytest.param(
+            SEARCH_DESCRIPTION,
+            INSTRUCTIONS.replace("python ", ""),
+            SKILL,
+            ["python is named nowhere in the server's instructions"],
+            id="a language a text leaves out",
+        ),
+        pytest.param(
+            SEARCH_DESCRIPTION,
+            INSTRUCTIONS + " Set `SEMANTIC_CODE_MCP_USE_GITIGNOR`.",
+            SKILL,
+            [
+                (
+                    "SEMANTIC_CODE_MCP_USE_GITIGNOR, named in the server's instructions,"
+                    " is no setting of the server's"
+                )
+            ],
+            id="a setting the server lacks",
+        ),
+    ],
+)
+def test_each_disagreement_of_a_text_with_the_server_fails_the_gate(
+    description: str, instructions: str, skill: str, found: list[str]
+):
+    assert check_skill.disagreements(surface_of(description, instructions), skill) == found
