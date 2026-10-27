@@ -47,13 +47,6 @@ def test_two_spellings_of_one_project_share_its_index(local_index: bool):
     )
 
 
-def test_one_project_always_has_the_same_index():
-    settings = Settings(cache_dir=CACHE)
-    project = Path("/home/user/project")
-
-    assert get_index_path(settings, project) == get_index_path(settings, project)
-
-
 def test_two_projects_have_different_indexes():
     settings = Settings(cache_dir=CACHE)
 

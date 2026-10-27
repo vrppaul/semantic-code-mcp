@@ -512,7 +512,9 @@ def test_the_store_reads_a_glob_as_its_pattern_says(awkward_store: LanceDBIndexS
 def test_a_search_warns_of_nothing(
     filled_store: LanceDBIndexStore, capfd: pytest.CaptureFixture[str]
 ):
-    """LanceDB writes to the process's standard error, which an MCP client logs."""
+    """A gate on a library, not a behaviour of ours: LanceDB writes its warnings to the
+    process's standard error, which an MCP client logs as the server's, so a release of it
+    that warns on every search shows here."""
     capfd.readouterr()
 
     filled_store.search_candidates(QUERY, query_of("duration_ms"), LIMIT)

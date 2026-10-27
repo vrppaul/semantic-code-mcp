@@ -45,7 +45,8 @@ PATH_GLOB_DESCRIPTION = (
     "Only files this glob names, as in a .gitignore: without a slash a name at any depth"
     " below the directory project_path names (`*.rs`, and `tests/`, as a trailing slash"
     " does not count), with one before a name a path from that directory (`src/**/*.py`,"
-    " `/tests`); `*` stays within a directory, `**` crosses any number, `?` is one"
+    " `/tests`); `*` stays within a directory, `**` crosses any number, even inside a name"
+    " (`src**.py`, where a .gitignore reads it as `*`), `?` is one"
     " character, and a directory takes what it holds. No character classes (`[ab]`),"
     " braces, escapes, a leading `!`, `..` or more than 1000 characters: each is refused"
     " with the reason."
@@ -98,7 +99,7 @@ async def search_code(  # noqa: PLR0913
         limit: Maximum number of results to return.
         chunk_kinds: Only chunks of these kinds.
         languages: Only chunks of files in these languages.
-        path_glob: Only files this glob names, a path from the directory project_path names.
+        path_glob: Only files this glob names, read from the directory searched.
         exclude_glob: No file this glob names, read as path_glob is.
         include_debug: Also return timings and counts of the search.
 
@@ -203,7 +204,7 @@ async def client_roots(
 ) -> ListRoots | ListRootsResult:
     """The client's workspace roots, asked of it only where a tool names no project_path;
     a client that declares no roots is told to name one."""
-    if project_path is not None:
+    if given_path(project_path) is not None:
         return ListRootsResult(roots=[])
     capabilities = ctx.client_capabilities
     if capabilities is None or capabilities.roots is None:
@@ -220,18 +221,28 @@ async def located_project(
     git names a project, as a session started in the home directory or a folder of projects
     would index them all as one; or a tool error saying why neither will do."""
     registry = ctx.request_context.lifespan_context
-    if project_path is not None:
-        return await asyncio.to_thread(registry.locate, existing_directory(project_path))
+    given = given_path(project_path)
+    if given is not None:
+        return await asyncio.to_thread(registry.locate, existing_directory(given))
     root = workspace_root(roots)
     location = await asyncio.to_thread(registry.locate, root)
     if not location.is_repository:
         message = (
-            f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {root}, is no part of "
-            "a git repository that leaves out the home directory, so nothing says it is one "
-            "project rather than a folder of many, and a search would index every file below it"
+            f"Give {PROJECT_PATH_PARAMETER}: no git repository names the client's workspace "
+            f"root, {root}, a project, as it lies in none, or its repository ignores it, or that "
+            "repository's root holds the home directory; a search would index every file below "
+            "it as one project"
         )
         raise ToolError(message)
     return location
+
+
+def given_path(project_path: str | None) -> str | None:
+    """The project_path a tool was given; None where it was left out or left blank, as an
+    agent fills an optional string it has nothing for."""
+    if project_path is None or not project_path.strip():
+        return None
+    return project_path
 
 
 def workspace_root(roots: ListRootsResult) -> Path:

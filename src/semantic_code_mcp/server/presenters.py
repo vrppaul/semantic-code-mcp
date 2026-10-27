@@ -26,6 +26,8 @@ from semantic_code_mcp.services.timing import MILLISECOND_DECIMALS, MILLISECONDS
 # A hit's content is cut to this many lines; the agent reads the file for the rest
 MAX_RESULT_LINES = 50
 TRUNCATION_MARK = "\n... (truncated)"
+# What ends a line of a chunk's content, which the cut counts by
+LINE_SEPARATOR = "\n"
 SIMILARITY_DECIMALS = 3
 # A rough count of tokens in English text and code
 CHARACTERS_PER_TOKEN = 4
@@ -48,9 +50,13 @@ def present_search(
 def present_hit(hit: SearchHit, project_root: Path) -> SearchResultView:
     """One hit, its file by its absolute path, its content cut to MAX_RESULT_LINES."""
     chunk = hit.chunk
-    lines = chunk.content.split("\n")
+    lines = chunk.content.split(LINE_SEPARATOR)
     truncated = len(lines) > MAX_RESULT_LINES
-    content = "\n".join(lines[:MAX_RESULT_LINES]) + TRUNCATION_MARK if truncated else chunk.content
+    content = (
+        LINE_SEPARATOR.join(lines[:MAX_RESULT_LINES]) + TRUNCATION_MARK
+        if truncated
+        else chunk.content
+    )
     return SearchResultView(
         file_path=str(project_root / chunk.path),
         line_start=chunk.line_start,

@@ -379,6 +379,22 @@ async def test_an_index_tool_given_no_project_path_works_on_the_client_s_workspa
     assert response.model_validate(structured(result)).project_root == str(repository)
 
 
+@pytest.mark.parametrize(
+    "blank",
+    [pytest.param("", id="empty"), pytest.param("  ", id="blanks alone")],
+)
+async def test_a_blank_project_path_counts_as_left_out(
+    repository: Path, test_settings: Settings, embedder: OnnxEmbedder, blank: str
+):
+    """As an agent fills an optional string it has nothing for."""
+    client = client_with_roots(test_settings, embedder, [repository.as_uri()])
+
+    async with client:
+        result = await client.call_tool("index_status", {"project_path": blank})
+
+    assert IndexStatusResponse.model_validate(structured(result)).project_root == str(repository)
+
+
 async def test_a_search_given_no_project_path_searches_the_client_s_workspace_root(
     repository: Path, test_settings: Settings, embedder: OnnxEmbedder
 ):

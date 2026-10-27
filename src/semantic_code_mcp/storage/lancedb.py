@@ -174,6 +174,8 @@ FULL_TEXT_SCORE_COLUMN = "_score"
 NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 # How a single quote is written inside a quoted SQL string
 SQL_QUOTE = "'"
+# What parts the values of an SQL list, `IN ('a', 'b')`
+SQL_LIST_SEPARATOR = ", "
 SQL_ESCAPED_QUOTE = "''"
 # How a filter's conditions are joined, one negated, and a column matched by a regex
 SQL_AND = " AND "
@@ -337,7 +339,7 @@ class LanceDBIndexStore(IndexStore):
         table = self._open(CHUNKS_TABLE)
         if table is None or not chunk_ids:
             return {}
-        quoted = ", ".join(quote_sql(chunk_id) for chunk_id in chunk_ids)
+        quoted = SQL_LIST_SEPARATOR.join(quote_sql(chunk_id) for chunk_id in chunk_ids)
         rows = (
             table.search()
             .where(f"{CHUNK_ID_COLUMN} IN ({quoted})")
@@ -702,7 +704,7 @@ def has_full_text_index(table: lancedb.table.Table) -> bool:
 
 def path_filter(column: str, paths: list[Path]) -> str:
     """A filter matching the rows whose column holds one of the paths."""
-    quoted = ", ".join(quote_sql(path.as_posix()) for path in paths)
+    quoted = SQL_LIST_SEPARATOR.join(quote_sql(path.as_posix()) for path in paths)
     return f"{column} IN ({quoted})"
 
 
@@ -757,7 +759,7 @@ def scope_filter(scope: SearchScope) -> str | None:
 
 def values_filter(column: str, values: Sequence[str]) -> str:
     """A filter matching the rows whose column holds one of the values."""
-    quoted = ", ".join(quote_sql(value) for value in values)
+    quoted = SQL_LIST_SEPARATOR.join(quote_sql(value) for value in values)
     return f"{column} IN ({quoted})"
 
 

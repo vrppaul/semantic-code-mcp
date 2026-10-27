@@ -29,6 +29,8 @@ FALLBACK_WINDOW_LINES = 100
 # no two keys read alike
 CHUNK_ID_LENGTH = 32
 CHUNK_ID_SEPARATOR = "\0"
+# What ends a line of source, which a chunk's lines are split at and joined by again
+LINE_SEPARATOR = "\n"
 
 
 def chunk_identifier(path: Path, occurrence: int, embedded_text: str) -> str:
@@ -108,7 +110,7 @@ class ChunkCollector:
         """Add a chunk of the rows from first_row to last_row (0-indexed, inclusive)."""
         while last_row > first_row and not self._lines[last_row].strip():
             last_row -= 1
-        content = "\n".join(self._lines[first_row : last_row + 1])
+        content = LINE_SEPARATOR.join(self._lines[first_row : last_row + 1])
         if not content.strip():
             return
         occurrence = self._occurrences[content]
@@ -204,7 +206,7 @@ class BaseTreeSitterChunker(ABC):
             log.warning("parse_failed", file_path=str(path), error=str(error))
             return []
 
-        collector = ChunkCollector(path, self.language, code.split("\n"))
+        collector = ChunkCollector(path, self.language, code.split(LINE_SEPARATOR))
         self._extract_chunks(tree.root_node, collector)
         if self.whole_file_fallback and not collector.has_definitions:
             collector.replace_with_windows(tree.root_node)

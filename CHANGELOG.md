@@ -93,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tracked file deleted from disk was re-indexed on every search
 - A file deleted from disk kept answering searches until an index run: the status that a search checks first did not count it as stale
 - An edit made while its file was being indexed was lost: the file's modification time was read after indexing, not when it was scanned
-- Two server processes indexing one project at once (two Claude Code sessions) could store its chunks twice: a write now holds a lock file in the index directory
+- Two server processes indexing one project at once (two Claude Code sessions) could store its chunks twice: a write now holds a lock file beside the index's directory
 - The index grew with every edit: old versions were never pruned
 - A project-local index (`.semantic-code/`) showed as untracked in the project's `git status`
 - A file name that is not valid UTF-8 failed every index run; such a file is now skipped with a warning

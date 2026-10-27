@@ -7,7 +7,7 @@ import tree_sitter
 import tree_sitter_markdown as tsmarkdown
 from tree_sitter import Node
 
-from semantic_code_mcp.chunkers.base import BaseTreeSitterChunker, ChunkCollector
+from semantic_code_mcp.chunkers.base import SOURCE_ENCODING, BaseTreeSitterChunker, ChunkCollector
 from semantic_code_mcp.domain.models import ChunkKind, Language
 
 
@@ -94,11 +94,11 @@ class MarkdownChunker(BaseTreeSitterChunker):
         if heading.type == NodeType.atx_heading:
             for child in heading.children:
                 if child.type == NodeType.inline and child.text:
-                    return child.text.decode("utf-8")
+                    return child.text.decode(SOURCE_ENCODING)
         elif heading.type == NodeType.setext_heading:
             for child in heading.children:
                 if child.type == NodeType.paragraph:
                     for grandchild in child.children:
                         if grandchild.type == NodeType.inline and grandchild.text:
-                            return grandchild.text.decode("utf-8")
+                            return grandchild.text.decode(SOURCE_ENCODING)
         return None

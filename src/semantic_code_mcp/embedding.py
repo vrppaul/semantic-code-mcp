@@ -128,6 +128,8 @@ ONE_TEXT = 1
 WIDTH_KEYS = AliasChoices("embedding_dimension", "word_embedding_dimension")
 TOKEN_AXIS = 1
 # A row of a matrix of vectors runs along this axis
+# A query's one row of the matrix its embedding gives
+QUERY_ROW = 0
 VECTOR_AXIS = 1
 # Texts embedded at once, longest first, as sentence-transformers batches them, so that a
 # batch, padded to its longest text, pads little
@@ -277,7 +279,7 @@ class OnnxModel:
 
     def embed_query(self, text: str) -> Vector:
         """The unit vector of a query; the arena keeps its buffers for the next."""
-        return self._embed([text], self._keeping)[0]
+        return self._embed([text], self._keeping)[QUERY_ROW]
 
     def _embed(self, texts: list[str], run_options: onnxruntime.RunOptions) -> VectorMatrix:
         longest_first = sorted(range(len(texts)), key=lambda index: -len(texts[index]))
