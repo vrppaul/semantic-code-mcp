@@ -142,9 +142,10 @@ CPU_PROVIDER = "CPUExecutionProvider"
 SPINNING_CONFIG_KEY = "session.intra_op.allow_spinning"
 NO_SPINNING = "0"
 # onnxruntime's memory arena keeps the buffers of the largest batch it ran for the life of
-# the process, so a server that indexed held about 1,080 MB until it exited; handing back
-# what it holds free at the end of each run, it holds about 540 MB and indexes as fast,
-# where an embedder without the arena indexed a fifth slower (`evals speed`, in turns)
+# the process, so a server that indexed held about 1,080 MB until it exited. A batch of
+# documents hands back what the arena holds free once it ends, which holds about 540 MB
+# and indexes as fast, where an embedder without the arena indexed a fifth slower; a query
+# keeps its small buffers for the next (`evals speed`, in turns)
 ARENA_SHRINKAGE_CONFIG_KEY = "memory.enable_memory_arena_shrinkage"
 SHRINK_CPU_ARENA = "cpu:0"
 # What onnxruntime raises, each a bare Exception of its own, when an export starts no
@@ -264,15 +265,26 @@ class OnnxModel:
     def __init__(self, tokenizer: Tokenizer, session: onnxruntime.InferenceSession) -> None:
         self._tokenizer = tokenizer
         self._session = session
-        self._run_options = onnxruntime.RunOptions()
-        self._run_options.add_run_config_entry(ARENA_SHRINKAGE_CONFIG_KEY, SHRINK_CPU_ARENA)
+        self._shrinking = onnxruntime.RunOptions()
+        self._shrinking.add_run_config_entry(ARENA_SHRINKAGE_CONFIG_KEY, SHRINK_CPU_ARENA)
+        self._keeping = onnxruntime.RunOptions()
         self._takes_token_types = TOKEN_TYPE_IDS in {node.name for node in session.get_inputs()}
 
-    def embed(self, texts: list[str]) -> VectorMatrix:
-        """The unit vectors of at least one text, a row each, in their order."""
+    def embed_documents(self, texts: list[str]) -> VectorMatrix:
+        """The unit vectors of at least one document, a row each, in their order; the
+        arena hands back each batch's buffers once it ends."""
+        return self._embed(texts, self._shrinking)
+
+    def embed_query(self, text: str) -> Vector:
+        """The unit vector of a query; the arena keeps its buffers for the next."""
+        return self._embed([text], self._keeping)[0]
+
+    def _embed(self, texts: list[str], run_options: onnxruntime.RunOptions) -> VectorMatrix:
         longest_first = sorted(range(len(texts)), key=lambda index: -len(texts[index]))
         batches = [
-            self._embed_batch([texts[index] for index in longest_first[start : start + BATCH_SIZE]])
+            self._embed_batch(
+                [texts[index] for index in longest_first[start : start + BATCH_SIZE]], run_options
+            )
             for start in range(0, len(texts), BATCH_SIZE)
         ]
         embedded = numpy.concatenate(batches)
@@ -283,15 +295,16 @@ class OnnxModel:
     def token_states(self, texts: list[str]) -> NDArray[numpy.float32]:
         """Each token's state of each text, as the export's first output gives them: texts
         by tokens by width, where the export is one the embedder reads."""
-        return self._states(self._inputs(texts))
+        return self._states(self._inputs(texts), self._keeping)
 
     def token_count(self, text: str) -> int:
         """How many tokens the model reads of a text, its limit holding."""
         return len(self._tokenizer.encode(text).ids)
 
-    def _embed_batch(self, texts: list[str]) -> VectorMatrix:
+    def _embed_batch(self, texts: list[str], run_options: onnxruntime.RunOptions) -> VectorMatrix:
         inputs = self._inputs(texts)
-        return unit_rows(mean_over_tokens(self._states(inputs), inputs[ATTENTION_MASK]))
+        states = self._states(inputs, run_options)
+        return unit_rows(mean_over_tokens(states, inputs[ATTENTION_MASK]))
 
     def _inputs(self, texts: list[str]) -> dict[str, NDArray[numpy.int64]]:
         """What the export is given of a batch: its tokens, the mask over them, and the
@@ -304,8 +317,10 @@ class OnnxModel:
             inputs[TOKEN_TYPE_IDS] = numpy.zeros_like(token_ids)
         return inputs
 
-    def _states(self, inputs: dict[str, NDArray[numpy.int64]]) -> NDArray[numpy.float32]:
-        states = self._session.run(None, inputs, self._run_options)[TOKEN_STATES_OUTPUT]
+    def _states(
+        self, inputs: dict[str, NDArray[numpy.int64]], run_options: onnxruntime.RunOptions
+    ) -> NDArray[numpy.float32]:
+        states = self._session.run(None, inputs, run_options)[TOKEN_STATES_OUTPUT]
         return numpy.asarray(states, dtype=numpy.float32)
 
 
@@ -345,12 +360,12 @@ class OnnxEmbedder(Embedder):
 
     @override
     def embed_query(self, text: str) -> Vector:
-        return self._loaded_model().embed([text])[0]
+        return self._loaded_model().embed_query(text)
 
     @override
     def embed_documents(self, texts: list[str]) -> VectorMatrix:
         log.debug("embedding_documents", count=len(texts))
-        return self._loaded_model().embed(texts)
+        return self._loaded_model().embed_documents(texts)
 
     def _loaded_model(self) -> OnnxModel:
         """The model, loading it on the first call."""
