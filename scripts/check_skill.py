@@ -12,22 +12,27 @@ and holds:
 - the skill's code to name every tool, every parameter of each, every value a parameter
   takes from a fixed set (the chunk kinds, the languages), and every field of every
   answer, nested ones among them;
-- every span of the skill's, the instructions' and the tools' descriptions' code that is a
-  name, a dotted path of names (`debug.timings`), or a name called (`index_codebase(...)`)
-  or given a value (`force=true`), to be one the server has: a tool, a parameter, one of
-  its fixed values, a field of an answer, or a setting; the skill's examples of a
-  project's own names aside; and every `SEMANTIC_CODE_MCP_*` variable to name a setting;
+- in the skill, the instructions, each tool's description and the descriptions its
+  schemas give its parameters and the fields of its answer, every span of code that is a
+  name or a dotted path of names (`debug.timings`, and one ending a sentence), alone,
+  called (`index_codebase(...)`) or given a value (`force=true`, `force: true`), to be one
+  the server has: a tool, a parameter, one of its fixed values, a field of an answer, or a
+  setting, the examples' own project names aside; and every `SEMANTIC_CODE_MCP_*`
+  variable anywhere in them, a fenced block among other code included, to name a setting;
+- each tool's description to give, in its `Args:` section, every parameter of the tool
+  and no other;
 - the skill, the instructions and every tool's description to name each language the
   server indexes, the values of its `languages` parameter, in any case; and the
   instructions to name every tool;
 - the skill to its length, as D16 of ADR 006 sets it.
 
-What it cannot see: what a sentence says of a name (a wrong default, cap or meaning, which
-the texts therefore leave to the tools' schemas rather than repeating their numbers); the
-value after a name's `=` or inside its call (`chunk_kinds=["struct"]`); a name written
-with a capital (`Struct`), as the examples' own classes are; a name inside a fenced block
-among other code; a language a text names that no chunker reads, as no closed list of
-languages exists to look for one in.
+What it cannot see: a name written in plain words outside `Args:` (with force); what a
+sentence says of a name (a wrong default, cap or meaning, which the texts therefore leave
+to the tools' schemas rather than repeating their numbers); the value after a name's `=`
+or `:` or inside its call (`chunk_kinds=["struct"]`); a name written with a capital
+(`Struct`), as the examples' own classes are; a name inside a fenced block among other
+code; a language a text names that no chunker reads, as no closed list of languages
+exists to look for one in.
 
 Run in the repository's root, as pre-commit runs it: `uv run python scripts/check_skill.py`.
 Prints each disagreement, a line each, and exits 1; prints nothing and exits 0 when the
@@ -59,19 +64,33 @@ AGREE = 0
 # What a text writes as code: a fenced block, or a span between backticks
 CODE = re.compile(r"```.*?```|`[^`]+`", re.DOTALL)
 CODE_QUOTE = "`"
-# A span that is a name or a dotted path of names, alone, called, or given a value:
-# `chunk_kinds`, `debug.timings`, `index_codebase(force=true)`, `force=true`
-NAMED_SPAN = re.compile(r"(?P<path>[a-z][a-z_]*(?:\.[a-z][a-z_]*)*)(?:[(=].*)?", re.DOTALL)
+# A span that is a name or a dotted path of names, alone, ending a sentence, called, or
+# given a value: `chunk_kinds`, `debug.timings.`, `index_codebase(force=true)`,
+# `force=true`, `force: true`
+NAMED_SPAN = re.compile(r"(?P<path>[a-z][a-z_]*(?:\.[a-z][a-z_]*)*)(?:[(=:].*|\.)?", re.DOTALL)
 PATH_GROUP = "path"
 PATH_SEPARATOR = "."
-# A span that names one of the server's settings by its variable
-SETTING_SPAN = re.compile(r"SEMANTIC_CODE_MCP_(?P<setting>[A-Z_]+)(?:=.*)?", re.DOTALL)
+# A settings variable of the server's, wherever a text writes one
+SETTING_VARIABLE = re.compile(r"\bSEMANTIC_CODE_MCP_(?P<setting>[A-Z_]+)")
 SETTING_GROUP = "setting"
-# Names the skill gives as a project's own, in its examples, which no server has
+# Names the texts give as a project's own, in their examples, which no server has
 EXAMPLE_NAMES = frozenset({"greet", "src", "tests"})
-# The keys of a JSON schema this reads: an object's fields, a fixed set of values
+# A docstring's section of arguments: its heading, then its indented lines, a blank line
+# among them only where another indented one follows
+ARGUMENTS_SECTION = re.compile(
+    r"^Args:\n(?P<body>(?:[ \t]+\S.*\n?|[ \t]*\n(?=[ \t]+\S))*)", re.MULTILINE
+)
+BODY_GROUP = "body"
+# A line of that section that starts with a name and a colon; those at the section's
+# shallowest indent give its arguments, deeper ones continue a description
+ARGUMENT_LINE = re.compile(r"(?P<indent>[ \t]+)(?P<name>[A-Za-z_]\w*):(?:\s.*)?")
+INDENT_GROUP = "indent"
+NAME_GROUP = "name"
+# The keys of a JSON schema this reads: an object's fields, a fixed set of values, what
+# a field is
 PROPERTIES = "properties"
 ENUM = "enum"
+DESCRIPTION = "description"
 # A schema's named definitions, and a reference to one, as `#/$defs/Language`
 DEFINITIONS = "$defs"
 REFERENCE = "$ref"
@@ -121,6 +140,12 @@ def field_names(schema: object) -> set[str]:
         if isinstance(properties, dict):
             names.update(str(name) for name in properties)
     return names
+
+
+def schema_descriptions(schema: object) -> str:
+    """What a schema says of its fields, every description at any depth, one after another."""
+    descriptions = [node.get(DESCRIPTION) for node in schema_nodes(schema)]
+    return "\n".join(description for description in descriptions if isinstance(description, str))
 
 
 def fixed_values(schema: object) -> set[str]:
@@ -178,54 +203,101 @@ def code_names(text: str) -> set[str]:
     return names
 
 
-def code_settings(text: str) -> set[str]:
-    """The settings a text's code names by their variables, as the settings' fields."""
-    names: set[str] = set()
-    for span in CODE.findall(text):
-        match = SETTING_SPAN.fullmatch(span.strip(CODE_QUOTE))
-        if match is not None:
-            names.add(match.group(SETTING_GROUP).lower())
-    return names
+def named_settings(text: str) -> set[str]:
+    """The settings a text names by their variables, anywhere in it, as the settings'
+    fields: the prefix is the server's own, so no other word is read as one."""
+    return {match.group(SETTING_GROUP).lower() for match in SETTING_VARIABLE.finditer(text)}
 
 
-def names_disagreements(surface: ServerSurface, skill: str) -> list[str]:
-    """What the skill's code leaves out of the server, the names the skill's and the
-    instructions' code give that the server lacks, and the tools the instructions leave
-    out."""
-    code = code_of(skill)
+def argument_names(description: str) -> list[str]:
+    """The arguments a docstring's `Args:` section gives, by name, in its order."""
+    section = ARGUMENTS_SECTION.search(description)
+    if section is None:
+        return []
+    matches = [ARGUMENT_LINE.fullmatch(line) for line in section.group(BODY_GROUP).splitlines()]
+    arguments = [match for match in matches if match is not None]
+    if not arguments:
+        return []
+    shallowest = min(len(argument.group(INDENT_GROUP)) for argument in arguments)
+    return [
+        argument.group(NAME_GROUP)
+        for argument in arguments
+        if len(argument.group(INDENT_GROUP)) == shallowest
+    ]
+
+
+def surface_names(surface: ServerSurface) -> set[str]:
+    """Every name an agent can use: the tools, their parameters and the values a parameter
+    takes from a fixed set, and the fields of their answers."""
     tools = {tool.name for tool in surface.tools}
     parameters = {name for tool in surface.tools for name in field_names(tool.input_schema)}
     values = {value for tool in surface.tools for value in fixed_values(tool.input_schema)}
     answers = {name for tool in surface.tools for name in field_names(tool.output_schema)}
-    known = tools | parameters | values | answers | set(Settings.model_fields)
-    named = tools | parameters | values | answers
-    left_out = sorted(name for name in named if not is_named(code, name))
-    skill_unknown = sorted(code_names(skill) - known - EXAMPLE_NAMES)
-    instructions_unknown = sorted(code_names(surface.instructions) - known)
-    descriptions_unknown = sorted(
-        f"{tool.name}'s description names {name}"
-        for tool in surface.tools
-        for name in code_names(tool.description or "") - known
+    return tools | parameters | values | answers
+
+
+def texts_of(surface: ServerSurface, skill: str) -> dict[str, str]:
+    """Every text an agent reads of the server, by where it stands: the skill, the
+    instructions, and each tool's description and what its schemas say of their fields."""
+    texts = {SKILL_TEXT: skill, INSTRUCTIONS_TEXT: surface.instructions}
+    for tool in surface.tools:
+        texts[f"{tool.name}'s description"] = tool.description or ""
+        texts[f"{tool.name}'s schemas"] = "\n".join(
+            [schema_descriptions(tool.input_schema), schema_descriptions(tool.output_schema)]
+        )
+    return texts
+
+
+def left_out_disagreements(surface: ServerSurface, skill: str) -> list[str]:
+    """What the skill's code leaves out of the server, and the tools the instructions leave
+    out."""
+    code = code_of(skill)
+    left_out = sorted(name for name in surface_names(surface) if not is_named(code, name))
+    unnamed_tools = sorted(
+        tool.name for tool in surface.tools if not is_named(surface.instructions, tool.name)
     )
-    settings = set(Settings.model_fields)
-    unknown_settings = sorted(
-        (code_settings(skill) | code_settings(surface.instructions)) - settings
-    )
-    unnamed_tools = sorted(name for name in tools if not is_named(surface.instructions, name))
     return [
         *(f"{SKILL_TEXT} names no {name}" for name in left_out),
-        *(f"{SKILL_TEXT} names {name}, which the server lacks" for name in skill_unknown),
-        *(
-            f"{INSTRUCTIONS_TEXT} name {name}, which the server lacks"
-            for name in instructions_unknown
-        ),
         *(f"{INSTRUCTIONS_TEXT} name no {name}" for name in unnamed_tools),
-        *(f"{named}, which the server lacks" for named in descriptions_unknown),
-        *(
-            f"{SETTINGS_PREFIX}{name.upper()} is named, which is no setting of the server's"
-            for name in unknown_settings
-        ),
     ]
+
+
+def unknown_name_disagreements(surface: ServerSurface, skill: str) -> list[str]:
+    """Each name a text's code gives that the server lacks, and each settings variable
+    that names no setting."""
+    settings = set(Settings.model_fields)
+    known = surface_names(surface) | settings | EXAMPLE_NAMES
+    found: list[str] = []
+    for where, text in texts_of(surface, skill).items():
+        found.extend(
+            f"{name}, named in {where}, is none of the server's"
+            for name in sorted(code_names(text) - known)
+        )
+        found.extend(
+            f"{SETTINGS_PREFIX}{name.upper()}, named in {where}, is no setting of the server's"
+            for name in sorted(named_settings(text) - settings)
+        )
+    return found
+
+
+def argument_disagreements(surface: ServerSurface) -> list[str]:
+    """Each tool whose description's `Args:` section gives an argument the tool lacks, or
+    leaves out one it has."""
+    found: list[str] = []
+    for tool in surface.tools:
+        given = argument_names(tool.description or "")
+        parameters = list(tool.input_schema[PROPERTIES])
+        found.extend(
+            f"{tool.name}'s description gives an argument {name}, which the tool lacks"
+            for name in given
+            if name not in parameters
+        )
+        found.extend(
+            f"{tool.name}'s description gives no argument {name}"
+            for name in parameters
+            if name not in given
+        )
+    return found
 
 
 def language_disagreements(surface: ServerSurface, skill: str) -> list[str]:
@@ -256,7 +328,9 @@ def length_disagreements(skill: str) -> list[str]:
 def disagreements(surface: ServerSurface, skill: str) -> list[str]:
     """Each place the skill or the server's own words disagree with the server."""
     return [
-        *names_disagreements(surface, skill),
+        *left_out_disagreements(surface, skill),
+        *unknown_name_disagreements(surface, skill),
+        *argument_disagreements(surface),
         *language_disagreements(surface, skill),
         *length_disagreements(skill),
     ]
