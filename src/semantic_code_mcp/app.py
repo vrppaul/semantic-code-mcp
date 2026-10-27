@@ -16,6 +16,7 @@ from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Embedder
 from semantic_code_mcp.domain.models import IndexIdentity
+from semantic_code_mcp.server.instructions import SERVER_INSTRUCTIONS
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
 from semantic_code_mcp.services.projects import ProjectRegistry
@@ -42,6 +43,7 @@ def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegis
     middleware = [ProfilingMiddleware(settings.profiles_dir)] if settings.profile else []
     server = MCPServer(
         SERVER_NAME,
+        instructions=SERVER_INSTRUCTIONS,
         version=version(PACKAGE_NAME),
         lifespan=partial(project_registry_lifespan, settings=settings, embedder=embedder),
         middleware=middleware,

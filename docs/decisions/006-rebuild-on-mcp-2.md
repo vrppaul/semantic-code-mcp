@@ -400,6 +400,7 @@ Stage 7, as built so far:
 Stage 8, as built so far:
 - **`project_root`** in the answers of `index_status` and `index_codebase`: the root of the project whose index they report, as a directory inside a repository is indexed, and its counts reported, with the whole repository (O6). A field of a tool's answer, taken under the owner's approval of stages 5 to 8 with the new fields of their tools (2026-10-25 20:07, "Decisions taken for the owner" 2). `search_code` names none: its results carry absolute paths.
 - **README names every gate** of `.pre-commit-config.yaml`, import-linter, vulture and the code rules among them, and says the file is the list.
+- **Server `instructions`** (`server/instructions.py`), which a client shows beside the tools with or without the skill: when to search by meaning and when to Grep, what `project_path` names, the languages indexed, that indexing is automatic and when `index_codebase` is worth a call, and that a truncated result is Read before it is quoted. The tools' docstrings already state the same facts (C8's "Scans Python files" went in stage 4).
 
 Open, and left as they are for now:
 - A file that cannot be read is recorded as indexed with no chunks, from the scan's record: one replaced while it was read has a new mtime and is read again; one without permission stays unread until it changes or a forced run reads it, as a `chmod` changes no mtime. Not recording it would make every status stale and every search run an index.
