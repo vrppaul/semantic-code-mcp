@@ -12,6 +12,7 @@ paths:
 - **CI workflow**: `.github/workflows/publish.yml` — triggers on `v*` tag push and first runs the whole of `.github/workflows/ci.yml`
 - **Pipeline**: tag push → CI (gates, tests, build) → the `pypi` environment → `uv build` → `uv publish` (PyPI trusted publishers / OIDC) → `gh release create` with auto-generated notes
 - **Fresh lock**: a release also needs `fresh-lock`, `scripts/check_fresh_lock.py`, which refuses a `uv.lock` whose runtime packages a fresh resolve would not take; dev tools, which no user installs, are not compared
+- **Fresh lock again**: the publish job runs the same check after the owner's approval, which may come days later
 - **Weekly**: `.github/workflows/fresh-resolve.yml` moves the lock to the newest versions within the bounds, checks that no dev package holds a runtime one back, and runs the suite, as `uvx` installs them
 - **Owner approval**: the `pypi` environment stops for the owner only once it has a required reviewer (Settings → Environments → pypi). Not set as of 2026-10-25: until it is, a green CI publishes at once
 - **PyPI auth**: trusted publishers (OIDC), no API token stored — configured on PyPI to trust the `.github/workflows/publish.yml` workflow in the `pypi` GitHub environment
@@ -19,7 +20,7 @@ paths:
 ## Release Process
 
 1. Move the lock to the newest versions within the bounds (`uv lock --upgrade`), run the suite and both evals on it; commit all changes to `master`; mark the release in `CHANGELOG.md` (`[Unreleased]` → `[x.y.z] - date`)
-2. Just before tagging, `uv run --no-project python scripts/check_fresh_lock.py` exits 0; else back to 1
+2. Just before tagging, `uv run --no-project python scripts/check_fresh_lock.py` exits 0; else back to 1, or, where a dev package holds a runtime one back, move that package first
 3. `git tag v<major>.<minor>.<patch>` (semver)
 4. `git push origin v<major>.<minor>.<patch>`
 5. CI runs the gates and tests, then — after the owner's approval, once the environment requires it — builds, publishes and creates the GitHub Release

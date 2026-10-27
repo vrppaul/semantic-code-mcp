@@ -43,6 +43,13 @@ FRESH_COMMAND = (
     "--no-annotate",
     "--quiet",
 )
+# What to do about a difference: a lock behind the newest releases moves; one a dev
+# package holds back stays behind whatever the lock does, until that package's bound does
+STALE_LOCK_ADVICE = (
+    "Move the lock (`uv lock --upgrade`) and run the suite and both evals on it. If the"
+    " difference stays, a dev package holds a runtime one back in the lock:"
+    " `uv tree --invert --package <name>` shows which; loosen or move that dev package."
+)
 LOCK_IS_FRESH = 0
 LOCK_IS_STALE = 1
 UV_FAILED = 2
@@ -76,7 +83,7 @@ def main() -> int:
         print(f"locked, not taken fresh: {requirement}")
     for requirement in sorted(fresh - locked):
         print(f"taken fresh, not locked: {requirement}")
-    print("Move the lock (`uv lock --upgrade`) and run the suite and both evals on it.")
+    print(STALE_LOCK_ADVICE)
     return LOCK_IS_STALE
 
 

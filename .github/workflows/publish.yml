@@ -43,6 +43,10 @@ jobs:
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
+      # Again after the owner's approval, which may come days after fresh-lock ran
+      - name: The lock's runtime packages are those a fresh install takes
+        run: uv run --no-project python scripts/check_fresh_lock.py
+
       - name: Build package
         run: uv build
 
