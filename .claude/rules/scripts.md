@@ -5,7 +5,7 @@ paths:
 
 # The scripts
 
-The gates of our own, which no linter here can be told to keep. How each is built is said at its top.
+The gates of our own, which no linter here can be told to keep, and the break check of a test (`scripts/break_check.py`), which a test's author runs by hand. How each is built is said at its top.
 
 - A script says at its top why it exists and how it is run, what it prints and every code it exits with.
 - It is run in the repository's root and does its whole job in one process start.

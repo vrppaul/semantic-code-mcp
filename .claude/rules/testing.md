@@ -11,7 +11,7 @@ paths:
 - Its name states that behaviour: `tests/integration/test_discovery.py` is the standard.
 - First find the test that already holds the behaviour and extend it; a new test only where none does.
 - It is written before its code and seen failing. A refactor gets no new test: the old ones pass unchanged.
-- A test rewritten is seen failing too: with the line of code it holds broken, then restored.
+- A test rewritten, or written after its code, is seen failing too: with the line of code it holds broken, then restored, as `scripts/break_check.py` does.
 - No test for a declaration (a field's bound, a default), a library's own behaviour, a private method, a log line or a progress message.
 - A rule about how code is written is a gate in pre-commit, never a test.
 
