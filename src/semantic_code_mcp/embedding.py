@@ -32,7 +32,15 @@ from numpy.typing import NDArray
 
 # onnxruntime's errors live in its compiled module, which ships no stubs
 from onnxruntime.capi import onnxruntime_pybind11_state  # ty: ignore[unresolved-import]
-from pydantic import BaseModel, ConfigDict, PositiveInt, RootModel, ValidationError
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    RootModel,
+    ValidationError,
+)
 from tokenizers import Tokenizer
 from tokenizers.normalizers import Lowercase, Normalizer, Sequence
 
@@ -108,7 +116,13 @@ NEEDED_INPUTS = frozenset({INPUT_IDS, ATTENTION_MASK})
 SENT_INPUTS = frozenset({INPUT_IDS, ATTENTION_MASK, TOKEN_TYPE_IDS})
 # The token states are the export's first output, a batch of texts by tokens by width
 TOKEN_STATES_OUTPUT = 0
-TOKEN_STATES_AXES = 3
+# A short text the export runs once when it loads, so the shape of its states is seen
+# before any search depends on them
+EXPORT_PROBE_TEXT = "def greet(name): return name"
+ONE_TEXT = 1
+# The keys a pooling's config gives its states' width under: sentence-transformers 5.4's,
+# and the older one it renames
+WIDTH_KEYS = AliasChoices("embedding_dimension", "word_embedding_dimension")
 TOKEN_AXIS = 1
 # A row of a matrix of vectors runs along this axis
 VECTOR_AXIS = 1
@@ -125,11 +139,11 @@ CPU_PROVIDER = "CPUExecutionProvider"
 SPINNING_CONFIG_KEY = "session.intra_op.allow_spinning"
 NO_SPINNING = "0"
 # What onnxruntime raises, each a bare Exception of its own, when an export starts no
-# session: a file of no ONNX model (InvalidProtobuf) and weights in a file beside it that
-# is missing (Fail), both probed, and by their names the rest an export can bring about:
-# an argument it refuses, a file or a model it cannot find, a graph it cannot read, an
-# operator it cannot run, an exception while it starts the session
-EXPORT_LOAD_ERRORS = (
+# session or does not run: a file of no ONNX model (InvalidProtobuf) and weights in a file
+# beside it that is missing (Fail), both probed, and by their names the rest an export can
+# bring about: an argument it refuses, a file or a model it cannot find, a graph it cannot
+# read, an operator it cannot run, an exception while it starts the session
+EXPORT_ERRORS = (
     onnxruntime_pybind11_state.Fail,
     onnxruntime_pybind11_state.InvalidArgument,
     onnxruntime_pybind11_state.InvalidGraph,
@@ -182,6 +196,7 @@ class PoolingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
+    embedding_dimension: PositiveInt = Field(validation_alias=WIDTH_KEYS)
     pooling_mode: str | list[str] | None = None
     pooling_mode_mean_tokens: bool = False
     pooling_mode_cls_token: bool = False
@@ -226,11 +241,12 @@ class TokenizerConfig(BaseModel):
 
 class TransformerConfig(BaseModel):
     """The transformer's positions, which bound the tokens it reads (RoBERTa reads two
-    fewer); positive, as XLNet's -1 for none would leave a text uncut."""
+    fewer), where its config names them as BERT's does; positive, as XLNet's -1 for none
+    would leave a text uncut."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    max_position_embeddings: PositiveInt
+    max_position_embeddings: PositiveInt | None = None
 
 
 class OnnxModel:
@@ -253,15 +269,33 @@ class OnnxModel:
         vectors[longest_first] = embedded
         return vectors
 
+    def token_states(self, texts: list[str]) -> NDArray[numpy.float32]:
+        """Each token's state of each text, as the export's first output gives them: texts
+        by tokens by width, where the export is one the embedder reads."""
+        return self._states(self._inputs(texts))
+
+    def token_count(self, text: str) -> int:
+        """How many tokens the model reads of a text, its limit holding."""
+        return len(self._tokenizer.encode(text).ids)
+
     def _embed_batch(self, texts: list[str]) -> VectorMatrix:
+        inputs = self._inputs(texts)
+        return unit_rows(mean_over_tokens(self._states(inputs), inputs[ATTENTION_MASK]))
+
+    def _inputs(self, texts: list[str]) -> dict[str, NDArray[numpy.int64]]:
+        """What the export is given of a batch: its tokens, the mask over them, and the
+        token types, all zero, where it takes them."""
         encodings = self._tokenizer.encode_batch(texts)
         token_ids = numpy.array([encoding.ids for encoding in encodings], dtype=numpy.int64)
         mask = numpy.array([encoding.attention_mask for encoding in encodings], dtype=numpy.int64)
         inputs = {INPUT_IDS: token_ids, ATTENTION_MASK: mask}
         if self._takes_token_types:
             inputs[TOKEN_TYPE_IDS] = numpy.zeros_like(token_ids)
+        return inputs
+
+    def _states(self, inputs: dict[str, NDArray[numpy.int64]]) -> NDArray[numpy.float32]:
         states = self._session.run(None, inputs)[TOKEN_STATES_OUTPUT]
-        return unit_rows(mean_over_tokens(numpy.asarray(states, dtype=numpy.float32), mask))
+        return numpy.asarray(states, dtype=numpy.float32)
 
 
 class OnnxEmbedder(Embedder):
@@ -367,16 +401,19 @@ def load_model(model_name: str, revision: str | None) -> OnnxModel:
     # The hub draws a bar on stderr as it fetches a file, among the server's log lines
     disable_progress_bars()
     files = ModelFiles(model_name, revision)
-    check_modules(files)
+    pooling = checked_pooling(files)
     tokenizer = model_tokenizer(files)
     session = inference_session(files)
-    check_export(files, session)
+    check_inputs(files, session)
+    model = OnnxModel(tokenizer, session)
+    check_states(files, model, pooling.embedding_dimension)
     log.info("embedding_model_loaded", model=model_name)
-    return OnnxModel(tokenizer, session)
+    return model
 
 
-def check_modules(files: ModelFiles) -> None:
-    """Refuse a model whose modules make its vectors otherwise than the embedder does."""
+def checked_pooling(files: ModelFiles) -> PoolingConfig:
+    """The model's pooling, once its modules are those whose work the embedder does; a
+    model whose modules make its vectors otherwise is refused."""
     chain = files.config(MODULES_FILE, ModuleChain)
     if chain.kinds not in READ_MODULE_CHAINS:
         message = (
@@ -384,12 +421,14 @@ def check_modules(files: ModelFiles) -> None:
             "transformer, its pooling and a unit length, as sentence-transformers names them"
         )
         raise UnusableModelError(message)
-    if not files.config(POOLING_CONFIG_FILE, PoolingConfig).is_mean:
+    pooling = files.config(POOLING_CONFIG_FILE, PoolingConfig)
+    if not pooling.is_mean:
         message = (
             f"{files.model_name} pools a text's token states otherwise than by their mean "
             f"alone ({POOLING_CONFIG_FILE})"
         )
         raise UnusableModelError(message)
+    return pooling
 
 
 def model_tokenizer(files: ModelFiles) -> Tokenizer:
@@ -412,8 +451,11 @@ def read_tokenizer(files: ModelFiles) -> Tokenizer:
     path = files.path(TOKENIZER_FILE)
     try:
         return Tokenizer.from_file(str(path))
-    # tokenizers raises a bare Exception for a file it cannot read, and no narrower class
+    # tokenizers raises a bare Exception for a file it cannot read, and no narrower class;
+    # a narrower one, as a MemoryError, is no refusal of the file and goes on as it came
     except Exception as error:
+        if type(error) is not Exception:
+            raise
         message = f"{files.model_name}'s {TOKENIZER_FILE} does not load in tokenizers: {error}"
         raise UnusableModelError(message) from error
 
@@ -422,12 +464,20 @@ def token_limit(files: ModelFiles, config: SentenceBertConfig) -> int:
     """The longest text the model reads, in tokens, as sentence-transformers sets it: its
     own config's, or where that names none, its tokenizer's held to the positions its
     transformer has (a tokenizer's config can hold transformers' "no limit", 10^30). A
-    limit of its own past those positions is refused: the transformer could not read it."""
+    limit of its own past those positions is refused, as the transformer could not read it;
+    so is a model with neither, where sentence-transformers would take the tokenizer's alone,
+    which may be no limit at all."""
     positions = files.config(TRANSFORMER_CONFIG_FILE, TransformerConfig).max_position_embeddings
     if config.max_seq_length is None:
+        if positions is None:
+            message = (
+                f"{files.model_name} names no limit of its own ({SENTENCE_BERT_CONFIG_FILE}), "
+                f"and its transformer no positions ({TRANSFORMER_CONFIG_FILE})"
+            )
+            raise UnusableModelError(message)
         tokenizer_limit = files.config(TOKENIZER_CONFIG_FILE, TokenizerConfig).model_max_length
         return min(tokenizer_limit, positions)
-    if config.max_seq_length > positions:
+    if positions is not None and config.max_seq_length > positions:
         message = (
             f"{files.model_name}'s {SENTENCE_BERT_CONFIG_FILE} cuts a text at "
             f"{config.max_seq_length} tokens, past the {positions} positions its transformer "
@@ -465,15 +515,13 @@ def inference_session(files: ModelFiles) -> onnxruntime.InferenceSession:
     export = files.path(ONNX_MODEL_FILE)
     try:
         return onnxruntime.InferenceSession(str(export), options, providers=[CPU_PROVIDER])
-    except EXPORT_LOAD_ERRORS as error:
+    except EXPORT_ERRORS as error:
         message = f"{files.model_name}'s {ONNX_MODEL_FILE} does not load in onnxruntime: {error}"
         raise UnusableModelError(message) from error
 
 
-def check_export(files: ModelFiles, session: onnxruntime.InferenceSession) -> None:
-    """Refuse an export the embedder cannot feed, or whose first output is not each
-    token's state of each text: the one would fail at the first text, the other would give
-    vectors that mean nothing, unseen while a search embeds a single text."""
+def check_inputs(files: ModelFiles, session: onnxruntime.InferenceSession) -> None:
+    """Refuse an export the embedder cannot feed, which would fail at the first text."""
     inputs = frozenset(node.name for node in session.get_inputs())
     if not NEEDED_INPUTS <= inputs <= SENT_INPUTS:
         taken = LIST_SEPARATOR.join(sorted(inputs))
@@ -482,11 +530,24 @@ def check_export(files: ModelFiles, session: onnxruntime.InferenceSession) -> No
             f"{INPUT_IDS} and {ATTENTION_MASK}, and {TOKEN_TYPE_IDS} where taken"
         )
         raise UnusableModelError(message)
-    axes = len(session.get_outputs()[TOKEN_STATES_OUTPUT].shape)
-    if axes != TOKEN_STATES_AXES:
+
+
+def check_states(files: ModelFiles, model: OnnxModel, width: int) -> None:
+    """Refuse an export whose first output, for one short text, is not that text's token
+    states as wide as the pooling's config says: a vector per text, or logits, would give
+    vectors that mean nothing, unseen while a search embeds a single text."""
+    try:
+        states = model.token_states([EXPORT_PROBE_TEXT])
+    except EXPORT_ERRORS as error:
+        message = f"{files.model_name}'s {ONNX_MODEL_FILE} does not run in onnxruntime: {error}"
+        raise UnusableModelError(message) from error
+    tokens = model.token_count(EXPORT_PROBE_TEXT)
+    expected = (ONE_TEXT, tokens, width)
+    if states.shape != expected:
         message = (
-            f"{files.model_name}'s {ONNX_MODEL_FILE} gives first an output of {axes} axes: the "
-            "embedder reads each token's state of each text, texts by tokens by width"
+            f"{files.model_name}'s {ONNX_MODEL_FILE} gives one text of {tokens} tokens "
+            f"a first output of shape {states.shape}: the embedder reads each token's state, "
+            f"{expected}, as wide as {POOLING_CONFIG_FILE} says"
         )
         raise UnusableModelError(message)
 

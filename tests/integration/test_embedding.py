@@ -52,9 +52,20 @@ TRANSFORMER_POSITIONS = 512
 # Chains the embedder does not read: poolings other than the mean alone, which
 # sentence-transformers would take another way or join into a wider vector, a layer after
 # the pooling that changes the vector, and a transformer of the model's own code
-FIRST_TOKEN_POOLING = {"pooling_mode_cls_token": True}
-MEAN_AND_FIRST_TOKEN_POOLING = {"pooling_mode_mean_tokens": True, "pooling_mode_cls_token": True}
-MEAN_AND_LAST_TOKEN_POOLING = {"pooling_mode_mean_tokens": True, "pooling_mode_lasttoken": True}
+FIRST_TOKEN_POOLING = {
+    "word_embedding_dimension": EMBEDDING_DIMENSION,
+    "pooling_mode_cls_token": True,
+}
+MEAN_AND_FIRST_TOKEN_POOLING = {
+    "word_embedding_dimension": EMBEDDING_DIMENSION,
+    "pooling_mode_mean_tokens": True,
+    "pooling_mode_cls_token": True,
+}
+MEAN_AND_LAST_TOKEN_POOLING = {
+    "word_embedding_dimension": EMBEDDING_DIMENSION,
+    "pooling_mode_mean_tokens": True,
+    "pooling_mode_lasttoken": True,
+}
 DENSE_AFTER_POOLING = [
     {"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Transformer"},
     {"idx": 1, "name": "1", "path": "1_Pooling", "type": "sentence_transformers.models.Pooling"},
@@ -94,7 +105,7 @@ MODULES_OF_SENTENCE_TRANSFORMERS_5_4 = [
         "type": "sentence_transformers.sentence_transformer.modules.normalize.Normalize",
     },
 ]
-POOLING_BY_NAME = {"pooling_mode": "mean"}
+POOLING_BY_NAME = {"embedding_dimension": EMBEDDING_DIMENSION, "pooling_mode": "mean"}
 NO_LIMIT_OF_ITS_OWN = {"do_lower_case": False}
 TOKENIZER_LIMIT = {"model_max_length": MODEL_TOKEN_LIMIT}
 # transformers' "no limit", which some tokenizers' configs hold (thenlper/gte-small's),
@@ -103,6 +114,9 @@ NO_TOKENIZER_LIMIT = {"model_max_length": 10**30}
 LIMIT_OF_THE_POSITIONS = {"max_seq_length": TRANSFORMER_POSITIONS}
 # A limit past the positions, which the transformer could not read
 LIMIT_PAST_THE_POSITIONS = {"max_seq_length": 2 * TRANSFORMER_POSITIONS}
+# A transformer's config that names its positions otherwise than BERT's does, as
+# nomic-bert's `n_positions`, or not at all
+POSITIONS_NAMED_OTHERWISE = {"model_type": "nomic_bert", "n_positions": TRANSFORMER_POSITIONS}
 # A model that says to lowercase its texts, as cased RoBERTa models do, or that does not,
 # over a tokenizer that keeps their case: by its normalizer, or for want of one
 LOWERCASING_CONFIG = {"max_seq_length": MODEL_TOKEN_LIMIT, "do_lower_case": True}
@@ -174,19 +188,18 @@ def copy_with_case(directory: Path, config: object, normalizer: object) -> Path:
     return directory
 
 
-def write_tiny_export(path: Path, input_names: tuple[str, ...], states_shape: list[int]) -> None:
-    """An export taking the inputs named, whose first output is the token ids as numbers in
-    the shape given: texts by tokens by width, or by fewer axes."""
+def write_tiny_export(
+    path: Path, input_names: tuple[str, ...], input_type: int, states_shape: list[int]
+) -> None:
+    """An export taking the inputs named, of the type given, whose first output is the token
+    ids as numbers in the shape given: texts by tokens by width, or by fewer axes."""
     graph = helper.make_graph(
         [
             helper.make_node("Cast", [INPUT_IDS], [IDS_AS_NUMBERS], to=TensorProto.FLOAT),
             helper.make_node("Reshape", [IDS_AS_NUMBERS, STATES_SHAPE], [TOKEN_STATES]),
         ],
         "tiny",
-        [
-            helper.make_tensor_value_info(name, TensorProto.INT64, TEXTS_BY_TOKENS)
-            for name in input_names
-        ],
+        [helper.make_tensor_value_info(name, input_type, TEXTS_BY_TOKENS) for name in input_names],
         [
             helper.make_tensor_value_info(
                 TOKEN_STATES, TensorProto.FLOAT, [None] * len(states_shape)
@@ -255,43 +268,48 @@ def test_a_model_in_a_directory_embeds_as_the_hub_s(embedder: OnnxEmbedder, tmp_
 
 
 @pytest.mark.parametrize(
-    ("relative_path", "content", "named"),
+    ("changes", "named"),
     [
-        pytest.param(POOLING_CONFIG_FILE, FIRST_TOKEN_POOLING, "pools", id="the first token"),
+        pytest.param({POOLING_CONFIG_FILE: FIRST_TOKEN_POOLING}, "pools", id="the first token"),
         pytest.param(
-            POOLING_CONFIG_FILE,
-            MEAN_AND_FIRST_TOKEN_POOLING,
+            {POOLING_CONFIG_FILE: MEAN_AND_FIRST_TOKEN_POOLING},
             "pools",
             id="the mean and the first token",
         ),
         pytest.param(
-            POOLING_CONFIG_FILE,
-            MEAN_AND_LAST_TOKEN_POOLING,
+            {POOLING_CONFIG_FILE: MEAN_AND_LAST_TOKEN_POOLING},
             "pools",
             id="the mean and the last token",
         ),
-        pytest.param(MODULES_FILE, DENSE_AFTER_POOLING, "chains", id="a layer after the pooling"),
+        pytest.param({MODULES_FILE: DENSE_AFTER_POOLING}, "chains", id="a layer after the pooling"),
         pytest.param(
-            MODULES_FILE,
-            TRANSFORMER_OF_ITS_OWN_CODE,
+            {MODULES_FILE: TRANSFORMER_OF_ITS_OWN_CODE},
             "custom_st.Transformer",
             id="a transformer of the model's own code",
         ),
-        pytest.param(MODULES_FILE, MODULE_OF_NO_TYPE, MODULES_FILE, id="a module of no type"),
+        pytest.param({MODULES_FILE: MODULE_OF_NO_TYPE}, MODULES_FILE, id="a module of no type"),
         pytest.param(
-            SENTENCE_BERT_CONFIG_FILE,
-            LIMIT_PAST_THE_POSITIONS,
+            {SENTENCE_BERT_CONFIG_FILE: LIMIT_PAST_THE_POSITIONS},
             SENTENCE_BERT_CONFIG_FILE,
             id="a limit past the transformer's positions",
+        ),
+        pytest.param(
+            {
+                SENTENCE_BERT_CONFIG_FILE: NO_LIMIT_OF_ITS_OWN,
+                TRANSFORMER_CONFIG_FILE: POSITIONS_NAMED_OTHERWISE,
+            },
+            TRANSFORMER_CONFIG_FILE,
+            id="no limit of its own, and no positions known",
         ),
     ],
 )
 def test_a_model_the_embedder_cannot_make_the_vectors_of_is_refused_when_it_loads(
-    tmp_path: Path, relative_path: str, content: object, named: str
+    tmp_path: Path, changes: dict[str, object], named: str
 ):
     """Its vectors would mean something else than its own library makes of them."""
     directory = copy_of_the_model(tmp_path)
-    (directory / relative_path).write_text(json.dumps(content))
+    for relative_path, content in changes.items():
+        (directory / relative_path).write_text(json.dumps(content))
 
     with pytest.raises(UnusableModelError, match=named):
         OnnxEmbedder(str(directory)).load()
@@ -307,6 +325,20 @@ def test_a_model_saved_by_sentence_transformers_5_4_or_later_embeds_as_its_older
     (directory / POOLING_CONFIG_FILE).write_text(json.dumps(POOLING_BY_NAME))
     (directory / SENTENCE_BERT_CONFIG_FILE).write_text(json.dumps(NO_LIMIT_OF_ITS_OWN))
     (directory / TOKENIZER_CONFIG_FILE).write_text(json.dumps(TOKENIZER_LIMIT))
+    texts = json.loads(REFERENCE_VECTORS.read_text())["texts"]
+
+    vectors = OnnxEmbedder(str(directory)).embed_documents(texts)
+
+    assert numpy.array_equal(vectors, embedder.embed_documents(texts))
+
+
+def test_a_model_whose_transformer_names_its_positions_otherwise_reads_to_its_own_limit(
+    embedder: OnnxEmbedder, tmp_path: Path
+):
+    """sentence-transformers holds a limit of the model's own to no positions it cannot
+    find in the transformer's config."""
+    directory = copy_of_the_model(tmp_path)
+    (directory / TRANSFORMER_CONFIG_FILE).write_text(json.dumps(POSITIONS_NAMED_OTHERWISE))
     texts = json.loads(REFERENCE_VECTORS.read_text())["texts"]
 
     vectors = OnnxEmbedder(str(directory)).embed_documents(texts)
@@ -422,25 +454,46 @@ def test_a_file_its_library_cannot_load_is_refused_naming_it(
 
 
 @pytest.mark.parametrize(
-    ("input_names", "states_shape"),
+    ("input_names", "input_type", "states_shape"),
     [
         pytest.param(
             (INPUT_IDS, ATTENTION_MASK, POSITION_IDS),
+            TensorProto.INT64,
             TEXTS_BY_TOKENS_BY_WIDTH,
             id="an input the embedder does not send",
         ),
-        pytest.param((INPUT_IDS,), TEXTS_BY_TOKENS_BY_WIDTH, id="no attention mask to take"),
         pytest.param(
-            (INPUT_IDS, ATTENTION_MASK), TEXTS_BY_WIDTH, id="a vector per text as its first output"
+            (INPUT_IDS,),
+            TensorProto.INT64,
+            TEXTS_BY_TOKENS_BY_WIDTH,
+            id="no attention mask to take",
+        ),
+        pytest.param(
+            (INPUT_IDS, ATTENTION_MASK),
+            TensorProto.INT32,
+            TEXTS_BY_TOKENS_BY_WIDTH,
+            id="inputs of another type than the token ids'",
+        ),
+        pytest.param(
+            (INPUT_IDS, ATTENTION_MASK),
+            TensorProto.INT64,
+            TEXTS_BY_WIDTH,
+            id="a vector per text as its first output",
+        ),
+        pytest.param(
+            (INPUT_IDS, ATTENTION_MASK),
+            TensorProto.INT64,
+            TEXTS_BY_TOKENS_BY_WIDTH,
+            id="token states of another width than the pooling's",
         ),
     ],
 )
 def test_an_export_the_embedder_cannot_feed_or_read_is_refused_when_it_loads(
-    tmp_path: Path, input_names: tuple[str, ...], states_shape: list[int]
+    tmp_path: Path, input_names: tuple[str, ...], input_type: int, states_shape: list[int]
 ):
     """Else it would fail at the first text, or give one text's search a wrong vector."""
     directory = copy_of_the_model(tmp_path)
-    write_tiny_export(directory / ONNX_MODEL_FILE, input_names, states_shape)
+    write_tiny_export(directory / ONNX_MODEL_FILE, input_names, input_type, states_shape)
 
     with pytest.raises(UnusableModelError, match=ONNX_MODEL_FILE):
         OnnxEmbedder(str(directory)).load()
