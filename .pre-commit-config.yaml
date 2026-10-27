@@ -96,6 +96,15 @@ repos:
         types: [python]
         exclude: ^scripts/check_instruction_files\.py$
 
+      # The skill and the server's own words name what the server has: its tools,
+      # their parameters and answers' fields, the languages it indexes (D16)
+      - id: skill
+        name: skill (the skill and the server's instructions agree with the server)
+        entry: uv run python scripts/check_skill.py
+        language: system
+        files: ^(skills/|src/semantic_code_mcp/|scripts/check_skill\.py$)
+        pass_filenames: false
+
   # Bandit — security linting. 1.8 fails on every file of Python 3.14's ast
   # that holds a call with a keyword, skips the file and passes: 1.9 reads them
   - repo: https://github.com/PyCQA/bandit
