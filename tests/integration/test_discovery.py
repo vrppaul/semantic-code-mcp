@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from hypothesis import example, given, settings, strategies
 
-from semantic_code_mcp.discovery import SourceDiscovery
+from semantic_code_mcp.discovery import ProjectRoot, SourceDiscovery
 from semantic_code_mcp.domain.models import SourceFile
 from tests.helpers import commit_all, make_repository, run_git
 
@@ -433,24 +433,28 @@ def directories(tmp_path: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("asked", "root"),
+    ("asked", "root", "is_repository"),
     [
-        pytest.param("repo/pkg/sub", "repo", id="a directory inside a repository"),
-        pytest.param("repo", "repo", id="a repository's root"),
-        pytest.param("plain", "plain", id="a directory outside any repository"),
+        pytest.param("repo/pkg/sub", "repo", True, id="a directory inside a repository"),
+        pytest.param("repo", "repo", True, id="a repository's root"),
+        pytest.param("plain", "plain", False, id="a directory outside any repository"),
         pytest.param(
-            "ignoring/projects/app", "ignoring/projects/app", id="a project the repository ignores"
+            "ignoring/projects/app",
+            "ignoring/projects/app",
+            False,
+            id="a project the repository ignores",
         ),
-        pytest.param("large/pkg", "large", id="a repository that hides untracked files"),
+        pytest.param("large/pkg", "large", True, id="a repository that hides untracked files"),
     ],
 )
 def test_a_project_is_the_whole_repository_a_directory_lies_in(
-    directories: Path, asked: str, root: str
+    directories: Path, asked: str, root: str, *, is_repository: bool
 ):
-    """One index per repository: a directory inside one is a part of its project."""
+    """One index per repository: a directory inside one is a part of its project. Outside
+    one, the directory is a project of its own, which no repository names."""
     found = make_discovery().project_root_of((directories / asked).resolve())
 
-    assert found == (directories / root).resolve()
+    assert found == ProjectRoot(path=(directories / root).resolve(), is_repository=is_repository)
 
 
 @pytest.mark.parametrize(
@@ -463,6 +467,7 @@ def test_a_project_is_the_whole_repository_a_directory_lies_in(
             "system/home/user/projects/app", "system/home/user", id="a project in the home"
         ),
         pytest.param("system/srv/app", "system/home/user", id="a project beside the home"),
+        pytest.param("dotfiles", "dotfiles", id="the home itself"),
     ],
 )
 def test_a_repository_at_or_above_the_home_directory_holds_projects_apart(
@@ -474,7 +479,7 @@ def test_a_repository_at_or_above_the_home_directory_holds_projects_apart(
 
     found = discovery.project_root_of((directories / asked).resolve())
 
-    assert found == (directories / asked).resolve()
+    assert found == ProjectRoot(path=(directories / asked).resolve(), is_repository=False)
 
 
 def test_a_user_s_setting_that_hides_untracked_files_keeps_a_repository_whole(
@@ -487,4 +492,4 @@ def test_a_user_s_setting_that_hides_untracked_files_keeps_a_repository_whole(
 
     found = make_discovery().project_root_of((directories / "repo" / "pkg" / "sub").resolve())
 
-    assert found == (directories / "repo").resolve()
+    assert found == ProjectRoot(path=(directories / "repo").resolve(), is_repository=True)

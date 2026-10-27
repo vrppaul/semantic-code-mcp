@@ -24,7 +24,7 @@ from semantic_code_mcp.services.projects import ProjectLocation
 
 TIMINGS = SearchTimings(embedding_ms=1.0, search_ms=2.0, total_ms=3.0)
 PROJECT_ROOT = Path("/project")
-AT_THE_ROOT = ProjectLocation(root=PROJECT_ROOT, directory=None)
+AT_THE_ROOT = ProjectLocation(root=PROJECT_ROOT, directory=None, is_repository=True)
 
 
 def hit_of(content: str) -> SearchHit:

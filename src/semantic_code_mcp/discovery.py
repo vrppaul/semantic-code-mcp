@@ -60,6 +60,17 @@ class FoundFile(BaseModel):
     source: SourceFile
 
 
+class ProjectRoot(BaseModel):
+    """The root of the project a directory belongs to, and whether a git repository names
+    it: a work tree's root below the home directory. Otherwise it is the directory itself,
+    which nothing says is one project rather than a folder of many."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: Path
+    is_repository: bool
+
+
 def parse_ignore_patterns(raw_patterns: Sequence[str]) -> IgnorePatterns:
     """Sort patterns by how they match, after the spellings .gitignore allows.
 
@@ -128,19 +139,17 @@ class SourceDiscovery:
             candidates = self._walk(root)
         return self._indexable(candidates, root)
 
-    def project_root_of(self, directory: Path) -> Path:
+    def project_root_of(self, directory: Path) -> ProjectRoot:
         """The root of the project a directory belongs to: of the git work tree it lies
         in, so a repository has one index whichever of its directories a search names; the
         directory itself outside a work tree, where the repository around it ignores it, or
         where that repository's root is the user's home directory or above it, as a home
-        under git for its dotfiles is, which holds projects rather than being one. Asked of
-        git whether or not it lists the files."""
+        under git for its dotfiles is, which holds projects rather than being one; and
+        whether a repository names it. Asked of git whether or not it lists the files."""
         repository_root = self._repository_of(directory)
-        if repository_root is None or repository_root == directory:
-            return directory
-        if self._home_directory.is_relative_to(repository_root):
-            return directory
-        return repository_root
+        if repository_root is None or self._home_directory.is_relative_to(repository_root):
+            return ProjectRoot(path=directory, is_repository=False)
+        return ProjectRoot(path=repository_root, is_repository=True)
 
     def _list_with_git(self, root: Path) -> list[Path] | None:
         """Ask git which files to index; None when git cannot or should not answer."""

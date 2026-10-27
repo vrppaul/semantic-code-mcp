@@ -53,7 +53,8 @@ PATH_GLOB_DESCRIPTION = (
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
 PROJECT_PATH_DESCRIPTION = (
     "Absolute path to the project, or to a directory inside its git repository. Left out,"
-    " the client's workspace root: the directory Claude Code was started in."
+    " the client's workspace root: the directory Claude Code was started in, which must lie in"
+    " a git repository."
 )
 # A tool's own parameter that names the project, which the client's roots stand in for
 PROJECT_PATH_PARAMETER = "project_path"
@@ -93,7 +94,7 @@ async def search_code(  # noqa: PLR0913
         query: Natural language description of what you're looking for.
         project_path: Absolute path to the project, or to a directory inside its git
             repository, which keeps the search to that directory; left out, the client's
-            workspace root.
+            workspace root, which must lie in a git repository.
         limit: Maximum number of results to return.
         chunk_kinds: Only chunks of these kinds.
         languages: Only chunks of files in these languages.
@@ -112,7 +113,7 @@ async def search_code(  # noqa: PLR0913
         # Read before git is asked anything, so a glob refused costs nothing
         included = given_glob(path_glob)
         excluded = given_glob(exclude_glob)
-        location = await located_project(ctx, project_directory(project_path, roots))
+        location = await located_project(ctx, project_path, roots)
         services = project_services(ctx, location.root)
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
@@ -148,14 +149,15 @@ async def index_codebase(
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
             indexes the whole repository, unless the repository ignores it or holds the
-            user's home directory. Left out, the client's workspace root.
+            user's home directory. Left out, the client's workspace root, which must lie in
+            a git repository.
         force: Re-index all files regardless of changes.
 
     Returns:
         The root of the project indexed, and what the run indexed and deleted.
     """
     with failures_as_tool_errors():
-        location = await located_project(ctx, project_directory(project_path, roots))
+        location = await located_project(ctx, project_path, roots)
         services = project_services(ctx, location.root)
         report = await services.indexing.index(
             location.root, force=force, progress=ProgressReporter(ctx.report_progress)
@@ -173,8 +175,8 @@ async def index_status(
 
     Returns whether the project is indexed, when it was last updated, how many of its
     Python, Rust and Markdown files and their chunks are indexed, how many files changed
-    since, and what built the index (each model and chunker version keeps an index of its
-    own).
+    since, and what built the index (each model, embedder version and chunker version
+    keeps an index of its own).
 
     Note: search_code automatically re-indexes stale files before searching,
     so there is no need to check or act on staleness manually.
@@ -182,14 +184,15 @@ async def index_status(
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
             reports the whole repository's index, unless the repository ignores it or holds
-            the user's home directory. Left out, the client's workspace root.
+            the user's home directory. Left out, the client's workspace root, which must
+            lie in a git repository.
 
     Returns:
         The root of the project whose index this is, and its status, including the
         counts of files and chunks.
     """
     with failures_as_tool_errors():
-        location = await located_project(ctx, project_directory(project_path, roots))
+        location = await located_project(ctx, project_path, roots)
         services = project_services(ctx, location.root)
         status = await services.indexing.status(location.root)
         return present_status(status, location.root)
@@ -209,14 +212,34 @@ async def client_roots(
     return ListRoots()
 
 
-def project_directory(project_path: str | None, roots: ListRootsResult) -> Path:
-    """The directory a tool was asked about: the path it was given, else the client's one
-    workspace root; or a tool error saying why neither will do."""
+async def located_project(
+    ctx: Context[ProjectRegistry], project_path: str | None, roots: ListRootsResult
+) -> ProjectLocation:
+    """Where the directory a tool was asked about lies, git asked in a worker thread: the
+    path it was given, else the client's one workspace root, taken only inside a repository
+    git names a project, as a session started in the home directory or a folder of projects
+    would index them all as one; or a tool error saying why neither will do."""
+    registry = ctx.request_context.lifespan_context
     if project_path is not None:
-        return existing_directory(project_path)
+        return await asyncio.to_thread(registry.locate, existing_directory(project_path))
+    root = workspace_root(roots)
+    location = await asyncio.to_thread(registry.locate, root)
+    if not location.is_repository:
+        message = (
+            f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {root}, is no part of "
+            "a git repository below the home directory, so nothing says it is one project "
+            "rather than a folder of many, and a search would index every file below it"
+        )
+        raise ToolError(message)
+    return location
+
+
+def workspace_root(roots: ListRootsResult) -> Path:
+    """The client's one workspace root, as a directory here; or a tool error saying why the
+    client names none."""
     match roots.roots:
         case [root]:
-            return workspace_root(str(root.uri))
+            return workspace_directory(str(root.uri))
         case _:
             uris = ROOTS_SEPARATOR.join(str(root.uri) for root in roots.roots)
             message = (
@@ -226,10 +249,9 @@ def project_directory(project_path: str | None, roots: ListRootsResult) -> Path:
             raise ToolError(message)
 
 
-def workspace_root(uri: str) -> Path:
-    """The client's one workspace root, as the directory a tool works on; a tool error asking
-    for project_path where it is none: a root on another machine, or no directory, or one
-    that holds the home directory, whose every project a search would index."""
+def workspace_directory(uri: str) -> Path:
+    """The directory of a workspace root's URI, resolved as a given path is; a tool error
+    asking for project_path where it is none: a root on another machine, or no directory."""
     try:
         root = Path.from_uri(uri)
     except ValueError as error:
@@ -241,21 +263,7 @@ def workspace_root(uri: str) -> Path:
         )
         raise ToolError(message)
     # A root reached through a link is the directory it links to, as a given path is
-    resolved = root.resolve()
-    if Path.home().resolve().is_relative_to(resolved):
-        message = (
-            f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {resolved}, holds the "
-            "home directory, whose every project a search would index"
-        )
-        raise ToolError(message)
-    return resolved
-
-
-async def located_project(ctx: Context[ProjectRegistry], directory: Path) -> ProjectLocation:
-    """Where the directory a tool was asked about lies: its project's root and the
-    directory under it, git asked in a worker thread."""
-    registry = ctx.request_context.lifespan_context
-    return await asyncio.to_thread(registry.locate, directory)
+    return root.resolve()
 
 
 def project_services(ctx: Context[ProjectRegistry], project_root: Path) -> ProjectServices:

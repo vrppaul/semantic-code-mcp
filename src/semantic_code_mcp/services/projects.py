@@ -19,12 +19,14 @@ type StoreOpener = Callable[[Path, IndexIdentity], IndexStore]
 
 class ProjectLocation(BaseModel):
     """Where a directory a tool was asked about lies: the root of its project, which keeps
-    the one index, and the directory under that root, None when it is the root."""
+    the one index, the directory under that root, None when it is the root, and whether a
+    git repository names the root a project."""
 
     model_config = ConfigDict(frozen=True)
 
     root: Path
     directory: Path | None
+    is_repository: bool
 
     @property
     def absolute_directory(self) -> Path:
@@ -73,8 +75,8 @@ class ProjectRegistry:
         project's, so a repository keeps one index whichever directory a tool names. Asks
         git: called off the event loop."""
         root = self._discovery.project_root_of(directory)
-        below = None if directory == root else directory.relative_to(root)
-        return ProjectLocation(root=root, directory=below)
+        below = None if directory == root.path else directory.relative_to(root.path)
+        return ProjectLocation(root=root.path, directory=below, is_repository=root.is_repository)
 
     def services_for(self, project_root: Path) -> ProjectServices:
         """The services of a project, built on its first request."""

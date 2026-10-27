@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
@@ -63,15 +64,20 @@ async def roots_answer(uris: list[str], _context: object) -> ListRootsResult:
     return ListRootsResult(roots=[Root(uri=uri) for uri in uris])
 
 
-def client_with_roots(settings: Settings, embedder: OnnxEmbedder, uris: list[str] | None) -> Client:
-    """A client of the app whose workspace roots are the URIs given, or one that declares
-    no roots at all for None."""
-    callback = None if uris is None else partial(roots_answer, uris)
+def client_with_roots(settings: Settings, embedder: OnnxEmbedder, uris: list[str]) -> Client:
+    """A client of the app whose workspace roots are the URIs given."""
     # "auto" negotiates the newest protocol, as Claude Code does: the roots ride an
     # InputRequiredResult there, not a request back mid-call
     return Client(
-        create_app(settings, embedder=embedder), mode="auto", list_roots_callback=callback
+        create_app(settings, embedder=embedder),
+        mode="auto",
+        list_roots_callback=partial(roots_answer, uris),
     )
+
+
+def client_without_roots(settings: Settings, embedder: OnnxEmbedder) -> Client:
+    """A client of the app that declares no workspace roots at all."""
+    return Client(create_app(settings, embedder=embedder), mode="auto")
 
 
 def structured(result: CallToolResult) -> object:
@@ -358,46 +364,53 @@ async def test_an_index_tool_asked_of_a_directory_of_a_repository_names_the_repo
     ],
 )
 async def test_an_index_tool_given_no_project_path_works_on_the_client_s_workspace_root(
-    project: Path,
+    repository: Path,
     test_settings: Settings,
     embedder: OnnxEmbedder,
     tool: str,
     response: type[IndexCodebaseResponse | IndexStatusResponse],
 ):
     """As Claude Code names the directory it was started in."""
-    client = client_with_roots(test_settings, embedder, [project.as_uri()])
+    client = client_with_roots(test_settings, embedder, [repository.as_uri()])
 
     async with client:
         result = await client.call_tool(tool, {})
 
-    assert response.model_validate(structured(result)).project_root == str(project)
+    assert response.model_validate(structured(result)).project_root == str(repository)
 
 
 async def test_a_search_given_no_project_path_searches_the_client_s_workspace_root(
-    project: Path, test_settings: Settings, embedder: OnnxEmbedder
+    repository: Path, test_settings: Settings, embedder: OnnxEmbedder
 ):
-    client = client_with_roots(test_settings, embedder, [project.as_uri()])
+    client = client_with_roots(test_settings, embedder, [repository.as_uri()])
 
     async with client:
         result = await client.call_tool("search_code", {"query": "say hello to someone"})
 
     first_hit = SearchCodeResponse.model_validate(structured(result)).results[0]
-    assert Path(first_hit.file_path) == project / "greeting.py"
+    assert Path(first_hit.file_path) == repository / "greeting.py"
 
 
 @pytest.mark.parametrize(
-    "uris",
+    "client_of",
     [
-        pytest.param(None, id="a client that declares no roots"),
-        pytest.param([], id="a client that names none"),
-        pytest.param([MISSING_ROOT], id="a root that is no directory here"),
-        pytest.param([ROOT_ON_ANOTHER_MACHINE], id="a root on another machine"),
+        pytest.param(client_without_roots, id="a client that declares no roots"),
+        pytest.param(partial(client_with_roots, uris=[]), id="a client that names none"),
+        pytest.param(
+            partial(client_with_roots, uris=[MISSING_ROOT]), id="a root that is no directory here"
+        ),
+        pytest.param(
+            partial(client_with_roots, uris=[ROOT_ON_ANOTHER_MACHINE]),
+            id="a root on another machine",
+        ),
     ],
 )
 async def test_a_tool_given_no_project_path_and_no_one_workspace_root_asks_for_one(
-    test_settings: Settings, embedder: OnnxEmbedder, uris: list[str] | None
+    test_settings: Settings,
+    embedder: OnnxEmbedder,
+    client_of: Callable[[Settings, OnnxEmbedder], Client],
 ):
-    client = client_with_roots(test_settings, embedder, uris)
+    client = client_of(test_settings, embedder)
 
     async with client:
         result = await client.call_tool("index_status", {})
@@ -407,10 +420,11 @@ async def test_a_tool_given_no_project_path_and_no_one_workspace_root_asks_for_o
 
 
 async def test_a_tool_given_no_project_path_and_two_workspace_roots_asks_for_one(
-    project: Path, tmp_path: Path, test_settings: Settings, embedder: OnnxEmbedder
+    repository: Path, tmp_path: Path, test_settings: Settings, embedder: OnnxEmbedder
 ):
     """Either could be meant: the server does not pick."""
-    client = client_with_roots(test_settings, embedder, [project.as_uri(), tmp_path.as_uri()])
+    other = make_repository(tmp_path / "other")
+    client = client_with_roots(test_settings, embedder, [repository.as_uri(), other.as_uri()])
 
     async with client:
         result = await client.call_tool("index_status", {})
@@ -419,14 +433,25 @@ async def test_a_tool_given_no_project_path_and_two_workspace_roots_asks_for_one
     assert "project_path" in str(result.content)
 
 
-async def test_a_tool_given_no_project_path_refuses_a_workspace_root_that_holds_the_home_directory(
-    tmp_path: Path, test_settings: Settings, embedder: OnnxEmbedder, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "root",
+    [
+        pytest.param("home", id="the home directory"),
+        pytest.param("folder", id="a folder of repositories"),
+    ],
+)
+async def test_a_tool_given_no_project_path_refuses_a_workspace_root_no_repository_names(
+    tmp_path: Path,
+    test_settings: Settings,
+    embedder: OnnxEmbedder,
+    monkeypatch: pytest.MonkeyPatch,
+    root: str,
 ):
-    """A session started in the home directory would index every project below it."""
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    client = client_with_roots(test_settings, embedder, [home.as_uri()])
+    """A session started there would index every project below it as one."""
+    (tmp_path / "home").mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    make_repository(tmp_path / "folder" / "project")
+    client = client_with_roots(test_settings, embedder, [(tmp_path / root).as_uri()])
 
     async with client:
         result = await client.call_tool("index_status", {})
@@ -436,13 +461,13 @@ async def test_a_tool_given_no_project_path_refuses_a_workspace_root_that_holds_
 
 
 async def test_a_workspace_root_reached_through_a_link_is_the_project_it_links_to(
-    project: Path, tmp_path: Path, test_settings: Settings, embedder: OnnxEmbedder
+    repository: Path, tmp_path: Path, test_settings: Settings, embedder: OnnxEmbedder
 ):
     link = tmp_path / "link"
-    link.symlink_to(project)
+    link.symlink_to(repository)
     client = client_with_roots(test_settings, embedder, [link.as_uri()])
 
     async with client:
         result = await client.call_tool("index_status", {})
 
-    assert IndexStatusResponse.model_validate(structured(result)).project_root == str(project)
+    assert IndexStatusResponse.model_validate(structured(result)).project_root == str(repository)
