@@ -2,9 +2,10 @@
 in arms that differ only in what the agent is given, each session scored by its answer, its
 turns, the context it read and its tool calls.
 
-A session runs in a config directory of its own that holds only a link to the owner's login,
-so none of the owner's instructions, memory, hooks, plugins or MCP servers reach it: his
-instructions may ask an agent to wait for his word. The arm's MCP config is its only one;
+A session runs in a config directory of its own, given only a link to the owner's login, so
+none of the owner's own instructions, memory, hooks or MCP servers reach it, as his
+instructions may ask an agent to wait for his word; Claude Code still brings the account's
+synced skills and plugins into it. The arm's MCP config is its only one;
 the server is this environment's, its index kept between runs and brought up to date before
 the first session. Arms take turns question by question, as a session's cost depends on
 what the sessions before it left in the prompt cache: costs compare within a run, turns and
