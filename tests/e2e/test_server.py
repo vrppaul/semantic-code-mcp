@@ -296,6 +296,30 @@ async def test_a_search_from_a_directory_of_a_repository_finds_only_what_lies_in
     ]
 
 
+@pytest.mark.parametrize(
+    "searched",
+    [
+        pytest.param(Path("package"), id="a directory inside the repository"),
+        pytest.param(Path(), id="the repository's root"),
+    ],
+)
+async def test_a_search_names_the_repository_s_root_and_the_directory_it_kept_to(
+    repository: Path, client: Client, searched: Path
+):
+    """A search kept to a directory says so, and names the root that would search it all."""
+    async with client:
+        result = await client.call_tool(
+            "search_code",
+            {"query": CONFIGURATION_QUESTION, "project_path": str(repository / searched)},
+        )
+
+    answer = SearchCodeResponse.model_validate(structured(result))
+    assert (answer.project_root, answer.searched_directory) == (
+        str(repository),
+        str(repository / searched),
+    )
+
+
 async def test_a_directory_of_a_repository_is_indexed_as_the_whole_repository(
     repository: Path, client: Client
 ):

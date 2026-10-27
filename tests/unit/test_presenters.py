@@ -20,9 +20,11 @@ from semantic_code_mcp.server.presenters import (
     present_search,
     present_status,
 )
+from semantic_code_mcp.services.projects import ProjectLocation
 
 TIMINGS = SearchTimings(embedding_ms=1.0, search_ms=2.0, total_ms=3.0)
 PROJECT_ROOT = Path("/project")
+AT_THE_ROOT = ProjectLocation(root=PROJECT_ROOT, directory=None)
 
 
 def hit_of(content: str) -> SearchHit:
@@ -74,8 +76,8 @@ def test_debug_details_only_when_asked():
         results=[hit_of("x = 1")], filtered_count=0, timings=TIMINGS, index_report=None
     )
 
-    assert present_search(report, PROJECT_ROOT, include_debug=False).debug is None
-    assert present_search(report, PROJECT_ROOT, include_debug=True).debug is not None
+    assert present_search(report, AT_THE_ROOT, include_debug=False).debug is None
+    assert present_search(report, AT_THE_ROOT, include_debug=True).debug is not None
 
 
 def test_a_status_names_the_model_its_revision_and_the_embedder_that_built_the_index():

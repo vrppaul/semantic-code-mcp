@@ -69,7 +69,10 @@ meaning. For every place a name is used, Grep.
 
 ## 5. Reading the answer
 
-`search_code` returns `results`, best first by meaning and words together. Each has:
+`search_code` returns `project_root`, the repository's root, and `searched_directory`, the
+directory it kept to: where the two differ, nothing outside `searched_directory` was
+searched, and `project_root` as `project_path` searches it all. Then `results`, best
+first by meaning and words together. Each has:
 
 - `file_path` (absolute), `line_start`, `line_end`: Read that range for the whole chunk;
 - `name`, `kind`, and `parent`: the class, impl, module or heading it sits in, as `Stack`
@@ -108,8 +111,9 @@ searched (`files_indexed`, `chunks_indexed`).
 
 ## 7. Traps already met
 
-- A `project_path` one level too deep keeps the search to that directory, and the answer
-  in the directory above never comes back. Search from the root when unsure.
+- A `project_path` one level too deep, or a session started in a subdirectory, keeps the
+  search to that directory, and the answer in the directory above never comes back.
+  `searched_directory` shows it; search from `project_root` when unsure.
 - An exact identifier can rank below a chunk that paraphrases it. Grep exact names.
 - A query that names a file finds chunks that mention the file. Use `path_glob`.
 - A class's chunk holds its methods too, so a class and one of its methods can both come

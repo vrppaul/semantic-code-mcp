@@ -20,6 +20,7 @@ from semantic_code_mcp.server.responses import (
     SearchStatsView,
     SearchTimingsView,
 )
+from semantic_code_mcp.services.projects import ProjectLocation
 from semantic_code_mcp.services.timing import MILLISECOND_DECIMALS, MILLISECONDS_PER_SECOND
 
 # A hit's content is cut to this many lines; the agent reads the file for the rest
@@ -31,11 +32,14 @@ CHARACTERS_PER_TOKEN = 4
 
 
 def present_search(
-    report: SearchReport, project_root: Path, *, include_debug: bool
+    report: SearchReport, location: ProjectLocation, *, include_debug: bool
 ) -> SearchCodeResponse:
-    """The answer of `search_code`, with timings and counts when asked for."""
-    results = [present_hit(hit, project_root) for hit in report.results]
+    """The answer of `search_code` asked at a location, with timings and counts when asked
+    for."""
+    results = [present_hit(hit, location.root) for hit in report.results]
     return SearchCodeResponse(
+        project_root=str(location.root),
+        searched_directory=str(location.absolute_directory),
         results=results,
         debug=present_search_debug(report, results) if include_debug else None,
     )

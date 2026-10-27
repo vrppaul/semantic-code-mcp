@@ -102,10 +102,11 @@ async def search_code(  # noqa: PLR0913
         include_debug: Also return timings and counts of the search.
 
     Returns:
-        Matching chunks, best first by meaning and words together, with the file's absolute
-        path, line range, name, kind (module, function, method, class, section), the class,
-        impl or heading it belongs to, content, and its similarity in meaning to the query
-        alone, which a hit its words found can show low.
+        The root of the project whose index answered and the directory the search kept to;
+        then matching chunks, best first by meaning and words together, with the file's
+        absolute path, line range, name, kind (module, function, method, class, section),
+        the class, impl or heading it belongs to, content, and its similarity in meaning to
+        the query alone, which a hit its words found can show low.
     """
     with failures_as_tool_errors():
         # Read before git is asked anything, so a glob refused costs nothing
@@ -125,7 +126,7 @@ async def search_code(  # noqa: PLR0913
             location.root,
             progress=ProgressReporter(ctx.report_progress),
         )
-        return present_search(report, location.root, include_debug=include_debug)
+        return present_search(report, location, include_debug=include_debug)
 
 
 async def index_codebase(

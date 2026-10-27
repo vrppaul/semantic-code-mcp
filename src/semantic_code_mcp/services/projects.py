@@ -26,6 +26,12 @@ class ProjectLocation(BaseModel):
     root: Path
     directory: Path | None
 
+    @property
+    def absolute_directory(self) -> Path:
+        """The directory itself, from the filesystem's root: the project's root, or the
+        directory under it."""
+        return self.root if self.directory is None else self.root / self.directory
+
 
 class ProjectServices:
     """The indexing and search of one project, over one store."""

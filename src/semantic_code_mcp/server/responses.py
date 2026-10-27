@@ -15,6 +15,15 @@ PROJECT_ROOT_DESCRIPTION = (
     "The root of the project whose index this is: a directory inside a git repository is"
     " indexed, and reported, with its whole repository."
 )
+# What an agent reads of where a search looked, and of the root that would search it all
+SEARCH_ROOT_DESCRIPTION = (
+    "The root of the project whose index answered: as project_path, it searches the whole"
+    " repository."
+)
+SEARCHED_DIRECTORY_DESCRIPTION = (
+    "The directory the search kept to: project_root, or a directory under it; the search did"
+    " not look outside it."
+)
 
 
 class SearchResultView(BaseModel):
@@ -82,6 +91,8 @@ class SearchCodeResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    project_root: str = Field(description=SEARCH_ROOT_DESCRIPTION)
+    searched_directory: str = Field(description=SEARCHED_DIRECTORY_DESCRIPTION)
     results: list[SearchResultView]
     debug: SearchDebugView | None
 

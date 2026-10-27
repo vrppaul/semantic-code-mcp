@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each `search_code` result names its `parent`: the class, impl, module or heading it sits in, as `Stack` for `Stack.push` and `Guide > Install` for a section
 - `search_code` takes `include_debug`; the `debug` block comes back only when asked for. It now holds `timings`, `stats` and `indexing` (what was indexed before the search); `index_status` and `index_result` left it
 - `index_status` reports `stale_files_count`
+- `search_code` names the `project_root` whose index answered and the `searched_directory` it kept to, so a search kept to a subdirectory, as a session started there keeps every search, says so
 - `index_status` and `index_codebase` name the `project_root` whose index they report: a directory inside a git repository reports the whole repository's
 - The server sends instructions a client shows beside the tools: when to search by meaning and when to Grep, what `project_path` names, the languages indexed, and that indexing is automatic
 - A skill, `skills/semantic-search`, that tells an agent which tool to use, how to phrase a query, how to narrow a search and read its answer, and the traps met so far
