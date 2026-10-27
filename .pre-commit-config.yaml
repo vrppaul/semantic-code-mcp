@@ -102,7 +102,7 @@ repos:
         name: skill (the skill and the server's instructions agree with the server)
         entry: uv run python scripts/check_skill.py
         language: system
-        files: ^(skills/|src/semantic_code_mcp/|scripts/check_skill\.py$)
+        files: ^(skills/|src/semantic_code_mcp/|scripts/check_skill\.py$|pyproject\.toml$|uv\.lock$)
         pass_filenames: false
 
   # Bandit — security linting. 1.8 fails on every file of Python 3.14's ast

@@ -19,7 +19,7 @@ retried"). Use Grep for an exact identifier, a string or a regex, and for every 
 the search to that directory. A repository keeps one index, whichever directory you name. \
 Left out, it is the client's workspace root: where Claude Code was started.
 - Indexing is automatic: the first search indexes the project, each later one the files \
-changed since. Call `index_codebase` with `force` only after mass renames or when results \
-point at code that is gone; `index_status` reports an index without changing it.
+changed since, renames and deletions among them. Call `index_codebase` with `force` only \
+when results point at code that is gone; `index_status` reports an index without changing it.
 - A result is a line range of a file: Read it before quoting when `truncated` is true.
 """

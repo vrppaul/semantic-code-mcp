@@ -187,7 +187,7 @@ uv run pytest                      # Run tests
 uv run pre-commit run --all-files  # Every gate a commit runs
 ```
 
-The gates are one list, `.pre-commit-config.yaml`: ruff (lint and format), ty (types), import-linter (the package's layers), vulture (code nothing calls), the project's code rules (nested functions, short names, models taken apart by field names), bandit (security), deptry (dependencies as declared), typos, a check that every test module loads, a check of the agent instruction files, and the file checks of pre-commit-hooks; commit messages are held to [Conventional Commits](https://www.conventionalcommits.org/). CI runs the same hooks and the tests on every push to `master` and every pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The gates are one list, `.pre-commit-config.yaml`: ruff (lint and format), ty (types), import-linter (the package's layers), vulture (code nothing calls), the project's code rules (nested functions, short names, models taken apart by field names), bandit (security), deptry (dependencies as declared), typos, a check that every test module loads, a check of the agent instruction files, the skill's gate (the skill and the server's instructions name what the server has), validate-pyproject, and the file checks of pre-commit-hooks; commit messages are held to [Conventional Commits](https://www.conventionalcommits.org/). CI runs the same hooks and the tests on every push to `master` and every pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Releasing
 

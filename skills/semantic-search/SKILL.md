@@ -29,13 +29,16 @@ and `markdown`.
 
 - `project_path` is absolute. Give the repository's root, or a directory inside it to keep
   the search to that directory: the repository keeps one index either way, and
-  `project_root` in the answers of `index_status` and `index_codebase` names it. Left out,
+  `project_root` in the answers of `index_status` and `index_codebase` names it (a
+  directory the repository ignores, or one in a repository that holds the home directory,
+  is a project of its own, and names itself). Left out,
   it is the client's workspace root, the directory Claude Code was started in; a client
   that names no single root gets an error asking for `project_path`.
 - The first call loads the model and may index the whole project, with progress. Wait for
   it; do not call again while it runs.
 - If the tools are missing, tell the user the server is not installed and point them to
-  the project's README; do not install it yourself.
+  semantic-code-mcp's README (github.com/vrppaul/semantic-code-mcp); do not install it
+  yourself.
 
 ## 3. Phrasing a query
 
@@ -61,7 +64,7 @@ meaning. For every place a name is used, Grep.
   `project_path` names: `exclude_glob="tests"` leaves out every `tests` directory,
   `path_glob="src/**/*.py"` keeps to Python under `src`. A glob with a character class,
   braces, an escape, a leading `!` or `..` is refused, with the reason.
-- `limit`: 10 by default, at most 50.
+- `limit`: how many results at most; the tool's schema gives its default and its cap.
 
 ## 5. Reading the answer
 
@@ -70,20 +73,25 @@ meaning. For every place a name is used, Grep.
 - `file_path` (absolute), `line_start`, `line_end`: Read that range for the whole chunk;
 - `name`, `kind`, and `parent`: the class, impl, module or heading it sits in, as `Stack`
   for `Stack.push` or `Guide > Install` for a section;
-- `content`, cut to 50 lines; `truncated` says it was cut: Read the range before quoting;
+- `content`, cut at a limit of lines; `truncated` says it was cut: Read the range before
+  quoting;
 - `similarity`: how close its meaning is to the query's alone. Rank counts words too, so a
   hit its words found can rank high with a low similarity. A search can return nothing
   when nothing is near enough: that is an answer, not a failure.
 
 Ask `include_debug=true` only when a search was slow or odd: `debug` then holds
-`timings`, `stats` and `indexing`, what the search indexed before it searched.
+`timings` (`embedding_ms`, `search_ms`, `total_ms`, and `indexing_ms` where it indexed
+first), `stats` (`results_count`, `filtered_out` below the similarity floors,
+`unique_files`, `tokens_estimate`) and `indexing`, what the search indexed before it
+searched (`files_indexed`, `chunks_indexed`).
 
 ## 6. The index
 
 - Each search first re-indexes the files changed since the last; you never need to index
   before searching.
-- Call `index_codebase` with `force=true` after mass renames, or when results point at
-  code that is gone. It answers `project_root`, `files_indexed`, `chunks_indexed`,
+- Call `index_codebase` with `force=true` only when results point at code that is gone:
+  it embeds the whole project again, minutes on a large one, while renames and deletions
+  need nothing. It answers `project_root`, `files_indexed`, `chunks_indexed`,
   `files_deleted` and `duration_seconds`.
 - Call `index_status` to see which root a directory belongs to and what built its index,
   not before every search. It answers `project_root`, `is_indexed`, `last_updated`,
@@ -92,9 +100,10 @@ Ask `include_debug=true` only when a search was slow or odd: `debug` then holds
 - Each model and version keeps an index of its own, built once on the first search after a
   change; one no session used for a week is removed.
 - In a git repository, git lists the files: tracked ones, and untracked ones `.gitignore`
-  does not exclude. A repository whose `.gitignore` hides source on purpose needs the
-  setting `use_gitignore` off (`SEMANTIC_CODE_MCP_USE_GITIGNORE=false`); with `local_index`
-  the index lives in `.semantic-code/` inside the project.
+  does not exclude. The server's settings are its environment's, which the user sets, not
+  a tool's parameters: a repository whose `.gitignore` hides source on purpose needs
+  `use_gitignore` off (`SEMANTIC_CODE_MCP_USE_GITIGNORE=false`), so ask the user for it;
+  with `local_index` the index lives in `.semantic-code/` inside the project.
 
 ## 7. Traps already met
 

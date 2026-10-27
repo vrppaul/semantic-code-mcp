@@ -79,10 +79,10 @@ async def search_code(  # noqa: PLR0913
     code related to a concept without knowing exact variable/function names; for an
     exact identifier or string, Grep is faster and complete.
 
-    Examples:
-    - "authentication logic" - finds login, session handling, token validation
-    - "error handling for API calls" - finds try/except blocks, error responses
-    - "database connection setup" - finds connection pooling, ORM initialization
+    Describe what the code does, as its docstring would, in three to ten words:
+    - "retry a failed request after a growing delay"
+    - "parse command-line options into a config"
+    - "release the lock when a write fails"
 
     Indexes Python, Rust and Markdown files. Automatically indexes the project if not
     already indexed, and re-indexes any files that have changed since the last search.
