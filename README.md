@@ -94,6 +94,8 @@ Index a codebase for semantic search. Only processes new and changed files unles
 | `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 | `force` | `bool` | `False` | Re-index all files regardless of changes |
 
+Returns `project_root` (a directory inside a repository indexes the repository from its root), `files_indexed`, `chunks_indexed`, `files_deleted` and `duration_seconds`.
+
 ### `index_status`
 
 Check indexing status for a project.
@@ -102,7 +104,7 @@ Check indexing status for a project.
 |-----------|------|---------|-------------|
 | `project_path` | `str` | required | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 
-Returns `is_indexed`, `last_updated`, `files_count`, `chunks_count` and `stale_files_count`.
+Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `stale_files_count` and `manifest` (the model, its revision, and the chunker and storage versions that built the index).
 
 ## Configuration
 

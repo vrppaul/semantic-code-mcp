@@ -87,9 +87,10 @@ def present_search_debug(report: SearchReport, results: list[SearchResultView]) 
     )
 
 
-def present_index(report: IndexReport) -> IndexCodebaseResponse:
-    """The answer of `index_codebase`."""
+def present_index(report: IndexReport, project_root: Path) -> IndexCodebaseResponse:
+    """The answer of `index_codebase` about the project at the root given."""
     return IndexCodebaseResponse(
+        project_root=str(project_root),
         files_indexed=report.files_indexed,
         chunks_indexed=report.chunks_indexed,
         files_deleted=report.files_deleted,
@@ -97,9 +98,10 @@ def present_index(report: IndexReport) -> IndexCodebaseResponse:
     )
 
 
-def present_status(status: IndexStatus) -> IndexStatusResponse:
-    """The answer of `index_status`."""
+def present_status(status: IndexStatus, project_root: Path) -> IndexStatusResponse:
+    """The answer of `index_status` about the project at the root given."""
     return IndexStatusResponse(
+        project_root=str(project_root),
         is_indexed=status.is_indexed,
         last_updated=None if status.manifest is None else status.manifest.indexed_at.isoformat(),
         files_count=status.files_count,

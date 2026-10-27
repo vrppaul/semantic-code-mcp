@@ -10,6 +10,11 @@ SIMILARITY_DESCRIPTION = (
     " Results come best first by meaning and words together, so a hit its words found can"
     " show a low similarity."
 )
+# What an agent reads of the root an index tool answers for
+PROJECT_ROOT_DESCRIPTION = (
+    "The root of the project whose index this is: a directory inside a git repository is"
+    " indexed, and reported, with its whole repository."
+)
 
 
 class SearchResultView(BaseModel):
@@ -86,6 +91,7 @@ class IndexCodebaseResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    project_root: str = Field(description=PROJECT_ROOT_DESCRIPTION)
     files_indexed: int
     chunks_indexed: int
     files_deleted: int
@@ -109,6 +115,7 @@ class IndexStatusResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    project_root: str = Field(description=PROJECT_ROOT_DESCRIPTION)
     is_indexed: bool
     last_updated: str | None
     files_count: int

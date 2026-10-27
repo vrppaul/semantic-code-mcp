@@ -85,6 +85,6 @@ def test_a_status_names_the_model_and_the_revision_that_built_the_index():
     )
     status = IndexStatus(files_count=1, chunks_count=1, stale_files_count=0, manifest=manifest)
 
-    view = present_status(status).manifest
+    view = present_status(status, PROJECT_ROOT).manifest
 
     assert (view.model_name, view.model_revision) == ("model", "revision")

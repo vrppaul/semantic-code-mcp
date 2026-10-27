@@ -282,3 +282,23 @@ async def test_a_directory_of_a_repository_is_indexed_as_the_whole_repository(
         status = await client.call_tool("index_status", {"project_path": str(repository)})
 
     assert IndexStatusResponse.model_validate(structured(status)).files_count == 3
+
+
+@pytest.mark.parametrize(
+    ("tool", "response"),
+    [
+        pytest.param("index_codebase", IndexCodebaseResponse, id="index_codebase"),
+        pytest.param("index_status", IndexStatusResponse, id="index_status"),
+    ],
+)
+async def test_an_index_tool_asked_of_a_directory_of_a_repository_names_the_repository_s_root(
+    repository: Path,
+    client: Client,
+    tool: str,
+    response: type[IndexCodebaseResponse | IndexStatusResponse],
+):
+    """Its counts are the whole repository's, which the agent could not tell otherwise."""
+    async with client:
+        result = await client.call_tool(tool, {"project_path": str(repository / "package")})
+
+    assert response.model_validate(structured(result)).project_root == str(repository)

@@ -139,7 +139,7 @@ async def index_codebase(
         force: If True, re-index all files regardless of changes.
 
     Returns:
-        Statistics about the indexing operation.
+        The root of the project indexed, and what the run indexed and deleted.
     """
     with failures_as_tool_errors():
         location = await located_project(ctx, project_path)
@@ -147,7 +147,7 @@ async def index_codebase(
         report = await services.indexing.index(
             location.root, force=force, progress=ProgressReporter(ctx.report_progress)
         )
-        return present_index(report)
+        return present_index(report, location.root)
 
 
 async def index_status(
@@ -170,12 +170,14 @@ async def index_status(
             the user's home directory.
 
     Returns:
-        Index status including files count and chunks count.
+        The root of the project whose index this is, and its status, including the
+        counts of files and chunks.
     """
     with failures_as_tool_errors():
         location = await located_project(ctx, project_path)
         services = project_services(ctx, location.root)
-        return present_status(await services.indexing.status(location.root))
+        status = await services.indexing.status(location.root)
+        return present_status(status, location.root)
 
 
 async def located_project(ctx: Context[ProjectRegistry], project_path: str) -> ProjectLocation:
