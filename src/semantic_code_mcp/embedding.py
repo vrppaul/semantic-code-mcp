@@ -141,6 +141,12 @@ CPU_PROVIDER = "CPUExecutionProvider"
 # query burned some 6 CPU-seconds (a review's probe); off, a chunk embeds as fast
 SPINNING_CONFIG_KEY = "session.intra_op.allow_spinning"
 NO_SPINNING = "0"
+# onnxruntime's memory arena keeps the buffers of the largest batch it ran for the life of
+# the process, so a server that indexed held about 1,080 MB until it exited; handing back
+# what it holds free at the end of each run, it holds about 540 MB and indexes as fast,
+# where an embedder without the arena indexed a fifth slower (`evals speed`, in turns)
+ARENA_SHRINKAGE_CONFIG_KEY = "memory.enable_memory_arena_shrinkage"
+SHRINK_CPU_ARENA = "cpu:0"
 # What onnxruntime raises, each a bare Exception of its own, when an export starts no
 # session or does not run: a file of no ONNX model (InvalidProtobuf) and weights in a file
 # beside it that is missing (Fail), both probed, and by their names the rest an export can
@@ -258,6 +264,8 @@ class OnnxModel:
     def __init__(self, tokenizer: Tokenizer, session: onnxruntime.InferenceSession) -> None:
         self._tokenizer = tokenizer
         self._session = session
+        self._run_options = onnxruntime.RunOptions()
+        self._run_options.add_run_config_entry(ARENA_SHRINKAGE_CONFIG_KEY, SHRINK_CPU_ARENA)
         self._takes_token_types = TOKEN_TYPE_IDS in {node.name for node in session.get_inputs()}
 
     def embed(self, texts: list[str]) -> VectorMatrix:
@@ -297,7 +305,7 @@ class OnnxModel:
         return inputs
 
     def _states(self, inputs: dict[str, NDArray[numpy.int64]]) -> NDArray[numpy.float32]:
-        states = self._session.run(None, inputs)[TOKEN_STATES_OUTPUT]
+        states = self._session.run(None, inputs, self._run_options)[TOKEN_STATES_OUTPUT]
         return numpy.asarray(states, dtype=numpy.float32)
 
 

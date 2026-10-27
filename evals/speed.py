@@ -2,14 +2,17 @@
 
 Measured per corpus, in server processes of its own: the model load (a search of a
 one-file project), a full index from scratch with the model already loaded, warm search
-latency, an `index_status` call (each search makes one first), how much the index grows
-with each edit of a file other than the last (the copies upkeep keeps for a few seconds
-included) and how long the search after it takes, at the median and at the slowest (it
-re-indexes the edited file first; one in twenty compacts the index), the server's peak
-memory, and the first answer of a freshly started server on an up-to-date index — the
-process start and model load an agent waits for.
-Peak memory is read from `/proc`, so it is reported on Linux only. With 15 to 20
-questions per corpus, p95 is close to the slowest search: read it as that.
+latency, plain and narrowed to functions and methods outside every tests directory (a
+narrowing every corpus takes, which both filters read), an `index_status` call (each
+search makes one first), how much the index grows with each edit of a file other than
+the last (the copies upkeep keeps for a few seconds included) and how long the search
+after it takes, at the median and at the slowest (it re-indexes the edited file first;
+one in twenty compacts the index), the server's peak memory and what it still holds once
+its work is done, as a session's idle server keeps it, and the first answer of a freshly
+started server on an up-to-date index — the process start and model load an agent waits
+for.
+Memory is read from `/proc`, so it is reported on Linux only. With 15 to 20 questions per
+corpus, p95 is close to the slowest search: read it as that.
 """
 
 import os
@@ -43,7 +46,9 @@ EDIT_BY_EXTENSION = {
     ".md": "\n\n## Edited {number}\n\nEdit {number}.\n",
 }
 PROC_ROOT = Path("/proc")
+# The fields of a /proc status file that give the peak and the present resident memory
 PEAK_RESIDENT_FIELD = "VmHWM:"
+RESIDENT_FIELD = "VmRSS:"
 SERVER_COMMAND_MARK = b"semantic_code_mcp"
 # The one-file project the model-load search runs on, and what it asks
 WARM_UP_FILE_NAME = "warm_up.py"
@@ -89,6 +94,7 @@ class CorpusSpeed(BaseModel):
     search_after_edit_p50_milliseconds: float
     search_after_edit_slowest_milliseconds: float
     peak_memory_megabytes: float | None
+    resident_memory_megabytes: float | None
     model_load_seconds: float
     first_search_seconds: float
 
@@ -142,7 +148,8 @@ async def measure_speed(
         # Restoring the checkout touched the edited files: index them now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
-        peak_memory = server_peak_memory_megabytes()
+        peak_memory = server_memory_megabytes(PEAK_RESIDENT_FIELD)
+        resident_memory = server_memory_megabytes(RESIDENT_FIELD)
 
     started = time.perf_counter()
     async with connect(index_directory, server_log) as connection:
@@ -166,6 +173,7 @@ async def measure_speed(
         search_after_edit_p50_milliseconds=median_milliseconds(edits_cost.search_seconds),
         search_after_edit_slowest_milliseconds=milliseconds(max(edits_cost.search_seconds)),
         peak_memory_megabytes=peak_memory,
+        resident_memory_megabytes=resident_memory,
         model_load_seconds=rounded(model_load_seconds),
         first_search_seconds=rounded(first_search_seconds),
     )
@@ -293,13 +301,14 @@ def directory_bytes(directory: Path) -> int:
     return sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
 
 
-def server_peak_memory_megabytes() -> float | None:
-    """Peak resident memory of the server process this harness started; None off Linux."""
+def server_memory_megabytes(field: str) -> float | None:
+    """One memory field of the server process this harness started, its peak or what it
+    holds now; None off Linux."""
     status_paths = [PROC_ROOT / str(pid) / "status" for pid in server_process_ids()]
-    peaks = [peak_resident_kilobytes(path) for path in status_paths]
-    if not peaks:
+    sizes = [status_kilobytes(path, field) for path in status_paths]
+    if not sizes:
         return None
-    return rounded(max(peaks) / KILOBYTES_PER_MEGABYTE)
+    return rounded(max(sizes) / KILOBYTES_PER_MEGABYTE)
 
 
 def server_process_ids() -> list[int]:
@@ -317,14 +326,10 @@ def runs_the_server(process_id: int) -> bool:
         return False
 
 
-def peak_resident_kilobytes(status_path: Path) -> int:
-    """The peak resident set size a /proc status file reports, in kilobytes."""
-    field = next(
-        line
-        for line in status_path.read_text().splitlines()
-        if line.startswith(PEAK_RESIDENT_FIELD)
-    )
-    return int(field.split()[1])
+def status_kilobytes(status_path: Path, field: str) -> int:
+    """A size a /proc status file reports in a field, in kilobytes."""
+    line = next(line for line in status_path.read_text().splitlines() if line.startswith(field))
+    return int(line.split()[1])
 
 
 def rounded(value: float) -> float:

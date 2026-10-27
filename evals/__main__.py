@@ -252,7 +252,7 @@ def speed_summary(entry: CorpusSpeed) -> str:
         f"narrowed p50 {entry.narrowed_search_p50_milliseconds}ms; "
         f"status {entry.status_p50_milliseconds}ms; "
         f"model load {entry.model_load_seconds}s; first search {entry.first_search_seconds}s; "
-        f"peak {entry.peak_memory_megabytes}MB; "
+        f"peak {entry.peak_memory_megabytes}MB, held after {entry.resident_memory_megabytes}MB; "
         f"index growth {entry.index_growth_megabytes_per_edit}MB per edit; "
         f"search after an edit {entry.search_after_edit_p50_milliseconds}ms, "
         f"slowest {entry.search_after_edit_slowest_milliseconds}ms"
