@@ -15,8 +15,8 @@ The store's interface speaks LanceDB, the index's life sits inside the LanceDB s
 ### Search quality: a bigger harness, a reranker, what is embedded
 Every ranking decision of ADR 006 rests on 66 chosen questions, where its criterion's step of 1.0 is about one question, judged by one judge per corpus with no agreement figure. A harness of 200 and more questions over more corpora and languages, with judge agreement, comes first; on it, a small cross-encoder reranking the first 30 hits (often the largest gain in code search, an estimated 20-40 ms on a CPU), and what the model embeds: a header of path, parent and signature, windows over bodies past the model's 256 tokens (13-30% of chunks), a class as its outline rather than its methods again (ADR 006, Q1 and Q2). A change of what is embedded builds every index again.
 
-### What an agent gets: compact hits, a repository map, a CLI
-`search_code` answers up to ten chunks of up to 50 lines, which an agent mostly Reads again anyway: compact hits (path, lines, name, signature, a few lines) would give more per token, and are a change of a tool's answer, best made once. A map of a repository's symbols, and a command line beside MCP that any agent with a shell can call, without a server's life to manage.
+### What an agent gets: a repository map, a CLI
+A map of a repository's symbols, and a command line beside MCP that any agent with a shell can call, without a server's life to manage. Compact hits were judged by agents and turned down (ADR 008, pilot 8): cut to five lines, a hit sent the agent to Read the file in four sessions of fifteen against one, at 46% more context read.
 
 ### One daemon per user
 Each Claude Code session runs its own server: one model in memory each (about 550 MB held), the same projects checked and indexed by each, every search asking git four or five times. One process per user holding the model and every index, with one writer per index and a file watcher indexing in the background, would remove that; sessions would reach it through a thin MCP layer or the CLI. It costs a process's life to manage (start, upgrade, stop) and sockets on every platform.

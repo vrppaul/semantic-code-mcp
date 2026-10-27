@@ -64,6 +64,8 @@ An agent's path through a task varies from run to run, so each task runs several
 
    A session's cost as Claude Code reports it is a third to a half the writing of the prompt into the cache, at twice the price of input, and how much a session writes depends on the order sessions run in: about 24k tokens each in pilot 5, whose arms took turns, against 11.5k in pilot 6, which ran one arm. Costs are compared within one run alone; across runs, the turns and the context read are.
 
+7. Compact hits, the fifteen questions with search, the arms in turns in one run: this server as it is, hits of up to 50 lines, against a copy cutting them to 5. Both 15 of 15 right; the cut hits took 2.5 turns on average against 2.2, sent the agent to Read the file in 4 sessions against 1, and read 78k of context against 53k. The lines a cut saves, about a thousand tokens, cost less than the turn the agent then spends reading: the hits keep their content, and compact hits are turned down.
+
 The first 31 sessions cost about $1.8 as Claude Code reports cost, at 7 to 22 s each, and moved the five-hour window by about two points with the author's own work beside them. So on repositories of 60 to 130 files an agent with Grep finds what these questions ask in one search of its own and never picks this server, skill or not; made to use it, the server finds the same answers in one call, at the same cost or more. What remains to measure is where Grep's guesses fail: a repository of thousands of files, whose words a model cannot guess and does not know, with questions keyed for it; and what compact hits save of the search's answer.
 
 ## Alternatives Considered
