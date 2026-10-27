@@ -82,7 +82,7 @@ uvx --upgrade semantic-code-mcp
 Or pin a specific version in your MCP config:
 
 ```bash
-claude mcp add --scope user semantic-code -- uvx semantic-code-mcp@0.2.0
+claude mcp add --scope user semantic-code -- uvx semantic-code-mcp@<version>
 ```
 
 ## MCP Tools
