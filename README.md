@@ -142,6 +142,8 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.25` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY`. A result named as the query comes back however far |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 
+Every session on one project should run with the same `IGNORE_PATTERNS` and `USE_GITIGNORE`: an index keeps the files its last run found, so two sessions that find different files delete each other's at every search.
+
 Pass environment variables via the `env` field in your MCP config:
 
 ```json
