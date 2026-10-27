@@ -57,6 +57,8 @@ PROJECT_PATH_DESCRIPTION = (
 )
 # A tool's own parameter that names the project, which the client's roots stand in for
 PROJECT_PATH_PARAMETER = "project_path"
+# How a refusal lists the roots a client named
+ROOTS_SEPARATOR = ", "
 
 
 # A tool's parameters are its input schema, which an agent fills in flat (ADR 006, D10)
@@ -92,7 +94,7 @@ async def search_code(  # noqa: PLR0913
         project_path: Absolute path to the project, or to a directory inside its git
             repository, which keeps the search to that directory; left out, the client's
             workspace root.
-        limit: Maximum number of results to return (default 10, at most 50).
+        limit: Maximum number of results to return.
         chunk_kinds: Only chunks of these kinds.
         languages: Only chunks of files in these languages.
         path_glob: Only files this glob names, a path from the directory project_path names.
@@ -139,14 +141,14 @@ async def index_codebase(
     docstrings and document sections, embeds them, and stores them for search.
     `search_code` indexes on its own; call this only to re-index everything.
 
-    Use force=True to re-index everything even if files haven't changed.
+    With `force: true`, it re-indexes everything even if files haven't changed.
     Otherwise, only new and modified files are indexed (incremental).
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
             indexes the whole repository, unless the repository ignores it or holds the
             user's home directory. Left out, the client's workspace root.
-        force: If True, re-index all files regardless of changes.
+        force: Re-index all files regardless of changes.
 
     Returns:
         The root of the project indexed, and what the run indexed and deleted.
@@ -179,7 +181,7 @@ async def index_status(
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
             reports the whole repository's index, unless the repository ignores it or holds
-            the user's home directory.
+            the user's home directory. Left out, the client's workspace root.
 
     Returns:
         The root of the project whose index this is, and its status, including the
@@ -192,8 +194,8 @@ async def index_status(
         return present_status(status, location.root)
 
 
-def client_roots(
-    ctx: Context[ProjectRegistry], project_path: str | None = None
+async def client_roots(
+    ctx: Context[ProjectRegistry], project_path: str | None
 ) -> ListRoots | ListRootsResult:
     """The client's workspace roots, asked of it only where a tool names no project_path;
     a client that declares no roots is told to name one."""
@@ -211,21 +213,41 @@ def project_directory(project_path: str | None, roots: ListRootsResult) -> Path:
     workspace root; or a tool error saying why neither will do."""
     if project_path is not None:
         return existing_directory(project_path)
-    uris = [str(root.uri) for root in roots.roots]
-    if len(uris) != 1:
-        message = (
-            f"Give {PROJECT_PATH_PARAMETER}: the client names {len(uris)} workspace roots, "
-            f"not one ({', '.join(uris)})"
-        )
-        raise ToolError(message)
-    # A root is a file URI: the protocol refuses any other before a tool sees it
-    root = Path.from_uri(uris[0])
+    match roots.roots:
+        case [root]:
+            return workspace_root(str(root.uri))
+        case _:
+            uris = ROOTS_SEPARATOR.join(str(root.uri) for root in roots.roots)
+            message = (
+                f"Give {PROJECT_PATH_PARAMETER}: the client names {len(roots.roots)} workspace "
+                f"roots, not one ({uris})"
+            )
+            raise ToolError(message)
+
+
+def workspace_root(uri: str) -> Path:
+    """The client's one workspace root, as the directory a tool works on; a tool error asking
+    for project_path where it is none: a root on another machine, or no directory, or one
+    that holds the home directory, whose every project a search would index."""
+    try:
+        root = Path.from_uri(uri)
+    except ValueError as error:
+        message = f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {uri}, is not here"
+        raise ToolError(message) from error
     if not root.is_dir():
         message = (
             f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {root}, is no directory"
         )
         raise ToolError(message)
-    return root.resolve()
+    # A root reached through a link is the directory it links to, as a given path is
+    resolved = root.resolve()
+    if Path.home().resolve().is_relative_to(resolved):
+        message = (
+            f"Give {PROJECT_PATH_PARAMETER}: the client's workspace root, {resolved}, holds the "
+            "home directory, whose every project a search would index"
+        )
+        raise ToolError(message)
+    return resolved
 
 
 async def located_project(ctx: Context[ProjectRegistry], directory: Path) -> ProjectLocation:

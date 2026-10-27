@@ -9,10 +9,9 @@ You review a change to semantic-code-mcp that you did not write. Its author has 
 better: that verdict is yours. You change nothing in the repository; probes, worktrees and their runs go only under
 the scratch directory your brief names. You start no other agent.
 
-Read first: `AGENTS.md` whole; the rules of each area the change touches under `.claude/rules/`, whole
-(`python.md`, `testing.md`, `mcp-server.md`, `scripts.md`, `documentation.md`); the owner's two code sections in
-`~/.claude/CLAUDE.md` ("Код и комментарии — только на английском", "Код всегда чистый — жертвовать им нельзя");
-the parts of `docs/decisions/006-rebuild-on-mcp-2.md` your brief names. Then the range your brief names, commit by
+Read first: `AGENTS.md` whole, its "Rules for all code" above all; the rules of each area the change touches
+under `.claude/rules/`, whole (`python.md`, `testing.md`, `mcp-server.md`, `scripts.md`, `documentation.md`,
+`instructions.md`, `publishing.md`); the parts of `docs/decisions/006-rebuild-on-mcp-2.md` your brief names. Then the range your brief names, commit by
 commit, each message's claims checked against the code and its figures against a run of your own.
 
 Before the diff, step back, as AGENTS.md's "Only better" asks: look at the whole construction the change lives in,
@@ -34,9 +33,9 @@ What no gate sees, and you hold:
 - A decision of ADR 006 the change departs from without saying so there, and a claim of the ADR, CHANGELOG or README
   the code no longer bears out.
 
-Every probe that loads a model, embeds or indexes runs under a hard memory cap:
-`systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 <command>`. An uncapped probe once took the owner's
-whole terminal session down with it.
+Every probe that loads a model, embeds or indexes runs under a hard memory cap: on Linux
+`systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 <command>`, elsewhere `ulimit -v` in the shell that
+starts it. An uncapped probe once took the owner's whole terminal session down with it.
 
 Tests, by `.claude/rules/testing.md`: a behaviour the change added that someone can name and no test holds, for the
 cheapest level that can show it; a test that restates the code, repeats another, holds a branch, or cannot fail —

@@ -12,19 +12,22 @@ and holds:
 - the skill's code to name every tool, every parameter of each, every value a parameter
   takes from a fixed set (the chunk kinds, the languages), and every field of every
   answer, nested ones among them;
-- every span of the skill's code and of the instructions' that is a name, or a name given
-  a value (`force=true`), to be one the server has: a tool, a parameter, one of its fixed
-  values, a field of an answer, or a setting; the skill's examples of a project's own
-  names aside;
+- every span of the skill's, the instructions' and the tools' descriptions' code that is a
+  name, a dotted path of names (`debug.timings`), or a name called (`index_codebase(...)`)
+  or given a value (`force=true`), to be one the server has: a tool, a parameter, one of
+  its fixed values, a field of an answer, or a setting; the skill's examples of a
+  project's own names aside; and every `SEMANTIC_CODE_MCP_*` variable to name a setting;
 - the skill, the instructions and every tool's description to name each language the
   server indexes, the values of its `languages` parameter, in any case; and the
   instructions to name every tool;
 - the skill to its length, as D16 of ADR 006 sets it.
 
 What it cannot see: what a sentence says of a name (a wrong default, cap or meaning, which
-the skill therefore leaves to the tools' schemas rather than repeating their numbers); a
-name inside a fenced block among other code; a language a text names that no chunker
-reads, as no closed list of languages exists to look for one in.
+the texts therefore leave to the tools' schemas rather than repeating their numbers); the
+value after a name's `=` or inside its call (`chunk_kinds=["struct"]`); a name written
+with a capital (`Struct`), as the examples' own classes are; a name inside a fenced block
+among other code; a language a text names that no chunker reads, as no closed list of
+languages exists to look for one in.
 
 Run in the repository's root, as pre-commit runs it: `uv run python scripts/check_skill.py`.
 Prints each disagreement, a line each, and exits 1; prints nothing and exits 0 when the
@@ -56,9 +59,14 @@ AGREE = 0
 # What a text writes as code: a fenced block, or a span between backticks
 CODE = re.compile(r"```.*?```|`[^`]+`", re.DOTALL)
 CODE_QUOTE = "`"
-# A span that is a name, or a name given a value: `chunk_kinds`, `force=true`
-NAMED_SPAN = re.compile(r"(?P<name>[a-z][a-z_]*)(?:=.*)?", re.DOTALL)
-NAME_GROUP = "name"
+# A span that is a name or a dotted path of names, alone, called, or given a value:
+# `chunk_kinds`, `debug.timings`, `index_codebase(force=true)`, `force=true`
+NAMED_SPAN = re.compile(r"(?P<path>[a-z][a-z_]*(?:\.[a-z][a-z_]*)*)(?:[(=].*)?", re.DOTALL)
+PATH_GROUP = "path"
+PATH_SEPARATOR = "."
+# A span that names one of the server's settings by its variable
+SETTING_SPAN = re.compile(r"SEMANTIC_CODE_MCP_(?P<setting>[A-Z_]+)(?:=.*)?", re.DOTALL)
+SETTING_GROUP = "setting"
 # Names the skill gives as a project's own, in its examples, which no server has
 EXAMPLE_NAMES = frozenset({"greet", "src", "tests"})
 # The keys of a JSON schema this reads: an object's fields, a fixed set of values
@@ -160,12 +168,23 @@ def code_of(text: str) -> str:
 
 
 def code_names(text: str) -> set[str]:
-    """The names a text's code gives: each span that is a name, or a name given a value."""
+    """The names a text's code gives: each name of a span that is a name or a dotted path
+    of names, alone, called, or given a value."""
     names: set[str] = set()
     for span in CODE.findall(text):
         match = NAMED_SPAN.fullmatch(span.strip(CODE_QUOTE))
         if match is not None:
-            names.add(match.group(NAME_GROUP))
+            names.update(match.group(PATH_GROUP).split(PATH_SEPARATOR))
+    return names
+
+
+def code_settings(text: str) -> set[str]:
+    """The settings a text's code names by their variables, as the settings' fields."""
+    names: set[str] = set()
+    for span in CODE.findall(text):
+        match = SETTING_SPAN.fullmatch(span.strip(CODE_QUOTE))
+        if match is not None:
+            names.add(match.group(SETTING_GROUP).lower())
     return names
 
 
@@ -183,6 +202,15 @@ def names_disagreements(surface: ServerSurface, skill: str) -> list[str]:
     left_out = sorted(name for name in named if not is_named(code, name))
     skill_unknown = sorted(code_names(skill) - known - EXAMPLE_NAMES)
     instructions_unknown = sorted(code_names(surface.instructions) - known)
+    descriptions_unknown = sorted(
+        f"{tool.name}'s description names {name}"
+        for tool in surface.tools
+        for name in code_names(tool.description or "") - known
+    )
+    settings = set(Settings.model_fields)
+    unknown_settings = sorted(
+        (code_settings(skill) | code_settings(surface.instructions)) - settings
+    )
     unnamed_tools = sorted(name for name in tools if not is_named(surface.instructions, name))
     return [
         *(f"{SKILL_TEXT} names no {name}" for name in left_out),
@@ -192,6 +220,11 @@ def names_disagreements(surface: ServerSurface, skill: str) -> list[str]:
             for name in instructions_unknown
         ),
         *(f"{INSTRUCTIONS_TEXT} name no {name}" for name in unnamed_tools),
+        *(f"{named}, which the server lacks" for named in descriptions_unknown),
+        *(
+            f"{SETTINGS_PREFIX}{name.upper()} is named, which is no setting of the server's"
+            for name in unknown_settings
+        ),
     ]
 
 

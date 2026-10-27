@@ -32,8 +32,9 @@ and `markdown`.
   `project_root` in the answers of `index_status` and `index_codebase` names it (a
   directory the repository ignores, or one in a repository that holds the home directory,
   is a project of its own, and names itself). Left out,
-  it is the client's workspace root, the directory Claude Code was started in; a client
-  that names no single root gets an error asking for `project_path`.
+  it is the client's workspace root, the directory Claude Code was started in; give it
+  whenever the work lies outside that directory. A client that names no single root, or a
+  root that holds the home directory, gets an error asking for `project_path`.
 - The first call loads the model and may index the whole project, with progress. Wait for
   it; do not call again while it runs.
 - If the tools are missing, tell the user the server is not installed and point them to
