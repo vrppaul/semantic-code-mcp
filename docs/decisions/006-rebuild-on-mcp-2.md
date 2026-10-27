@@ -390,7 +390,6 @@ Open for stages 7 and 8:
 - The floors of each model by the floor rule, on fresh held-out questions; profiles that carry each model's revision, prefixes and floors, held whole by `IndexIdentity`, which today names the model and revision only (backend, quantization and prefixes change the vectors too; the versions of onnxruntime and tokenizers could as well, which the embedder's reference test would catch: stage 7 below).
 - A narrowed search costs more at scale (at 100k chunks on LanceDB 0.30.2, in process: 56-86 ms unnarrowed, 142-187 for two kinds and `*.py`): the speed run asks none.
 - Two names of one model (`all-MiniLM-L6-v2`, `sentence-transformers/all-MiniLM-L6-v2`) keep two indexes; profiles can give each model one name.
-- README's list of hooks leaves out import-layers, vulture and code-rules (stage 8).
 - Q1 and Q2 (Appendix A): 13-30% of chunks run past the model's 256-token window, and a class's chunk embeds and returns its methods' bodies again. The 512-token candidates take up the first; the second waits for a measurement of a class's chunk against its methods'.
 
 Stage 7, as built so far:
@@ -400,6 +399,7 @@ Stage 7, as built so far:
 
 Stage 8, as built so far:
 - **`project_root`** in the answers of `index_status` and `index_codebase`: the root of the project whose index they report, as a directory inside a repository is indexed, and its counts reported, with the whole repository (O6). A field of a tool's answer, taken under the owner's approval of stages 5 to 8 with the new fields of their tools (2026-10-25 20:07, "Decisions taken for the owner" 2). `search_code` names none: its results carry absolute paths.
+- **README names every gate** of `.pre-commit-config.yaml`, import-linter, vulture and the code rules among them, and says the file is the list.
 
 Open, and left as they are for now:
 - A file that cannot be read is recorded as indexed with no chunks, from the scan's record: one replaced while it was read has a new mtime and is read again; one without permission stays unread until it changes or a forced run reads it, as a `chmod` changes no mtime. Not recording it would make every status stale and every search run an index.
