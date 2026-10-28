@@ -1,6 +1,8 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own: the model load (a search of a
+Measured per corpus, in server processes of its own: the first answer on a repository never
+indexed (a server started on an empty index directory, until its first search answers, the
+whole index built inside it), the model load (a search of a
 one-file project), a full index from scratch with the model already loaded, warm search
 latency, plain and narrowed to functions and methods outside every tests directory (a
 narrowing every corpus takes, which both filters read), an `index_status` call (each
@@ -81,6 +83,7 @@ class CorpusSpeed(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     corpus: str
+    cold_first_answer_seconds: float
     files_indexed: int
     chunks_indexed: int
     full_index_seconds: float
@@ -130,6 +133,9 @@ async def measure_speed(
 ) -> CorpusSpeed:
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
+    cold_first_answer_seconds = await timed_cold_first_answer_seconds(
+        working_tree, queries[0], server_log
+    )
 
     async with connect(index_directory, server_log) as connection:
         model_load_seconds = await timed_model_load_seconds(connection)
@@ -158,6 +164,7 @@ async def measure_speed(
 
     return CorpusSpeed(
         corpus=corpus.corpus.name,
+        cold_first_answer_seconds=rounded(cold_first_answer_seconds),
         files_indexed=report.files_indexed,
         chunks_indexed=report.chunks_indexed,
         full_index_seconds=report.duration_seconds,
@@ -177,6 +184,18 @@ async def measure_speed(
         model_load_seconds=rounded(model_load_seconds),
         first_search_seconds=rounded(first_search_seconds),
     )
+
+
+async def timed_cold_first_answer_seconds(
+    working_tree: Path, query: str, server_log: TextIO
+) -> float:
+    """What an agent waits for on first contact with a repository: a server started fresh on
+    an index directory of its own, empty, until its first search answers."""
+    with tempfile.TemporaryDirectory() as empty_index_directory:
+        started = time.perf_counter()
+        async with connect(Path(empty_index_directory), server_log) as connection:
+            await connection.search(working_tree, query, RESULTS_PER_QUERY)
+            return time.perf_counter() - started
 
 
 async def timed_model_load_seconds(connection: ServerConnection) -> float:

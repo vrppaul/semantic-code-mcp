@@ -1,17 +1,19 @@
 """Measure search quality, speed, or search as agents use it, on the pinned corpora.
 
     uv run python -m evals quality [--corpus NAME ...] [--save-baseline] [--held-out]
-    uv run python -m evals speed [--corpus NAME ...] [--edits N] [--save-baseline]
+    uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--edits N]
+        [--save-baseline]
     uv run python -m evals agents [--corpus NAME ...] [--corpus-file PATH ...] [--arm ARM ...]
         [--repeats N] [--model MODEL]
 
 Each run indexes into a fresh temporary directory; checkouts of the corpora are kept
 under ~/.cache/semantic-code-mcp-evals and reused. Prints one line per corpus next to the
 saved baseline, writes the whole report as JSON to `evals/results/`, and with
---save-baseline makes it the new baseline. `agents` asks Claude Code headless each question in
-each arm (`evals/agents.py`), spending the owner's subscription; it prints each session as it
-ends and each arm's sums, and keeps no baseline, as its sessions hold the questions of private
-corpora (`--corpus-file`); its indexes are kept between runs.
+--save-baseline makes it the new baseline; a corpus kept outside the repository
+(`--corpus-file`, as a large or a private one is) is never saved to it. `agents` asks
+Claude Code headless each question in each arm (`evals/agents.py`), spending the owner's
+subscription; it prints each session as it ends and each arm's sums, and keeps no baseline,
+as its sessions hold the questions of private corpora; its indexes are kept between runs.
 
 Exits 0, or 1 when a tool call fails or times out, a clone fails, a corpus names an answer its
 checkout lacks, or Claude Code does not start.
@@ -126,13 +128,13 @@ def main() -> int:
                 )
             case "speed":
                 run_speed(
-                    load_corpora(arguments.corpus),
+                    chosen_corpora(arguments.corpus, arguments.corpus_file),
                     edits=arguments.edits,
                     save_baseline=arguments.save_baseline,
                 )
             case "agents":
                 run_agents(
-                    agents_corpora(arguments.corpus, arguments.corpus_file),
+                    chosen_corpora(arguments.corpus, arguments.corpus_file),
                     arms=tuple(AgentArm(arm) for arm in arguments.arm or list(AgentArm)),
                     repeats=arguments.repeats,
                     model=arguments.model,
@@ -158,7 +160,11 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         command.add_argument(
             "--corpus", action="append", default=[], choices=available_corpus_names()
         )
-        command.add_argument("--save-baseline", action="store_true")
+    quality.add_argument("--save-baseline", action="store_true")
+    # A corpus kept outside the repository, never saved to the baseline the repository keeps
+    speed_corpora = speed.add_mutually_exclusive_group()
+    speed_corpora.add_argument("--corpus-file", action="append", default=[], type=Path)
+    speed_corpora.add_argument("--save-baseline", action="store_true")
     # The held-out questions are asked on every run but shown only once a choice is made
     quality.add_argument("--held-out", action="store_true")
     speed.add_argument("--edits", type=positive_integer, default=DEFAULT_EDITS)
@@ -206,8 +212,8 @@ def run_speed(corpora: list[Corpus], *, edits: int, save_baseline: bool) -> None
     write_report(report, SPEED_FILE, save_baseline=save_baseline)
 
 
-def agents_corpora(names: list[str], files: list[Path]) -> list[Corpus]:
-    """The corpora `agents` asks: those named and those read from files; every corpus of
+def chosen_corpora(names: list[str], files: list[Path]) -> list[Corpus]:
+    """The corpora a run measures: those named and those read from files; every corpus of
     `evals/corpora/` when neither is given."""
     named = load_corpora(names) if names or not files else []
     return [*named, *(load_corpus_file(path) for path in files)]
@@ -369,6 +375,7 @@ def describe_speed(entry: CorpusSpeed, baseline: CorpusSpeed | None) -> str:
 
 def speed_summary(entry: CorpusSpeed) -> str:
     return (
+        f"cold first answer {entry.cold_first_answer_seconds}s; "
         f"{entry.files_indexed} files, {entry.chunks_indexed} chunks "
         f"in {entry.full_index_seconds}s ({entry.files_per_second} files/s, "
         f"{entry.chunks_per_second} chunks/s); search p50 "
