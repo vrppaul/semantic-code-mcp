@@ -61,7 +61,6 @@ from evals.quality import (
 from evals.server import ToolCallFailedError, connect
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
 from semantic_code_mcp.logging import configure_logging
-from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_COMPACTION
 
 CHECKOUTS_ROOT = Path.home() / ".cache" / "semantic-code-mcp-evals"
 EVALS_DIRECTORY = Path(__file__).parent
@@ -78,10 +77,10 @@ TOKENS_PER_THOUSAND = 1000
 # How much of a question a session's line shows
 QUESTION_SHOWN_LENGTH = 60
 SERVER_LOG_FILE = "server.log"
-# Edits enough for one to pay the index's compaction and full-text rebuild, which the slowest
-# search after an edit shows: a store compacts at its first upkeep, the full index's, and
-# once in this many after, so at the last edit's
-DEFAULT_EDITS = UPKEEPS_PER_COMPACTION
+# Edits enough for one to pay a store's periodic upkeep, which the slowest search after an
+# edit shows: LanceDB compacts and rebuilds its full-text index at its first upkeep, the full
+# index's, and once in twenty after, so at the last edit's
+DEFAULT_EDITS = 20
 JSON_INDENT = 2
 EXIT_OK = 0
 EXIT_FAILED = 1

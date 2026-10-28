@@ -16,6 +16,7 @@ from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, V
 from semantic_code_mcp.domain.models import (
     Chunk,
     IndexCounts,
+    IndexedFiles,
     IndexIdentity,
     IndexManifest,
     IndexUpdate,
@@ -23,7 +24,6 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SourceFile,
 )
-from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 
 EMBEDDING_DIMENSION = 384
 FAKE_MODEL_NAME = "fake-model"
@@ -119,8 +119,13 @@ class FakeIndexStore(IndexStore):
         return self.written_manifest
 
     @override
-    def indexed_files(self) -> list[SourceFile]:
-        return list(self.files_by_path.values())
+    def indexed_files(self) -> IndexedFiles:
+        return IndexedFiles(
+            records=list(self.files_by_path.values()),
+            unrecorded_paths=[
+                path for path in self.chunks_by_file if path not in self.files_by_path
+            ],
+        )
 
     @override
     def counts(self) -> IndexCounts:
@@ -130,10 +135,6 @@ class FakeIndexStore(IndexStore):
         )
 
     @override
-    def chunked_paths(self) -> set[Path]:
-        return set(self.chunks_by_file)
-
-    @override
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
         stored = {
             chunk.chunk_id: vector
@@ -141,10 +142,6 @@ class FakeIndexStore(IndexStore):
             for chunk, vector in zip(chunks, self.vectors_by_file[path], strict=True)
         }
         return {chunk_id: stored[chunk_id] for chunk_id in stored.keys() & set(chunk_ids)}
-
-    @override
-    def keep_up(self) -> None:
-        return
 
     @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
@@ -215,14 +212,65 @@ class ChangingChunker(VersionedChunker):
         return self._inner.chunk_file(project_root, path)
 
 
-class StoreCancelledAfterItsWrite(LanceDBIndexStore):
-    """The real store, whose run is cancelled as soon as a write of it lands: a client that
+class DelegatingStore(IndexStore):
+    """Another store, every call handed on to it; a subclass changes what it means to."""
+
+    def __init__(self, inner: IndexStore) -> None:
+        self._inner = inner
+
+    @override
+    def manifest(self) -> IndexManifest | None:
+        return self._inner.manifest()
+
+    @override
+    def indexed_files(self) -> IndexedFiles:
+        return self._inner.indexed_files()
+
+    @override
+    def counts(self) -> IndexCounts:
+        return self._inner.counts()
+
+    @override
+    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
+        return self._inner.stored_vectors(chunk_ids)
+
+    @override
+    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+        self._inner.write(update, vectors)
+
+    @override
+    def search_candidates(
+        self, query_vector: Vector, query: SearchQuery, per_channel: int
+    ) -> SearchCandidates:
+        return self._inner.search_candidates(query_vector, query, per_channel)
+
+
+class StoreCancelledAfterItsWrite(DelegatingStore):
+    """Another store, whose run is cancelled as soon as a write of it lands: a client that
     hung up while the run was under way."""
 
     @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
         super().write(update, vectors)
         raise asyncio.CancelledError
+
+
+class StoreHeldInItsWrite(DelegatingStore):
+    """Another store, whose write waits to be released once it has begun, then lands in its
+    thread: the test cancels the run in between, as a client that hangs up mid-write does."""
+
+    def __init__(self, inner: IndexStore) -> None:
+        super().__init__(inner)
+        self.writing = threading.Event()
+        self.release = threading.Event()
+        self.written = threading.Event()
+
+    @override
+    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+        self.writing.set()
+        self.release.wait()
+        super().write(update, vectors)
+        self.written.set()
 
 
 class ChunkCountRecorder:

@@ -12,7 +12,6 @@ import numpy
 import pytest
 
 from semantic_code_mcp.app import (
-    WRITE_LOCK_TIMEOUT_SECONDS,
     build_chunker,
     build_registry,
     open_index_store,
@@ -38,6 +37,7 @@ from tests.fakes import (
     FakeIndexStore,
     ProgressRecorder,
     StoreCancelledAfterItsWrite,
+    StoreHeldInItsWrite,
     VersionedChunker,
     vector_of,
 )
@@ -577,9 +577,7 @@ async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
     test_settings: Settings, tmp_path: Path
 ):
     project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
-    store = StoreCancelledAfterItsWrite(
-        tmp_path / "index", IDENTITY, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS
-    )
+    store = StoreCancelledAfterItsWrite(open_index_store(tmp_path / "index", IDENTITY))
     indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
 
     with pytest.raises(asyncio.CancelledError):
@@ -630,6 +628,37 @@ async def test_a_run_that_wrote_leaves_every_chunk_in_the_full_text_index(
     await runs(indexing, project)
 
     assert chunks_outside_the_full_text_index(store) == 0
+
+
+# How long a test waits for a held write to begin and to land, far beyond either
+HELD_WRITE_TIMEOUT_SECONDS = 30.0
+
+
+async def test_a_run_cancelled_while_its_last_write_lands_leaves_every_chunk_in_the_full_text_index(
+    test_settings: Settings, tmp_path: Path
+):
+    """A client that hangs up as a run writes: the write still lands in its thread, and the
+    chunks it wrote must score on the full-text index's scale, not another."""
+    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
+    store = open_index_store(tmp_path / "index", IDENTITY)
+    await first_index(
+        indexing_service(store, FakeEmbedder(), test_settings, build_chunker()), project
+    )
+    edited = project / FIRST_MODULE
+    edited.write_text(edited.read_text() + ADDED_FUNCTION)
+    touch_later(edited)
+    held = StoreHeldInItsWrite(store)
+    indexing = indexing_service(held, FakeEmbedder(), test_settings, build_chunker())
+    run = asyncio.create_task(indexing.index(project, force=False, progress=NO_PROGRESS))
+
+    write_began = await asyncio.to_thread(held.writing.wait, HELD_WRITE_TIMEOUT_SECONDS)
+    run.cancel()
+    held.release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await run
+    write_landed = await asyncio.to_thread(held.written.wait, HELD_WRITE_TIMEOUT_SECONDS)
+
+    assert (write_began, write_landed, chunks_outside_the_full_text_index(store)) == (True, True, 0)
 
 
 async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_index(

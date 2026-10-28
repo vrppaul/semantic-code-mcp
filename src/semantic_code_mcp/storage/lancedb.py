@@ -15,12 +15,15 @@ Reads take no lock: each opens its table again, at its latest version, so a long
 connection still sees what another process wrote, and a table not yet made reads as
 empty. So old versions are pruned only once they are older than any read can last.
 
-An index run that wrote asks for upkeep, which folds the new rows into the full-text
-index, as rows it has not folded in score on another scale, and prunes old versions. Now
-and then it first compacts the tables and rebuilds the full-text index whole: each fold
-adds the index a part no later one merges, and counts the rows an edit replaced in the
-index's word statistics until then. LanceDB's own optimize compacts at every call, merging
-every fragment under a million rows, so at 100k chunks each edit rewrote the whole table.
+A run's last write keeps the index up: after its chunks and before their records it folds
+the new rows into the full-text index, as rows it has not folded in score on another scale,
+so a run cancelled as that write lands still leaves them folded, and a write stopped before
+the fold leaves its files stale for the next run to write and fold again; it prunes old
+versions too. Now and then it first compacts the tables and rebuilds the full-text index
+whole: each fold adds the index a part no later one merges, and counts the rows an edit
+replaced in the index's word statistics until then. LanceDB's own optimize compacts at
+every call, merging every fragment under a million rows, so at 100k chunks each edit
+rewrote the whole table.
 """
 
 import threading
@@ -35,18 +38,16 @@ import numpy
 import pyarrow
 import structlog
 from lancedb.query import FullTextOperator, MatchQuery
-from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.globs import PATH_SEPARATOR
 from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
-    HIGHEST_SIMILARITY,
-    LOWEST_SIMILARITY,
     Candidate,
     Chunk,
     ChunkKind,
     IndexCounts,
+    IndexedFiles,
     IndexIdentity,
     IndexManifest,
     IndexUpdate,
@@ -59,6 +60,7 @@ from semantic_code_mcp.domain.models import (
 from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.index_directories import IndexDirectory, index_directory_name
 from semantic_code_mcp.storage.search_text import search_text
+from semantic_code_mcp.storage.similarity import VECTOR_LENGTH_AXIS, cosine_similarities
 
 log = structlog.get_logger()
 
@@ -100,10 +102,6 @@ CONTENT_COLUMN = "content"
 SEARCH_TEXT_COLUMN = "search_text"
 MTIME_COLUMN = "mtime_ns"
 SIZE_COLUMN = "size_bytes"
-# The axis of a vector matrix along one vector: rows are chunks, columns components
-VECTOR_LENGTH_AXIS = 1
-# The length of a vector of zeros, which has no direction to compare
-NO_LENGTH = 0.0
 FULL_TEXT_QUERY_TYPE = "fts"
 FULL_TEXT_INDEX_TYPE = "FTS"
 # The full-text index's name, the one LanceDB gives it by default
@@ -246,25 +244,21 @@ class LanceDBIndexStore(IndexStore):
         return self._directory.manifest()
 
     @override
-    def indexed_files(self) -> list[SourceFile]:
+    def indexed_files(self) -> IndexedFiles:
         table = self._open(FILES_TABLE)
-        if table is None:
-            return []
-        return [StoredFile.model_validate(row).source() for row in table.to_arrow().to_pylist()]
+        rows = [] if table is None else table.to_arrow().to_pylist()
+        stored = [StoredFile.model_validate(row) for row in rows]
+        recorded_paths = {file.path for file in stored}
+        return IndexedFiles(
+            records=[file.source() for file in stored],
+            unrecorded_paths=[
+                Path(path) for path in self._chunked_paths() if path not in recorded_paths
+            ],
+        )
 
     @override
     def counts(self) -> IndexCounts:
         return IndexCounts(files=self._count(FILES_TABLE), chunks=self._count(CHUNKS_TABLE))
-
-    @override
-    def chunked_paths(self) -> set[Path]:
-        table = self._open(CHUNKS_TABLE)
-        if table is None:
-            return set()
-        # One column of every row, no vectors read; each path made a Path once, not per row
-        rows = table.search().select([PATH_COLUMN]).limit(None).to_arrow()
-        paths = rows.column(PATH_COLUMN).unique()
-        return {Path(path) for path in paths.to_pylist()}
 
     @override
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
@@ -284,16 +278,6 @@ class LanceDBIndexStore(IndexStore):
         return dict(zip(found_ids, numpy.unstack(matrix), strict=True))
 
     @override
-    def keep_up(self) -> None:
-        with self._directory.locked():
-            self._compact_when_due()
-            for name in (CHUNKS_TABLE, FILES_TABLE):
-                table = self._open(name)
-                if table is not None:
-                    fold_and_prune(table.to_lance())
-                    log.debug("table_kept_up", table=name)
-
-    @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
         if len(update.chunks) != len(vectors):
             message = f"{len(update.chunks)} chunks but {len(vectors)} vectors"
@@ -304,7 +288,12 @@ class LanceDBIndexStore(IndexStore):
             if update.chunks:
                 self._fit_layout(database, vectors.shape[VECTOR_LENGTH_AXIS])
             self._write_chunks(database, update, vectors)
+            if update.last_of_run:
+                self._compact_when_due()
+                self._fold_and_prune(CHUNKS_TABLE)
             self._write_records(database, update)
+            if update.last_of_run:
+                self._fold_and_prune(FILES_TABLE)
             manifest = IndexManifest(
                 identity=self._identity,
                 schema_version=SCHEMA_VERSION,
@@ -398,6 +387,22 @@ class LanceDBIndexStore(IndexStore):
                 .when_not_matched_insert_all()
                 .execute(files_table(update.files))
             )
+
+    def _chunked_paths(self) -> list[str]:
+        """The paths, as stored, of the files the chunks come from: one column of every row,
+        no vectors read."""
+        table = self._open(CHUNKS_TABLE)
+        if table is None:
+            return []
+        rows = table.search().select([PATH_COLUMN]).limit(None).to_arrow()
+        return rows.column(PATH_COLUMN).unique().to_pylist()
+
+    def _fold_and_prune(self, name: str) -> None:
+        """Fold a table's new rows into its indexes and prune its old versions, if it is made."""
+        table = self._open(name)
+        if table is not None:
+            fold_and_prune(table.to_lance())
+            log.debug("table_kept_up", table=name)
 
     def _compact_when_due(self) -> None:
         """Compact both tables, then rebuild the full-text index whole over the rows left, at
@@ -599,17 +604,6 @@ def vector_matrix(rows: pyarrow.Table) -> VectorMatrix:
     """The vectors of rows as a matrix, a row each, read as one flat buffer."""
     vectors = rows.column(VECTOR_COLUMN).combine_chunks()
     return vectors.flatten().to_numpy().reshape(rows.num_rows, vectors.type.list_size)
-
-
-def cosine_similarities(vectors: VectorMatrix, query: Vector) -> NDArray[numpy.float32]:
-    """The cosine similarity of each row's vector to the query's: 0 where either is all
-    zeros, which points nowhere, and held to its range, which rounding oversteps by a hair."""
-    norms = numpy.linalg.norm(vectors, axis=VECTOR_LENGTH_AXIS) * numpy.linalg.norm(query)
-    products = vectors @ query
-    similarities = numpy.divide(
-        products, norms, out=numpy.zeros_like(products), where=norms > NO_LENGTH
-    )
-    return numpy.clip(similarities, LOWEST_SIMILARITY, HIGHEST_SIMILARITY)
 
 
 def quote_sql(value: str) -> str:

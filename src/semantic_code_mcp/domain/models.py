@@ -252,6 +252,9 @@ class IndexUpdate(BaseModel):
     files: list[SourceFile]
     chunks: list[Chunk]
     removed_paths: list[Path]
+    # Whether no write of the run follows: a store with work at a run's end does it inside
+    # this write, so a run cancelled as it lands still leaves the index whole
+    last_of_run: bool
 
     @model_validator(mode="after")
     def chunks_belong_to_the_files_written(self) -> IndexUpdate:
@@ -261,6 +264,18 @@ class IndexUpdate(BaseModel):
             message = f"chunks of files the write does not hold: {strays}"
             raise ValueError(message)
         return self
+
+
+class IndexedFiles(BaseModel):
+    """What the index holds of the project's files: the record of each file it indexed, as
+    the scan that indexed it found it, and the paths it holds chunks of with no record,
+    which a write stopped between a file's chunks and its record leaves in a store that lays
+    them apart."""
+
+    model_config = ConfigDict(frozen=True)
+
+    records: list[SourceFile]
+    unrecorded_paths: list[Path]
 
 
 class IndexCounts(BaseModel):

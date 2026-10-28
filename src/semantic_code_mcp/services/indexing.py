@@ -31,6 +31,7 @@ from semantic_code_mcp.domain.interfaces import (
 from semantic_code_mcp.domain.models import (
     Chunk,
     IndexDelta,
+    IndexedFiles,
     IndexReport,
     IndexStatus,
     IndexUpdate,
@@ -171,9 +172,7 @@ class IndexingService:
 
     def _plan(self, files: list[SourceFile], *, force: bool) -> IndexDelta:
         """What a run over these files is to do, from what the store holds."""
-        return plan_delta(
-            files, self._store.indexed_files(), self._store.chunked_paths(), every_file=force
-        )
+        return plan_delta(files, self._store.indexed_files(), every_file=force)
 
     def _chunk(self, project_root: Path, files: list[SourceFile]) -> list[ChunkedFile]:
         """Chunk files one after another; tree-sitter holds the GIL, so threads gain nothing."""
@@ -198,12 +197,12 @@ class IndexingService:
         force: bool,
         progress: ProgressReporter,
     ) -> int:
-        """Embed and write the slices one after another, the removals with the first; then
-        have the store fold what they wrote into its indexes, as rows the full-text index has
-        not folded in score on another scale. The number of chunks written."""
+        """Embed and write the slices one after another, the removals with the first and the
+        run's end with the last. The number of chunks written."""
         total = sum(len(write_slice.chunks) for write_slice in slices)
         done = 0
         removals = removed_paths
+        last_slice = slices[-1]
         for write_slice in slices:
             chunks = write_slice.chunks
             vectors = await self._vectors(
@@ -216,11 +215,11 @@ class IndexingService:
                 files=[chunked_file.file for chunked_file in write_slice.files],
                 chunks=chunks,
                 removed_paths=removals,
+                last_of_run=write_slice is last_slice,
             )
             await asyncio.to_thread(self._store.write, update, vectors)
             done += len(chunks)
             removals = []
-        await asyncio.to_thread(self._store.keep_up)
         return total
 
     async def _vectors(
@@ -317,21 +316,15 @@ def width_of(vectors_by_id: dict[str, Vector]) -> int:
     return len(next(iter(vectors_by_id.values())))
 
 
-def plan_delta(
-    on_disk: list[SourceFile],
-    indexed: list[SourceFile],
-    chunked_paths: set[Path],
-    *,
-    every_file: bool,
-) -> IndexDelta:
+def plan_delta(on_disk: list[SourceFile], indexed: IndexedFiles, *, every_file: bool) -> IndexDelta:
     """The files to index — every file, or those new or changed since their record — and
     the paths no longer on disk that the index holds records or chunks of."""
-    recorded = {file.path: file for file in indexed}
+    recorded = {file.path: file for file in indexed.records}
     paths_on_disk = {source.path for source in on_disk}
     to_index = (
         on_disk
         if every_file
         else [source for source in on_disk if recorded.get(source.path) != source]
     )
-    to_delete = sorted((recorded.keys() | chunked_paths) - paths_on_disk)
+    to_delete = sorted((recorded.keys() | set(indexed.unrecorded_paths)) - paths_on_disk)
     return IndexDelta(to_index=to_index, to_delete=to_delete)

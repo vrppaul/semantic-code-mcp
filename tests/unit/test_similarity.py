@@ -6,7 +6,7 @@ from hypothesis import given, strategies
 from hypothesis.extra import numpy as numpy_strategies
 
 from semantic_code_mcp.domain.models import HIGHEST_SIMILARITY, LOWEST_SIMILARITY
-from semantic_code_mcp.storage.lancedb import cosine_similarities
+from semantic_code_mcp.storage.similarity import cosine_similarities
 
 WIDTH = 8
 ROWS = 5

@@ -13,11 +13,11 @@ from numpy.typing import NDArray
 from semantic_code_mcp.domain.models import (
     Chunk,
     IndexCounts,
+    IndexedFiles,
     IndexManifest,
     IndexUpdate,
     SearchCandidates,
     SearchQuery,
-    SourceFile,
 )
 
 # The vector of one text
@@ -76,34 +76,27 @@ class IndexStore(ABC):
         """What built the index and when it was last written; None before the first write."""
 
     @abstractmethod
-    def indexed_files(self) -> list[SourceFile]:
-        """The record of every file the index holds, as the scan that indexed it found it."""
+    def indexed_files(self) -> IndexedFiles:
+        """The record of every file the index holds, and the paths it holds chunks of with
+        no record."""
 
     @abstractmethod
     def counts(self) -> IndexCounts:
         """How many files and chunks the index holds."""
 
     @abstractmethod
-    def chunked_paths(self) -> set[Path]:
-        """The paths of the files the index holds chunks of, recorded or not: a write that
-        stopped between a file's chunks and its record leaves them unrecorded."""
-
-    @abstractmethod
     def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
         """The stored vector of each of these chunks the index holds, by chunk id."""
-
-    @abstractmethod
-    def keep_up(self) -> None:
-        """Fold what was written into the index's own indexes and prune old versions, now
-        and then compacting the tables first; an index run asks for it once it has written."""
 
     @abstractmethod
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
         """Apply one write of an index run as a unit no other writer interleaves with, in
         this process or another, a cancelled request's thread included: the chunks of the
         files written take the place of those files' and the removed files' chunks, so a
-        reader finds a file's old chunks or its new ones; then their records; the manifest
-        last. The vector of each chunk is in its row of `vectors`.
+        reader finds a file's old chunks or its new ones, never neither; the files' records
+        and the manifest follow them. The vector of each chunk is in its row of `vectors`.
+        A write stopped midway leaves its files' old records, so the next run writes them
+        again; the run's last write also does what the store has to at a run's end.
 
         Vectors of another width than those the index holds (a model replaced under a name
         nothing pins) start the index again from this write: the files it does not hold are left
