@@ -151,13 +151,18 @@ class ServerStarter:
             ServerOptions(index_store=self._options.index_store, search_mode=search_mode),
         )
 
+    def environment(self, index_directory: Path) -> dict[str, str]:
+        """The environment each server of this starter runs in, its indexes in
+        index_directory."""
+        return server_environment(index_directory, self._options)
+
     @asynccontextmanager
     async def connect(self, index_directory: Path) -> AsyncGenerator[ServerConnection]:
         """Start a server whose indexes live in index_directory."""
         parameters = StdioServerParameters(
             command=sys.executable,
             args=["-m", SERVER_MODULE],
-            env=server_environment(index_directory, self._options),
+            env=self.environment(index_directory),
         )
         async with (
             stdio_client(parameters, errlog=self._server_log) as (read_stream, write_stream),

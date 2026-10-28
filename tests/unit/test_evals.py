@@ -1,5 +1,6 @@
 """Tests for the harness: the scoring of search quality, and the edits of the speed run."""
 
+import io
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from evals.server import (
     SEARCH_MODE_VARIABLE,
     SearchHit,
     ServerOptions,
+    ServerStarter,
     server_environment,
 )
 from evals.speed import Edit, edit_text, edits_in_turn
@@ -416,6 +418,22 @@ def test_a_server_of_the_harness_searches_in_the_mode_a_run_names(
     )
 
     assert environment.get(SEARCH_MODE_VARIABLE) == setting_given
+
+
+def test_a_starter_set_to_search_by_meaning_starts_servers_that_do_in_the_same_store(
+    tmp_path: Path,
+):
+    """As `evals speed` times the model's load and the searches by meaning."""
+    starter = ServerStarter(
+        io.StringIO(), ServerOptions(index_store=StoreKind.lancedb, search_mode=None)
+    )
+
+    environment = starter.searching(SearchMode.words_and_meaning).environment(tmp_path)
+
+    assert (environment.get(SEARCH_MODE_VARIABLE), environment.get(INDEX_STORE_VARIABLE)) == (
+        SearchMode.words_and_meaning,
+        StoreKind.lancedb,
+    )
 
 
 @pytest.mark.parametrize(

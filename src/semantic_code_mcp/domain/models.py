@@ -154,9 +154,9 @@ WHOLE_PROJECT = SearchScope(
 
 
 class SearchMode(StrEnum):
-    """How a search ranks the chunks it finds. The server's setting picks it, not the agent:
-    agents gained nothing from meaning, and when offered it they took it for a first search
-    (ADR 009, D2). A way of ranking added later is another member here."""
+    """How a server's searches rank the chunks they find. Its setting picks it, not the
+    agent: agents gained nothing from meaning, and when offered it they took it for a first
+    search (ADR 009, D2). A way of ranking added later is another member here."""
 
     # BM25 over the chunks' words, the chunks named as the query first; no model loaded
     words = auto()
@@ -165,15 +165,13 @@ class SearchMode(StrEnum):
 
 
 class SearchQuery(BaseModel):
-    """What a search is asked: its words, how many hits at most, where to look, and how it
-    ranks what it finds."""
+    """What a search is asked: its words, how many hits at most, and where to look."""
 
     model_config = ConfigDict(frozen=True)
 
     text: str
     limit: int
     scope: SearchScope
-    mode: SearchMode
 
 
 class SearchHit(BaseModel):

@@ -1,10 +1,10 @@
 """Search: bring the index up to date, then find the chunks that best answer a query.
 
-A search reads words alone unless the server's settings ask for meaning too, the mode a
-query carries (ADR 009, D1, D2). By words, the chunks named as the query come first, as an
-agent that asks for an identifier it knows wants its definition, and a qualified name
-(`Stack.push`) is read as a parent and a name; then the chunks whose words best match the
-query's, by BM25. The model is not loaded for it.
+A search reads words alone unless the server's settings ask for meaning too, the mode its
+service is built with (ADR 009, D1, D2). By words, the chunks named as the query come
+first, as an agent that asks for an identifier it knows wants its definition, and a
+qualified name (`Stack.push`) is read as a parent and a name; then the chunks whose words
+best match the query's, by BM25. The model is not loaded for it.
 
 By words and meaning, a search embeds the chunks without the model's vectors first, inside
 the call (`vectors.py`). Each channel of the store then brings its candidates, the vector
@@ -19,6 +19,7 @@ import asyncio
 import time
 from enum import Enum
 from pathlib import Path
+from typing import assert_never
 
 from pydantic import BaseModel, ConfigDict
 
@@ -98,7 +99,8 @@ class NameAsked(BaseModel):
 
 
 class SearchService:
-    """Answers searches over one project, indexing what changed first."""
+    """Answers searches over one project, indexing what changed first, each ranked in the
+    mode it is built with."""
 
     def __init__(  # noqa: PLR0913
         self,
@@ -109,6 +111,7 @@ class SearchService:
         indexing: IndexingService,
         vectors: VectorService,
         floors: SimilarityFloors,
+        mode: SearchMode,
     ) -> None:
         self._store = store
         self._embedder = embedder
@@ -116,6 +119,7 @@ class SearchService:
         self._indexing = indexing
         self._vectors = vectors
         self._floors = floors
+        self._mode = mode
 
     async def search(
         self, query: SearchQuery, project_root: Path, *, progress: ProgressReporter
@@ -143,7 +147,7 @@ class SearchService:
                 results=[], filtered_count=0, timings=NO_TIMINGS, index_report=index_report
             )
 
-        match query.mode:
+        match self._mode:
             case SearchMode.words:
                 await progress.report(SearchPhase.searching.value, "Searching...")
                 report = await asyncio.to_thread(self._search_by_words, query, index_report)
@@ -153,6 +157,9 @@ class SearchService:
                 )
                 await progress.report(SearchPhase.searching.value, "Searching...")
                 report = await asyncio.to_thread(self._search_by_meaning, query, index_report)
+            # A mode added without its case is refused by the type checker here
+            case unhandled:
+                assert_never(unhandled)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 

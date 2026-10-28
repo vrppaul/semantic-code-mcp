@@ -116,7 +116,6 @@ async def search_code(  # noqa: PLR0913
         excluded = given_glob(exclude_glob)
         location = await located_project(ctx, project_path, roots)
         services = project_services(ctx, location.root)
-        registry = ctx.request_context.lifespan_context
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
             languages=tuple(languages or ()),
@@ -125,12 +124,7 @@ async def search_code(  # noqa: PLR0913
             directory=location.directory,
         )
         report = await services.search.search(
-            SearchQuery(
-                text=query,
-                limit=limit,
-                scope=scope,
-                mode=registry.search_mode,
-            ),
+            SearchQuery(text=query, limit=limit, scope=scope),
             location.root,
             progress=ProgressReporter(ctx.report_progress),
         )

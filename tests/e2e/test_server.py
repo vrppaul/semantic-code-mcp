@@ -215,17 +215,20 @@ async def test_only_a_server_set_to_search_by_meaning_embeds_the_project_first(
     arguments: dict[str, object],
     embedded: int,
 ):
-    """The server's setting picks how a search ranks; an agent's call cannot (ADR 009, D2)."""
+    """The server's setting picks how a search ranks; an agent's call cannot, and is answered
+    as any other (ADR 009, D2)."""
     settings = Settings(cache_dir=tmp_path / "cache", search_mode=search_mode)
     client = Client(create_app(settings, embedder=embedder), mode="legacy")
 
     async with client:
-        await client.call_tool(
+        search = await client.call_tool(
             "search_code", {"query": "greeting", "project_path": str(project), **arguments}
         )
-        result = await client.call_tool("index_status", {"project_path": str(project)})
+        status = await client.call_tool("index_status", {"project_path": str(project)})
 
-    assert IndexStatusResponse.model_validate(structured(result)).embedded_chunks_count == embedded
+    found = SearchCodeResponse.model_validate(structured(search)).results
+    embedded_count = IndexStatusResponse.model_validate(structured(status)).embedded_chunks_count
+    assert ([result.name for result in found], embedded_count) == (["greet"], embedded)
 
 
 async def test_search_sees_a_function_added_after_indexing(project: Path, client: Client):

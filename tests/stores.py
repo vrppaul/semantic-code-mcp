@@ -17,7 +17,6 @@ from semantic_code_mcp.domain.models import (
     IndexUpdate,
     Language,
     SearchCandidates,
-    SearchMode,
     SearchQuery,
     SourceFile,
     VectorIdentity,
@@ -116,7 +115,7 @@ def fill(store: IndexStore, chunks: list[Chunk], vectors: numpy.ndarray) -> None
 
 def query_of(text: str) -> SearchQuery:
     """A query of the whole project."""
-    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, mode=SearchMode.words)
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
 
 
 def nearest(store: IndexStore, query: numpy.ndarray = QUERY) -> list[Candidate]:

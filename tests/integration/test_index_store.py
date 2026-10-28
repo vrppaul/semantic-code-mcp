@@ -25,7 +25,6 @@ from semantic_code_mcp.domain.models import (
     ChunkKind,
     IndexCounts,
     Language,
-    SearchMode,
     SearchQuery,
     SearchScope,
 )
@@ -335,9 +334,7 @@ def test_every_search_finds_within_the_scope_before_it_cuts(
 ):
     """The guide is further than every chunk a narrow channel would bring unfiltered by
     vector, and by words too in the first case."""
-    query = SearchQuery(
-        text=GUIDE_QUESTION, limit=NARROW_CHANNEL, scope=scope, mode=SearchMode.words_and_meaning
-    )
+    query = SearchQuery(text=GUIDE_QUESTION, limit=NARROW_CHANNEL, scope=scope)
 
     candidates = code_and_a_guide.search(MODEL, QUERY, query, NARROW_CHANNEL)
     by_words = code_and_a_guide.search_words(query, NARROW_CHANNEL)
@@ -412,9 +409,7 @@ def awkward_store(store: IndexStore) -> IndexStore:
 def test_the_store_reads_a_glob_as_its_pattern_says(awkward_store: IndexStore, glob: str):
     """LanceDB's regex is Rust's, which refuses or reads apart what Python's would read."""
     scope = SearchScope(kinds=[], languages=[], path_glob=glob, exclude_glob=None, directory=None)
-    query = SearchQuery(
-        text="shared", limit=EVERY_CHUNK, scope=scope, mode=SearchMode.words_and_meaning
-    )
+    query = SearchQuery(text="shared", limit=EVERY_CHUNK, scope=scope)
 
     candidates = awkward_store.search(MODEL, QUERY, query, EVERY_CHUNK)
     by_words = awkward_store.search_words(query, EVERY_CHUNK)
