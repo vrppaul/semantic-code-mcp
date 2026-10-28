@@ -1,0 +1,95 @@
+"""What the store tests share: chunks, their records and writes of them, vectors near and far
+from the query, the searches of each channel, and the stores the contract's tests run over."""
+
+from collections.abc import Callable
+from pathlib import Path
+
+import numpy
+import pytest
+
+from semantic_code_mcp.domain.interfaces import IndexStore
+from semantic_code_mcp.domain.models import (
+    WHOLE_PROJECT,
+    Candidate,
+    Chunk,
+    ChunkKind,
+    IndexIdentity,
+    IndexUpdate,
+    Language,
+    SearchCandidates,
+    SearchQuery,
+    SourceFile,
+)
+from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
+from tests.fakes import EMBEDDING_DIMENSION
+
+# A store built on a project's index directory, for an identity, as each store's class builds
+# one: `store_factory(project_directory, identity, lock_timeout_seconds=...)`
+type StoreFactory = Callable[..., IndexStore]
+# Every store the contract's tests run over
+STORE_CLASSES = [pytest.param(LanceDBIndexStore, id="lancedb")]
+# What a search finds in an index that holds no chunks
+NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
+
+TOWARD_QUERY = [0.9] * EMBEDDING_DIMENSION
+QUERY = numpy.full(EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
+AWAY_FROM_QUERY = [-0.9] * EMBEDDING_DIMENSION
+ALTERNATING = [0.1, -0.1] * (EMBEDDING_DIMENSION // 2)
+LIMIT = 10
+# A text no chunk's words match, so a search finds by vector alone
+NO_WORDS_MATCH = "zzzz"
+LOCK_TIMEOUT_SECONDS = 5.0
+IDENTITY = IndexIdentity(
+    model_name="fake-model", model_revision=None, embedder_version=1, chunker_version=1
+)
+OTHER_IDENTITY = IndexIdentity(
+    model_name="other-model", model_revision=None, embedder_version=1, chunker_version=1
+)
+
+
+def function_chunk(name: str, path: str, content: str) -> Chunk:
+    return Chunk(
+        chunk_id=f"{path}#{name}",
+        path=Path(path),
+        language=Language.python,
+        kind=ChunkKind.function,
+        name=name,
+        parent=None,
+        line_start=1,
+        line_end=3,
+        content=content,
+    )
+
+
+def record_of(path: str) -> SourceFile:
+    return SourceFile(path=Path(path), mtime_ns=1, size_bytes=1)
+
+
+def update_of(chunks: list[Chunk], removed_paths: list[Path]) -> IndexUpdate:
+    """A write that ends its run, as a run of one write does: the store keeps the index up
+    in it."""
+    return IndexUpdate(
+        files=[record_of(chunk.path.as_posix()) for chunk in chunks],
+        chunks=chunks,
+        removed_paths=removed_paths,
+        last_of_run=True,
+    )
+
+
+def vectors_of(*rows: list[float]) -> numpy.ndarray:
+    return numpy.array(rows, dtype=numpy.float32)
+
+
+def query_of(text: str) -> SearchQuery:
+    """A query of the whole project."""
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
+
+
+def nearest(store: IndexStore, query: numpy.ndarray = QUERY) -> list[Candidate]:
+    """What the vector channel of a search finds."""
+    return store.search_candidates(query, query_of(NO_WORDS_MATCH), LIMIT).by_vector
+
+
+def matching(store: IndexStore, text: str) -> list[Candidate]:
+    """What the keyword channel of a search for the text finds."""
+    return store.search_candidates(QUERY, query_of(text), LIMIT).by_keyword

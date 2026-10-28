@@ -7,6 +7,7 @@ import pytest
 
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.embedding import OnnxEmbedder
+from tests.stores import STORE_CLASSES, StoreFactory
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -43,6 +44,12 @@ def git_without_the_machine_s_configuration(monkeypatch: pytest.MonkeyPatch) -> 
 def embedder() -> OnnxEmbedder:
     """The real embedding model, loaded once for the whole session on first use."""
     return OnnxEmbedder(MODEL_NAME)
+
+
+@pytest.fixture(params=STORE_CLASSES)
+def store_factory(request: pytest.FixtureRequest) -> StoreFactory:
+    """Each store in turn, as the class that builds one on a project's index directory."""
+    return request.param
 
 
 @pytest.fixture
