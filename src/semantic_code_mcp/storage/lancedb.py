@@ -405,13 +405,15 @@ class LanceDBIndexStore(IndexStore):
             table.to_lance().optimize.optimize_indices()
 
     def _keep_up(self) -> None:
-        """Compact the tables when due, then fold and prune each: what a run's end does once
-        its records are written."""
+        """Compact the tables when due, then prune each: what a run's end does once its
+        records are written. Nothing is left to fold: the run's chunks were folded before the
+        records, and a compaction rebuilds the full-text index whole; a fold of nothing would
+        only leave another version."""
         self._compact_when_due()
         for name in (CHUNKS_TABLE, FILES_TABLE):
             table = self._open(name)
             if table is not None:
-                fold_and_prune(table.to_lance())
+                prune_old_versions(table.to_lance())
                 log.debug("table_kept_up", table=name)
 
     def _compact_when_due(self) -> None:
@@ -507,10 +509,9 @@ def replaced_rows_weigh_too_much(chunks: lancedb.table.Table) -> bool:
     return counted_rows - held_rows > REPLACED_ROWS_SHARE_BEFORE_COMPACTION * held_rows
 
 
-def fold_and_prune(dataset: lance.LanceDataset) -> None:
-    """Fold a table's new rows into its indexes, then prune its versions older than
-    OLD_VERSION_RETENTION, among them what a compaction or rebuild before it replaced."""
-    dataset.optimize.optimize_indices()
+def prune_old_versions(dataset: lance.LanceDataset) -> None:
+    """Prune a table's versions older than OLD_VERSION_RETENTION, among them what a fold,
+    a compaction or a rebuild before it replaced."""
     dataset.cleanup_old_versions(older_than=OLD_VERSION_RETENTION)
 
 
