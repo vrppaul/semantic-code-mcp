@@ -56,6 +56,10 @@ def store(store_factory: StoreFactory, tmp_path: Path) -> IndexStore:
     return store_factory(tmp_path / "index", IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
 
 
+# The chunks a filled store holds, nearest the query first
+FILLED_CHUNK_NAMES = ("near", "keyword", "far")
+
+
 @pytest.fixture
 def filled_store(store: IndexStore) -> IndexStore:
     chunks = [
@@ -156,6 +160,24 @@ def test_a_question_wholly_in_quotes_finds_a_chunk_by_its_words(filled_store: In
     assert [candidate.chunk.name for candidate in matching(filled_store, '"duration_ms"')] == [
         "keyword"
     ]
+
+
+# How many questions of any text a store is asked
+ANY_QUESTION_EXAMPLES = 200
+
+
+# The store is only read, so one for every example does
+@settings(
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+    max_examples=ANY_QUESTION_EXAMPLES,
+)
+@given(question=strategies.text())
+def test_a_question_of_any_text_gets_an_answer(filled_store: IndexStore, question: str):
+    """An agent's question is never read as a store's own query syntax: quotes, operators,
+    brackets and words like OR, NEAR or NOT are only text."""
+    candidates = filled_store.search_candidates(QUERY, query_of(question), LIMIT)
+
+    assert len(candidates.by_vector) == len(FILLED_CHUNK_NAMES)
 
 
 def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
