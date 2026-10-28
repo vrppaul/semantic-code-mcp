@@ -4,8 +4,9 @@
         [--save-baseline] [--held-out]
     uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--store STORE]
         [--edits N] [--save-baseline]
-    uv run python -m evals agents [--corpus NAME ...] [--corpus-file PATH ...] [--arm ARM ...]
+    uv run python -m evals agents (--corpus NAME | --corpus-file PATH) ... [--arm ARM ...]
         [--repeats N] [--model MODEL]
+    uv run python -m evals rescore RUN
 
 Each run indexes into a fresh temporary directory; checkouts of the corpora are kept
 under ~/.cache/semantic-code-mcp-evals and reused. Prints one line per corpus next to the
@@ -15,12 +16,16 @@ saved baseline, writes the whole report as JSON to `evals/results/`, and with
 other than the server's default (`--store`, as when two stores are compared in turns), nor a
 quality run in another search mode than the server's default (`--search-mode`, which sets
 the servers' setting to it, `words_and_meaning` searching by meaning too). `agents` asks
-Claude Code headless each question in each arm (`evals/agents.py`), spending the owner's
-subscription; it prints each session as it ends and each arm's sums, and keeps no baseline,
-as its sessions hold the questions of private corpora; its indexes are kept between runs.
+Claude Code headless each question of the corpora it names in each arm (`evals/agents.py`),
+spending the owner's subscription; it prints each session as it ends, then each arm's sums
+and every two arms compared, and keeps no baseline, as its sessions hold the questions of
+private corpora. Its indexes are kept between runs, and each run under its own name outside
+the repository: what it asked, its sessions and their streams, its report. `rescore` scores
+a kept run again by its corpora's keys as they are now, as once a judge has added an answer.
 
 Exits 0, or 1 when a tool call fails or times out, a clone fails, a corpus names an answer its
-checkout lacks, or Claude Code does not start.
+checkout lacks, Claude Code does not start, a session stops an agents run, or a kept run's
+corpus no longer asks one of its questions.
 """
 
 import argparse
@@ -35,21 +40,37 @@ from pathlib import Path
 from mcp.shared.exceptions import MCPError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from evals.agents import (
-    DEFAULT_MODEL,
-    AgentArm,
-    AgentSessionError,
-    AgentsRun,
+from evals.agent_answers import AnswerScorer
+from evals.agent_summary import (
+    AgentsReport,
+    AnswerToJudge,
+    ArmComparison,
     ArmSummary,
     CorpusAgents,
-    SessionRecord,
+    PairedDifference,
+    agents_report,
+    summarize_corpus,
+)
+from evals.agents import (
+    AGENT_ARMS,
+    DEFAULT_ARMS,
+    DEFAULT_MODEL,
+    AgentRunStoppedError,
+    AgentSessionError,
+    AgentsRun,
+    CorpusCheckout,
+    QuestionNotAskedError,
+    RunDirectory,
+    ScoredSession,
     measure_agents,
+    rescored,
 )
 from evals.corpus import (
     COMMIT_PREFIX_LENGTH,
     Corpus,
     available_corpus_names,
     checkout,
+    corpus_file_of,
     load_corpora,
     load_corpus_file,
     load_off_topic_questions,
@@ -73,11 +94,14 @@ BASELINE_DIRECTORY = EVALS_DIRECTORY / "baseline"
 RESULTS_DIRECTORY = EVALS_DIRECTORY / "results"
 QUALITY_FILE = "quality.json"
 SPEED_FILE = "speed.json"
-AGENTS_FILE = "agents.json"
 # Where `agents` keeps each corpus's index between runs, as one of a large corpus takes an
-# hour, and its own config directory and MCP configs
+# hour; each run's own directory, by its name, outside the repository, as its streams hold
+# a private corpus's code; and the config directory every run's sessions share
 INDEXES_ROOT = CHECKOUTS_ROOT / "indexes"
-AGENTS_RUN_DIRECTORY = CHECKOUTS_ROOT / "agents"
+AGENTS_RUNS_ROOT = CHECKOUTS_ROOT / "agents" / "runs"
+AGENTS_CONFIG_DIRECTORY = CHECKOUTS_ROOT / "agents" / "claude-config"
+# A run's name: the moment it started, in UTC
+RUN_NAME_FORMAT = "%Y%m%dT%H%M%SZ"
 TOKENS_PER_THOUSAND = 1000
 # How much of a question a session's line shows
 QUESTION_SHOWN_LENGTH = 60
@@ -90,6 +114,8 @@ DEFAULT_EDITS = 20
 JSON_INDENT = 2
 # The commands that keep a baseline, which holds the default store's figures alone
 BASELINE_COMMANDS = frozenset({"quality", "speed"})
+# The command that asks agents, which asks only the corpora it names
+AGENTS_COMMAND = "agents"
 # How a report that named no store names the one it ran in
 DEFAULT_STORE_NAME = "the server's default"
 # How a report that named no search mode names the one its servers searched in
@@ -109,14 +135,6 @@ class QualityReport(BaseModel):
     # None for the server's default search at the commit measured
     search_mode: SearchMode | None
     corpora: tuple[CorpusQuality, ...]
-
-
-class AgentsReport(BaseModel):
-    """Every agent session over every corpus asked, and each arm's sums."""
-
-    model_config = ConfigDict(frozen=True)
-
-    corpora: tuple[CorpusAgents, ...]
 
 
 class SpeedReport(BaseModel):
@@ -155,16 +173,23 @@ def main() -> int:
                 )
             case "agents":
                 run_agents(
-                    chosen_corpora(arguments.corpus, arguments.corpus_file),
-                    arms=tuple(AgentArm(arm) for arm in arguments.arm or list(AgentArm)),
-                    repeats=arguments.repeats,
-                    model=arguments.model,
+                    AgentsRun(
+                        name=datetime.now(tz=UTC).strftime(RUN_NAME_FORMAT),
+                        corpus_files=corpus_files(arguments.corpus, arguments.corpus_file),
+                        arms=tuple(AGENT_ARMS[name] for name in arguments.arm) or DEFAULT_ARMS,
+                        repeats=arguments.repeats,
+                        model=arguments.model,
+                    )
                 )
+            case "rescore":
+                rescore_agents(arguments.run)
     except (
         ToolCallFailedError,
         CorpusMistakeError,
         MCPError,
         AgentSessionError,
+        AgentRunStoppedError,
+        QuestionNotAskedError,
         subprocess.CalledProcessError,
     ) as error:
         print(error, file=sys.stderr)
@@ -195,14 +220,23 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     # The held-out questions are asked on every run but shown only once a choice is made
     quality.add_argument("--held-out", action="store_true")
     speed.add_argument("--edits", type=positive_integer, default=DEFAULT_EDITS)
-    agents = commands.add_parser("agents", help="search judged by agents: Claude Code headless")
+    agents = commands.add_parser(
+        AGENTS_COMMAND, help="search judged by agents: Claude Code headless"
+    )
     agents.add_argument("--corpus", action="append", default=[], choices=available_corpus_names())
     # A corpus kept outside the repository, as a private one's questions are
     agents.add_argument("--corpus-file", action="append", default=[], type=Path)
-    agents.add_argument("--arm", action="append", default=[], choices=list(AgentArm))
+    agents.add_argument("--arm", action="append", default=[], choices=list(AGENT_ARMS))
     agents.add_argument("--repeats", type=positive_integer, default=1)
     agents.add_argument("--model", default=DEFAULT_MODEL)
+    rescore = commands.add_parser(
+        "rescore", help="a kept agents run scored again by its corpora's keys as they are now"
+    )
+    rescore.add_argument("run", help="the run's name, as `agents` printed it")
     arguments = parser.parse_args(argv)
+    if arguments.command == AGENTS_COMMAND and not (arguments.corpus or arguments.corpus_file):
+        # The pinned corpora are small enough to grep: about 130 sessions that show nothing
+        parser.error("agents asks only the corpora it names: give --corpus or --corpus-file")
     keeps_a_baseline = arguments.command in BASELINE_COMMANDS
     if keeps_a_baseline and arguments.save_baseline and arguments.store is not None:
         parser.error("--save-baseline keeps the default store's figures: leave --store out")
@@ -289,65 +323,142 @@ def chosen_corpora(names: list[str], files: list[Path]) -> list[Corpus]:
     return [*named, *(load_corpus_file(path) for path in files)]
 
 
-def run_agents(
-    corpora: list[Corpus], *, arms: tuple[AgentArm, ...], repeats: int, model: str
-) -> None:
-    report = AgentsReport(corpora=tuple(asyncio.run(collect_agents(corpora, arms, repeats, model))))
-    for entry in report.corpora:
-        print(f"{entry.corpus} on {entry.model}:")
-        for summary in entry.arms:
-            print(describe_arm(summary))
-    write_report(report, AGENTS_FILE, save_baseline=False)
+def corpus_files(names: list[str], files: list[Path]) -> tuple[Path, ...]:
+    """The files of the corpora a run names, by name and by path."""
+    return (*(corpus_file_of(name) for name in names), *(path.resolve() for path in files))
 
 
-async def collect_agents(
-    corpora: list[Corpus], arms: tuple[AgentArm, ...], repeats: int, model: str
-) -> list[CorpusAgents]:
+def run_directory(name: str) -> RunDirectory:
+    return RunDirectory(AGENTS_RUNS_ROOT / name, AGENTS_CONFIG_DIRECTORY)
+
+
+def corpus_checkout(corpus_file: Path) -> CorpusCheckout:
+    """A corpus a run asks, checked out, with the index kept for it."""
+    corpus = load_corpus_file(corpus_file)
+    source = corpus.corpus
+    return CorpusCheckout(
+        corpus=corpus,
+        working_tree=checkout(source, CHECKOUTS_ROOT),
+        index_directory=INDEXES_ROOT / f"{source.name}-{source.commit[:COMMIT_PREFIX_LENGTH]}",
+    )
+
+
+def run_agents(run: AgentsRun) -> None:
+    directory = run_directory(run.name)
+    directory.start(run)
+    print(f"agents run {run.name}, kept in {directory.root}", flush=True)
+    finish_agents(run, directory, asyncio.run(collect_agents(run, directory)))
+
+
+async def collect_agents(run: AgentsRun, directory: RunDirectory) -> list[CorpusAgents]:
     measured: list[CorpusAgents] = []
-    for corpus in corpora:
-        working_tree = checkout(corpus.corpus, CHECKOUTS_ROOT)
-        source = corpus.corpus
-        run = AgentsRun(
-            arms=arms,
-            repeats=repeats,
-            model=model,
-            index_directory=INDEXES_ROOT / f"{source.name}-{source.commit[:COMMIT_PREFIX_LENGTH]}",
-            run_directory=AGENTS_RUN_DIRECTORY,
-        )
+    arms = [arm.name for arm in run.arms]
+    for corpus_file in run.corpus_files:
+        corpus = corpus_checkout(corpus_file)
         with (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log:
-            server_log.write(log_header("agents", corpus))
+            server_log.write(log_header(AGENTS_COMMAND, corpus.corpus))
             # The agents' own servers take the default store, so this one does too
             servers = ServerStarter(server_log, DEFAULT_OPTIONS)
-            measured.append(await measure_agents(corpus, working_tree, run, servers, print_session))
+            sessions = await measure_agents(corpus, run, directory, servers, print_session)
+        measured.append(summarize_corpus(corpus.name, arms, sessions))
     return measured
 
 
-def print_session(session: SessionRecord) -> None:
+def rescore_agents(name: str) -> None:
+    """A kept run scored again by its corpora's keys as they are now, a run stopped midway
+    by the sessions it kept."""
+    directory = run_directory(name)
+    run = directory.run()
+    kept = directory.sessions()
+    arms = [arm.name for arm in run.arms]
+    measured: list[CorpusAgents] = []
+    for corpus_file in run.corpus_files:
+        corpus = corpus_checkout(corpus_file)
+        sessions = rescored(
+            [session for session in kept if session.corpus == corpus.name],
+            corpus.corpus,
+            AnswerScorer(corpus.working_tree),
+        )
+        measured.append(summarize_corpus(corpus.name, arms, sessions))
+    finish_agents(run, directory, measured)
+
+
+def finish_agents(run: AgentsRun, directory: RunDirectory, corpora: list[CorpusAgents]) -> None:
+    report = agents_report(run, corpora)
+    print(describe_agents(report))
+    print(f"report: {directory.save_report(report)}")
+
+
+def print_session(scored: ScoredSession) -> None:
     """A line of one session, printed as it ends, as a run of many takes a while."""
-    print(describe_session(session), flush=True)
+    print(describe_session(scored), flush=True)
 
 
-def describe_session(session: SessionRecord) -> str:
+def describe_session(scored: ScoredSession) -> str:
+    session = scored.session
     answer = session.answer
     answered = "no answer" if answer is None else f"{answer.path}:{answer.symbol}"
-    verdict = "right" if session.answer_right else "file only" if session.file_right else "wrong"
-    read = session.usage.cache_read_tokens // TOKENS_PER_THOUSAND
+    verdict = session.outcome if scored.score is None else scored.score.verdict
+    prompt = session.usage.prompt_tokens // TOKENS_PER_THOUSAND
     return (
-        f"  {session.arm} {verdict}: {session.turns} turns, {read}k read, "
+        f"  {session.arm} {verdict}: {session.turns} turns, prompt {prompt}k, "
         f"tools {session.tool_calls}, {session.duration_seconds}s; "
         f"{session.question[:QUESTION_SHOWN_LENGTH]} -> {answered}"
     )
 
 
+def describe_agents(report: AgentsReport) -> str:
+    """The run's lines: what its sessions ran on, then each corpus's arms, comparisons and
+    answers to judge."""
+    ran_on = (
+        f"run {report.run}: {report.sessions} sessions on {', '.join(report.models)} "
+        f"(asked as {report.model_asked}), Claude Code {', '.join(report.claude_code_versions)}; "
+        f"reported cost ${report.reported_cost_usd}, never compared"
+    )
+    lines = [ran_on]
+    for corpus in report.corpora:
+        lines.append(f"{corpus.corpus}:")
+        lines += [describe_arm(summary) for summary in corpus.arms]
+        lines += [describe_comparison(comparison) for comparison in corpus.comparisons]
+        lines += [describe_to_judge(answer) for answer in corpus.to_judge]
+    return "\n".join(lines)
+
+
 def describe_arm(summary: ArmSummary) -> str:
     """A line of one arm's sums over its sessions."""
+    outcomes = ", ".join(f"{outcome} {count}" for outcome, count in summary.outcomes.items())
     return (
         f"  {summary.arm}: right {summary.right_answers}/{summary.sessions} "
-        f"(file {summary.right_files}), turns {summary.mean_turns}, "
-        f"context read {summary.mean_context_read_tokens // TOKENS_PER_THOUSAND}k, "
-        f"output {summary.mean_output_tokens}, searched {summary.sessions_that_searched}, "
-        f"reads {summary.read_calls}, {summary.mean_duration_seconds}s, "
-        f"cost ${summary.cost_usd} (within this run)"
+        f"({summary.answers_as_members} as members; file {summary.right_files}), "
+        f"to judge {summary.answers_to_judge}; {outcomes}; turns {summary.mean_turns}, "
+        f"prompt {summary.mean_prompt_tokens}, output {summary.mean_output_tokens}, "
+        f"{summary.mean_duration_seconds}s; searched {summary.sessions_that_searched}, "
+        f"reads {summary.read_calls}"
+    )
+
+
+def describe_comparison(comparison: ArmComparison) -> str:
+    return (
+        f"  {comparison.arm} against {comparison.against} over {comparison.questions} "
+        f"questions: turns {describe_difference(comparison.turns)}; "
+        f"prompt tokens {describe_difference(comparison.prompt_tokens)}"
+    )
+
+
+def describe_difference(difference: PairedDifference) -> str:
+    return (
+        f"{difference.mean:+} [{difference.low:+}, {difference.high:+}] "
+        f"(fewer {difference.fewer}, equal {difference.equal}, more {difference.more})"
+    )
+
+
+def describe_to_judge(to_judge: AnswerToJudge) -> str:
+    given = to_judge.answer
+    file_verdict = "its file keyed" if given.file_right else "its file not keyed"
+    return (
+        f"  to judge, {given.verdict}, {file_verdict}: "
+        f"{given.question[:QUESTION_SHOWN_LENGTH]} -> {given.path}:{given.symbol} "
+        f"({', '.join(to_judge.arms)})"
     )
 
 

@@ -176,15 +176,19 @@ class ServerStarter:
 
 def server_environment(index_directory: Path, options: ServerOptions) -> dict[str, str]:
     """The environment a server of the harness runs in: the caller's without its settings,
-    the index directory, and the store and the search mode a run names, where it names
-    them."""
-    environment = environment_without_settings()
-    environment[CACHE_DIR_VARIABLE] = str(index_directory)
+    and the settings a run gives."""
+    return {**environment_without_settings(), **server_settings(index_directory, options)}
+
+
+def server_settings(index_directory: Path, options: ServerOptions) -> dict[str, str]:
+    """The settings a server of the harness is given: the index directory, and the store and
+    the search mode a run names, where it names them."""
+    settings = {CACHE_DIR_VARIABLE: str(index_directory)}
     if options.index_store is not None:
-        environment[INDEX_STORE_VARIABLE] = options.index_store
+        settings[INDEX_STORE_VARIABLE] = options.index_store
     if options.search_mode is not None:
-        environment[SEARCH_MODE_VARIABLE] = options.search_mode
-    return environment
+        settings[SEARCH_MODE_VARIABLE] = options.search_mode
+    return settings
 
 
 def environment_without_settings() -> dict[str, str]:

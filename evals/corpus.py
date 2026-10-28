@@ -107,7 +107,12 @@ def available_corpus_names() -> list[str]:
 
 def load_corpus(name: str) -> Corpus:
     """Read one corpus file of `evals/corpora/` by name."""
-    return load_corpus_file(CORPORA_DIRECTORY / f"{name}{CORPUS_FILE_SUFFIX}")
+    return load_corpus_file(corpus_file_of(name))
+
+
+def corpus_file_of(name: str) -> Path:
+    """The file of a corpus of `evals/corpora/`, by its name."""
+    return CORPORA_DIRECTORY / f"{name}{CORPUS_FILE_SUFFIX}"
 
 
 def load_corpus_file(path: Path) -> Corpus:

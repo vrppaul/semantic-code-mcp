@@ -451,3 +451,10 @@ def test_a_run_other_than_the_server_s_default_is_never_saved_as_the_baseline(
 ):
     with pytest.raises(SystemExit):
         parse_arguments([*arguments, "--save-baseline"])
+
+
+def test_an_agents_run_asks_only_the_corpora_it_names():
+    """The pinned corpora are small enough for an agent to grep, and would spend about 130
+    sessions showing nothing."""
+    with pytest.raises(SystemExit):
+        parse_arguments(["agents", "--arm", "own_tools"])

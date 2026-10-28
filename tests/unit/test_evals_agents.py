@@ -1,33 +1,54 @@
-"""Tests for search judged by agents: how a session's transcript is read and its answer scored."""
+"""Tests for search judged by agents: how a session is started, how its transcript is read,
+how it ended, and whether it leaves the run to be trusted."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
+from evals.agent_answers import AnswerScorer, SessionAnswer
 from evals.agents import (
+    AGENT_ARMS,
+    CONFIG_DIRECTORY_VARIABLE,
+    OWN_TOOLS_ARM,
+    SEARCH_TOOL,
     AgentArm,
-    SessionAnswer,
+    QuestionNotAskedError,
+    SessionClosing,
+    SessionOutcome,
     SessionRecord,
+    SessionRun,
+    SessionStart,
+    SessionTurn,
     SessionUsage,
     answer_of,
-    is_right_answer,
-    is_right_file,
+    arms_in_turn,
+    mcp_config,
+    outcome_of,
     read_transcript,
+    rescored,
+    score_session,
     session_environment,
-    summarize_arm,
+    session_record,
+    stop_reason,
 )
-from evals.corpus import Answer
-from evals.server import INDEX_STORE_VARIABLE
+from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
+from evals.server import CACHE_DIR_VARIABLE, SEARCH_MODE_VARIABLE
 
-WORKING_TREE = Path("/checkouts/click")
-KEYS = (
-    Answer(path="src/click/termui.py", symbol="progressbar"),
-    Answer(path="src/click/_termui_impl.py", symbol="ProgressBar"),
-    Answer(path="docs/projects/attribution.md", symbol="11. Glossary"),
-)
-NO_TOOLS: dict[str, int] = {}
-SEARCH_TOOL_CALLS = {"mcp__semantic-code__search_code": 1}
+from semantic_code_mcp.domain.models import SearchMode
+
+WORDS_ARM = AGENT_ARMS[SearchMode.words]
+MEANING_ARM = AGENT_ARMS[SearchMode.words_and_meaning]
+INDEX_DIRECTORY = Path("/indexes/click-0123456789ab")
 GREP_AND_READ_CALLS = {"Grep": 2, "Read": 1}
+LOGIN = "none"
+CONNECTED = "connected"
+WORKING_TREE = Path("/checkouts/click")
+QUERY = Query(
+    text="show a progress bar",
+    kind=QuestionKind.code,
+    answers=(Answer(path="a.py", symbol="f"),),
+)
 
 
 def answer(path: str, symbol: str) -> SessionAnswer:
@@ -61,48 +82,19 @@ def test_a_session_s_answer_is_the_last_json_line_of_its_reply(
     assert answer_of(reply) == expected
 
 
-@pytest.mark.parametrize(
-    ("given", "right"),
-    [
-        pytest.param(answer("src/click/termui.py", "progressbar"), True, id="as keyed"),
-        pytest.param(answer("./src/click/termui.py", "Progressbar"), True, id="dot and case"),
-        pytest.param(
-            answer(str(WORKING_TREE / "src/click/termui.py"), "progressbar"), True, id="absolute"
-        ),
-        pytest.param(
-            answer("src/click/termui.py", "click.termui.progressbar"), True, id="qualified"
-        ),
-        pytest.param(
-            answer("src/click/_termui_impl.py", "ProgressBar.render_progress"),
-            True,
-            id="a member of the keyed class",
-        ),
-        pytest.param(
-            answer("docs/projects/attribution.md", "11. Glossary"), True, id="a heading with dots"
-        ),
-        pytest.param(answer("src/click/termui.py", "confirm"), False, id="another symbol"),
-        pytest.param(answer("src/click/utils.py", "progressbar"), False, id="another file"),
-    ],
-)
-def test_an_answer_is_right_when_a_key_names_its_file_and_its_symbol(
-    given: SessionAnswer, right: bool
-):
-    assert is_right_answer(given, KEYS, WORKING_TREE) is right
-
-
-@pytest.mark.parametrize(
-    ("given", "right"),
-    [
-        pytest.param(answer("src/click/termui.py", "confirm"), True, id="a keyed file"),
-        pytest.param(answer("src/click/utils.py", "progressbar"), False, id="another file"),
-    ],
-)
-def test_an_answer_s_file_is_right_when_a_key_names_it(given: SessionAnswer, right: bool):
-    assert is_right_file(given, KEYS, WORKING_TREE) is right
-
-
 def stream_line(event: dict) -> str:
     return json.dumps(event)
+
+
+def init_event(api_key_source: str, server_status: str) -> dict:
+    return {
+        "type": "system",
+        "subtype": "init",
+        "model": "claude-sonnet-5-5",
+        "claude_code_version": "2.1.312",
+        "apiKeySource": api_key_source,
+        "mcp_servers": [{"name": "semantic-code", "status": server_status, "source": "dynamic"}],
+    }
 
 
 def tool_use_event(*names: str) -> dict:
@@ -110,105 +102,332 @@ def tool_use_event(*names: str) -> dict:
     return {"type": "assistant", "message": {"content": content}}
 
 
+def result_event(reply: str, *, is_error: bool) -> dict:
+    return {
+        "type": "result",
+        "subtype": "success",
+        "is_error": is_error,
+        "num_turns": 3,
+        "result": reply,
+        "total_cost_usd": 0.05,
+        "usage": {
+            "input_tokens": 4,
+            "cache_read_input_tokens": 30000,
+            "cache_creation_input_tokens": 9000,
+            "output_tokens": 250,
+        },
+    }
+
+
+ANSWERED_REPLY = 'Found.\n{"path": "a.py", "symbol": "f"}'
 TRANSCRIPT = "\n".join(
     [
-        stream_line({"type": "system", "subtype": "init", "tools": ["Grep", "Read"]}),
+        stream_line(init_event(LOGIN, CONNECTED)),
         stream_line(tool_use_event("Grep")),
         "not a line of JSON",
         stream_line(tool_use_event("Grep", "Read")),
-        stream_line(
-            {
-                "type": "result",
-                "num_turns": 3,
-                "result": 'Found.\n{"path": "a.py", "symbol": "f"}',
-                "total_cost_usd": 0.05,
-                "usage": {
-                    "input_tokens": 4,
-                    "cache_read_input_tokens": 30000,
-                    "cache_creation_input_tokens": 9000,
-                    "output_tokens": 250,
-                },
-            }
-        ),
+        stream_line(result_event(ANSWERED_REPLY, is_error=False)),
     ]
 )
 
 
-def test_a_transcript_gives_the_session_s_answer_turns_tool_calls_and_tokens():
+def test_a_transcript_gives_what_the_session_ran_on_and_its_answer_turns_tool_calls_and_tokens():
     reading = read_transcript(TRANSCRIPT)
 
-    assert (reading.answer, reading.turns, reading.tool_calls, reading.usage) == (
-        answer("a.py", "f"),
-        3,
+    assert (reading.start, reading.closing, reading.tool_calls) == (
+        SessionStart(
+            model="claude-sonnet-5-5",
+            claude_code_version="2.1.312",
+            api_key_source=LOGIN,
+            servers={"semantic-code": CONNECTED},
+        ),
+        SessionClosing(
+            is_error=False,
+            answer=answer("a.py", "f"),
+            turns=3,
+            usage=SessionUsage(
+                input_tokens=4,
+                cache_read_tokens=30000,
+                cache_creation_tokens=9000,
+                output_tokens=250,
+                cost_usd=0.05,
+            ),
+        ),
         GREP_AND_READ_CALLS,
-        SessionUsage(
+    )
+
+
+def test_a_session_s_prompt_is_every_token_it_sent_read_from_the_cache_or_written_to_it():
+    usage = SessionUsage(
+        input_tokens=4,
+        cache_read_tokens=30000,
+        cache_creation_tokens=9000,
+        output_tokens=250,
+        cost_usd=0.05,
+    )
+
+    assert usage.prompt_tokens == 39004
+
+
+def session_run(stream: str, exit_code: int | None) -> SessionRun:
+    return SessionRun(output=stream, exit_code=exit_code, duration_seconds=10.0)
+
+
+@pytest.mark.parametrize(
+    ("stream", "exit_code", "outcome"),
+    [
+        pytest.param(TRANSCRIPT, 0, SessionOutcome.answered, id="answered"),
+        pytest.param(
+            stream_line(result_event("I could not find it.", is_error=False)),
+            0,
+            SessionOutcome.no_answer,
+            id="closed without an answer",
+        ),
+        pytest.param(
+            stream_line(result_event(ANSWERED_REPLY, is_error=True)),
+            0,
+            SessionOutcome.failed,
+            id="an error result",
+        ),
+        pytest.param(TRANSCRIPT, 1, SessionOutcome.failed, id="an exit other than 0"),
+        pytest.param(stream_line(tool_use_event("Grep")), 0, SessionOutcome.failed, id="no result"),
+        pytest.param(
+            stream_line(tool_use_event("Grep")),
+            None,
+            SessionOutcome.timed_out,
+            id="stopped at its timeout",
+        ),
+    ],
+)
+def test_a_session_s_outcome_is_what_its_result_and_its_exit_say(
+    stream: str, exit_code: int | None, outcome: SessionOutcome
+):
+    run = session_run(stream, exit_code)
+
+    assert outcome_of(run, read_transcript(stream)) == outcome
+
+
+def record(
+    arm: AgentArm, outcome: SessionOutcome, api_key_source: str | None, server_status: str | None
+) -> SessionRecord:
+    return SessionRecord(
+        corpus="click",
+        question="show a progress bar",
+        arm=arm.name,
+        repeat=0,
+        position=0,
+        outcome=outcome,
+        answer=answer("a.py", "f"),
+        turns=3,
+        tool_calls={SEARCH_TOOL: 1},
+        usage=SessionUsage(
             input_tokens=4,
             cache_read_tokens=30000,
             cache_creation_tokens=9000,
             output_tokens=250,
             cost_usd=0.05,
         ),
-    )
-
-
-def test_a_transcript_that_never_ends_gives_no_answer_and_no_turns():
-    reading = read_transcript(stream_line(tool_use_event("Grep")))
-
-    assert (reading.answer, reading.turns, reading.tool_calls) == (None, 0, {"Grep": 1})
-
-
-def record(
-    *, right: bool, turns: int, cache_read: int, tool_calls: dict[str, int], cost: float
-) -> SessionRecord:
-    return SessionRecord(
-        corpus="click",
-        question="show a progress bar",
-        arm=AgentArm.with_search,
-        repeat=0,
-        answer=answer("a.py", "f"),
-        file_right=True,
-        answer_right=right,
-        turns=turns,
-        tool_calls=tool_calls,
-        usage=SessionUsage(
-            input_tokens=0,
-            cache_read_tokens=cache_read,
-            cache_creation_tokens=0,
-            output_tokens=100,
-            cost_usd=cost,
-        ),
         duration_seconds=10.0,
+        model="claude-sonnet-5-5",
+        claude_code_version="2.1.312",
+        api_key_source=api_key_source,
+        server_status=server_status,
+        stream_file="click-r0-q00-words.jsonl",
     )
 
 
-def test_an_arm_s_summary_counts_its_right_answers_searches_and_reads_and_averages_the_rest():
-    sessions = [
-        record(right=True, turns=2, cache_read=40000, tool_calls=SEARCH_TOOL_CALLS, cost=0.1),
-        record(right=False, turns=4, cache_read=80000, tool_calls=GREP_AND_READ_CALLS, cost=0.2),
-        record(right=True, turns=3, cache_read=60000, tool_calls=NO_TOOLS, cost=0.3),
-    ]
+@pytest.mark.parametrize(
+    ("session", "arm", "stops"),
+    [
+        pytest.param(
+            record(WORDS_ARM, SessionOutcome.answered, LOGIN, CONNECTED),
+            WORDS_ARM,
+            False,
+            id="on the login, its server connected",
+        ),
+        pytest.param(
+            record(OWN_TOOLS_ARM, SessionOutcome.no_answer, LOGIN, None),
+            OWN_TOOLS_ARM,
+            False,
+            id="own tools, no server",
+        ),
+        pytest.param(
+            record(WORDS_ARM, SessionOutcome.timed_out, LOGIN, CONNECTED),
+            WORDS_ARM,
+            False,
+            id="timed out, the agent's own",
+        ),
+        pytest.param(
+            record(OWN_TOOLS_ARM, SessionOutcome.answered, "ANTHROPIC_API_KEY", None),
+            OWN_TOOLS_ARM,
+            True,
+            id="billed to an API key",
+        ),
+        pytest.param(
+            record(WORDS_ARM, SessionOutcome.answered, LOGIN, "failed"),
+            WORDS_ARM,
+            True,
+            id="its server down",
+        ),
+        pytest.param(
+            record(WORDS_ARM, SessionOutcome.failed, None, None),
+            WORDS_ARM,
+            True,
+            id="failed",
+        ),
+    ],
+)
+def test_a_run_stops_on_a_session_billed_elsewhere_without_its_server_or_failed(
+    session: SessionRecord, arm: AgentArm, stops: bool
+):
+    assert (stop_reason(session, arm) is not None) is stops
 
-    summary = summarize_arm(AgentArm.with_search, sessions)
 
-    assert (
-        summary.sessions,
-        summary.right_answers,
-        summary.right_files,
-        summary.mean_turns,
-        summary.mean_context_read_tokens,
-        summary.sessions_that_searched,
-        summary.read_calls,
-        summary.cost_usd,
-    ) == (3, 2, 3, 3.0, 60000, 1, 1, 0.6)
-
-
-def test_a_session_s_servers_never_take_the_caller_s_settings(
+def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the_login(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    """As the harness's own server, which indexes before the sessions, never takes them: the
-    two would keep their indexes in different stores."""
-    monkeypatch.setenv(INDEX_STORE_VARIABLE, "lancedb")
+    """An API key would bill an account, the caller's effort and thinking budget would change
+    how the agent works, and the server's settings would reach the arms' servers."""
+    caller = {
+        "PATH": "/usr/bin",
+        "HOME": "/home/owner",
+        "ANTHROPIC_API_KEY": "a key",
+        "CLAUDE_EFFORT": "xhigh",
+        "MAX_THINKING_TOKENS": "128000",
+        "SEMANTIC_CODE_MCP_INDEX_STORE": "lancedb",
+    }
+    monkeypatch.setattr(os, "environ", caller)
 
     environment = session_environment(tmp_path)
 
-    assert INDEX_STORE_VARIABLE not in environment
+    assert environment == {
+        "PATH": "/usr/bin",
+        "HOME": "/home/owner",
+        CONFIG_DIRECTORY_VARIABLE: str(tmp_path),
+    }
+
+
+@pytest.mark.parametrize(
+    ("arm", "settings_by_server"),
+    [
+        pytest.param(OWN_TOOLS_ARM, {}, id="own tools, no server"),
+        pytest.param(
+            WORDS_ARM,
+            {
+                "semantic-code": {
+                    CACHE_DIR_VARIABLE: str(INDEX_DIRECTORY),
+                    SEARCH_MODE_VARIABLE: SearchMode.words,
+                }
+            },
+            id="words",
+        ),
+        pytest.param(
+            MEANING_ARM,
+            {
+                "semantic-code": {
+                    CACHE_DIR_VARIABLE: str(INDEX_DIRECTORY),
+                    SEARCH_MODE_VARIABLE: SearchMode.words_and_meaning,
+                }
+            },
+            id="words and meaning",
+        ),
+    ],
+)
+def test_an_arm_s_server_searches_the_kept_index_in_the_mode_the_arm_is_named_by(
+    arm: AgentArm, settings_by_server: dict[str, dict[str, str]]
+):
+    servers = mcp_config(arm, INDEX_DIRECTORY).mcp_servers
+
+    assert {name: server.env for name, server in servers.items()} == settings_by_server
+
+
+@pytest.mark.parametrize(
+    ("question_number", "repeat", "names"),
+    [
+        pytest.param(0, 0, ["own_tools", "words", "words_and_meaning"], id="first question"),
+        pytest.param(1, 0, ["words", "words_and_meaning", "own_tools"], id="the next question"),
+        pytest.param(0, 1, ["words", "words_and_meaning", "own_tools"], id="the next repeat"),
+        pytest.param(2, 1, ["own_tools", "words", "words_and_meaning"], id="round again"),
+    ],
+)
+def test_the_arms_take_turns_to_go_first_question_by_question_and_repeat_by_repeat(
+    question_number: int, repeat: int, names: list[str]
+):
+    arms = (OWN_TOOLS_ARM, WORDS_ARM, MEANING_ARM)
+
+    in_turn = arms_in_turn(arms, question_number, repeat)
+
+    assert [arm.name for arm in in_turn] == names
+
+
+def turn_of(arm: AgentArm) -> SessionTurn:
+    return SessionTurn(question_number=0, query=QUERY, repeat=0, position=1, arm=arm)
+
+
+def test_a_session_s_record_takes_what_it_ran_on_from_its_init_and_its_answer_from_its_result():
+    session = session_record(
+        "click", turn_of(WORDS_ARM), session_run(TRANSCRIPT, 0), "click-r0-q00-words.jsonl"
+    )
+
+    assert (
+        session.outcome,
+        session.answer,
+        session.turns,
+        session.model,
+        session.claude_code_version,
+        session.api_key_source,
+        session.server_status,
+        session.usage.prompt_tokens,
+    ) == (
+        SessionOutcome.answered,
+        answer("a.py", "f"),
+        3,
+        "claude-sonnet-5-5",
+        "2.1.312",
+        LOGIN,
+        CONNECTED,
+        39004,
+    )
+
+
+def test_a_session_that_never_started_is_a_failed_one_with_nothing_it_ran_on():
+    session = session_record(
+        "click", turn_of(WORDS_ARM), session_run("", 1), "click-r0-q00-words.jsonl"
+    )
+
+    assert (session.outcome, session.turns, session.model, session.server_status) == (
+        SessionOutcome.failed,
+        0,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "scored"),
+    [
+        pytest.param(SessionOutcome.answered, True, id="answered"),
+        pytest.param(SessionOutcome.failed, False, id="failed, whatever it said"),
+    ],
+)
+def test_only_a_session_that_answered_is_scored(outcome: SessionOutcome, scored: bool):
+    session = record(WORDS_ARM, outcome, LOGIN, CONNECTED)
+
+    given = score_session(session, QUERY, AnswerScorer(WORKING_TREE))
+
+    assert (given.score is not None) is scored
+
+
+def test_a_kept_run_is_never_scored_against_a_corpus_that_no_longer_asks_its_question():
+    corpus = Corpus(
+        corpus=CorpusSource(name="click", repository="https://example.org/click", commit="0" * 40),
+        queries=(Query(text="echo to the terminal", kind=QuestionKind.code, answers=()),),
+        held_out=(),
+    )
+
+    with pytest.raises(QuestionNotAskedError):
+        rescored(
+            [record(WORDS_ARM, SessionOutcome.answered, LOGIN, CONNECTED)],
+            corpus,
+            AnswerScorer(WORKING_TREE),
+        )

@@ -407,8 +407,8 @@ ignore_names = [
     "statements",
     # What sqlite3 reads of a connection to make its rows: by name, not by position
     "row_factory",
-    # Kept in an agents run's results, to read a session's cost by hand
-    "cache_creation_tokens",
+    # What Claude Code reads of an MCP config the agents' sessions are given: by name, in JSON
+    "args",
     # The recorders of what each version made, which the version tests compare: run by hand
     "record_chunks",
     "record_vectors",
