@@ -7,10 +7,10 @@ What we mean to build and why. How each epic is built lives in `docs/decisions/`
 ### Rebuild on mcp 2.x
 The published 0.4.0 does not start on mcp 2.x, the index dropped code without a word, search ranks prose over the code it describes, indexing runs 20–50× slower than our own target, and our gates passed without checking anything. `docs/decisions/006-rebuild-on-mcp-2.md` holds the plan in ten stages, from a hotfix to the skill and the plugin; the stages and their state live there.
 
-## Pending
-
 ### A first search in seconds, not after the whole index
 The first search of a repository waits for its whole index, in one tool call: the owner's algotrading (19,432 chunks) took 733 s, Sentry (87,694 chunks) about an hour, the model taking about 95% of it; and a warm search on Sentry spent a second finding files before it searched (0.3 to 0.4 s since ADR 009's step 3). These are the repositories where search helps an agent (ADR 008, pilots 5 and 8): "Этот продукт нельзя использовать" (the owner, 2026-10-27). `docs/decisions/009-words-first-meaning-on-request.md` holds the plan: words by default, their index built whole in seconds; meaning on request, embedded in parts by a child process at the lowest priority; a lean stale check; SQLite the default store behind ADR 007's contract.
+
+## Pending
 
 ### Search quality: a bigger harness, a reranker, what is embedded
 Every ranking decision of ADR 006 rests on 66 chosen questions, where its criterion's step of 1.0 is about one question, judged by one judge per corpus with no agreement figure. A harness of 200 and more questions over more corpora and languages, with judge agreement, comes first; on it, a small cross-encoder reranking the first 30 hits (often the largest gain in code search, an estimated 20-40 ms on a CPU), and what the model embeds: a header of path, parent and signature, windows over bodies past the model's 256 tokens (13-30% of chunks), a class as its outline rather than its methods again (ADR 006, Q1 and Q2). A change of what is embedded builds every index again.

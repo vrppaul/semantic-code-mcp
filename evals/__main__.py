@@ -1,7 +1,7 @@
 """Measure search quality, speed, or search as agents use it, on the pinned corpora.
 
-    uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--save-baseline]
-        [--held-out]
+    uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--by-meaning]
+        [--save-baseline] [--held-out]
     uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--store STORE]
         [--edits N] [--save-baseline]
     uv run python -m evals agents [--corpus NAME ...] [--corpus-file PATH ...] [--arm ARM ...]
@@ -12,7 +12,8 @@ under ~/.cache/semantic-code-mcp-evals and reused. Prints one line per corpus ne
 saved baseline, writes the whole report as JSON to `evals/results/`, and with
 --save-baseline makes it the new baseline; a corpus kept outside the repository
 (`--corpus-file`, as a large or a private one is) is never saved to it, nor a run in a store
-other than the server's default (`--store`, as when two stores are compared in turns). `agents` asks
+other than the server's default (`--store`, as when two stores are compared in turns), nor a
+quality run by meaning (`--by-meaning`, which sets the servers' default to it). `agents` asks
 Claude Code headless each question in each arm (`evals/agents.py`), spending the owner's
 subscription; it prints each session as it ends and each arm's sums, and keeps no baseline,
 as its sessions hold the questions of private corpora; its indexes are kept between runs.
@@ -60,7 +61,7 @@ from evals.quality import (
     WordingScores,
     measure_quality,
 )
-from evals.server import ServerStarter, ToolCallFailedError
+from evals.server import DEFAULT_OPTIONS, ServerOptions, ServerStarter, ToolCallFailedError
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
 from semantic_code_mcp.domain.models import StoreKind
 from semantic_code_mcp.logging import configure_logging
@@ -90,17 +91,22 @@ JSON_INDENT = 2
 BASELINE_COMMANDS = frozenset({"quality", "speed"})
 # How a report that named no store names the one it ran in
 DEFAULT_STORE_NAME = "the server's default"
+# How a report names the way its searches searched
+BY_WORDS_NAME = "by words"
+BY_MEANING_NAME = "by meaning"
 EXIT_OK = 0
 EXIT_FAILED = 1
 
 
 class QualityReport(BaseModel):
-    """Search quality over every corpus measured, in the store a run named."""
+    """Search quality over every corpus measured, in the store a run named, by words or by
+    meaning."""
 
     model_config = ConfigDict(frozen=True)
 
     # None for the server's default store at the commit measured
     index_store: StoreKind | None
+    by_meaning: bool
     corpora: tuple[CorpusQuality, ...]
 
 
@@ -135,7 +141,7 @@ def main() -> int:
             case "quality":
                 run_quality(
                     load_corpora(arguments.corpus),
-                    index_store=arguments.store,
+                    ServerOptions(index_store=arguments.store, by_meaning=arguments.by_meaning),
                     save_baseline=arguments.save_baseline,
                     held_out=arguments.held_out,
                 )
@@ -167,6 +173,8 @@ def main() -> int:
 
 def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m evals", description=__doc__)
+    # A command that cannot search by meaning searches by words
+    parser.set_defaults(by_meaning=False)
     commands = parser.add_subparsers(dest="command", required=True)
     quality = commands.add_parser("quality", help="search quality: where the answers land")
     speed = commands.add_parser("speed", help="indexing, search, memory and index growth")
@@ -177,6 +185,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         # A store other than the server's default, never saved to the baseline
         command.add_argument("--store", type=StoreKind, choices=list(StoreKind))
     quality.add_argument("--save-baseline", action="store_true")
+    # Every search by meaning too, never saved to the baseline, which holds the default
+    quality.add_argument("--by-meaning", action="store_true")
     # A corpus kept outside the repository, never saved to the baseline the repository keeps
     speed_corpora = speed.add_mutually_exclusive_group()
     speed_corpora.add_argument("--corpus-file", action="append", default=[], type=Path)
@@ -195,6 +205,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     keeps_a_baseline = arguments.command in BASELINE_COMMANDS
     if keeps_a_baseline and arguments.save_baseline and arguments.store is not None:
         parser.error("--save-baseline keeps the default store's figures: leave --store out")
+    if keeps_a_baseline and arguments.save_baseline and arguments.by_meaning:
+        parser.error("--save-baseline keeps the default search's figures: leave --by-meaning out")
     return arguments
 
 
@@ -208,17 +220,19 @@ def positive_integer(text: str) -> int:
 
 
 def run_quality(
-    corpora: list[Corpus], *, index_store: StoreKind | None, save_baseline: bool, held_out: bool
+    corpora: list[Corpus], options: ServerOptions, *, save_baseline: bool, held_out: bool
 ) -> None:
     report = QualityReport(
-        index_store=index_store,
-        corpora=tuple(asyncio.run(collect_quality(corpora, index_store))),
+        index_store=options.index_store,
+        by_meaning=options.by_meaning,
+        corpora=tuple(asyncio.run(collect_quality(corpora, options))),
     )
     baseline = read_report(BASELINE_DIRECTORY / QUALITY_FILE, QualityReport)
     baseline_by_corpus: dict[str, CorpusQuality] = {}
     if baseline is not None:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
         print(describe_stores(report.index_store, baseline.index_store))
+        print(describe_searches(by_meaning=report.by_meaning, baseline=baseline.by_meaning))
     for entry in report.corpora:
         print(describe_quality(entry, baseline_by_corpus.get(entry.corpus), held_out=held_out))
     write_report(report, QUALITY_FILE, save_baseline=save_baseline)
@@ -230,7 +244,13 @@ def run_speed(
     report = SpeedReport(
         machine=current_machine(),
         index_store=index_store,
-        corpora=tuple(asyncio.run(collect_speed(corpora, index_store, edits))),
+        corpora=tuple(
+            asyncio.run(
+                collect_speed(
+                    corpora, ServerOptions(index_store=index_store, by_meaning=False), edits
+                )
+            )
+        ),
     )
     baseline = read_report(BASELINE_DIRECTORY / SPEED_FILE, SpeedReport)
     # Speeds compare only on the machine they were measured on
@@ -250,6 +270,16 @@ def describe_stores(measured: StoreKind | None, baseline: StoreKind | None) -> s
 
 def store_name(index_store: StoreKind | None) -> str:
     return DEFAULT_STORE_NAME if index_store is None else index_store
+
+
+def describe_searches(*, by_meaning: bool, baseline: bool) -> str:
+    """The line naming how a run's searches and its baseline's searched."""
+    measured = search_name(by_meaning=by_meaning)
+    return f"search: {measured}; the baseline's: {search_name(by_meaning=baseline)}"
+
+
+def search_name(*, by_meaning: bool) -> str:
+    return BY_MEANING_NAME if by_meaning else BY_WORDS_NAME
 
 
 def chosen_corpora(names: list[str], files: list[Path]) -> list[Corpus]:
@@ -287,7 +317,7 @@ async def collect_agents(
         with (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log:
             server_log.write(log_header("agents", corpus))
             # The agents' own servers take the default store, so this one does too
-            servers = ServerStarter(server_log, index_store=None)
+            servers = ServerStarter(server_log, DEFAULT_OPTIONS)
             measured.append(await measure_agents(corpus, working_tree, run, servers, print_session))
     return measured
 
@@ -321,9 +351,7 @@ def describe_arm(summary: ArmSummary) -> str:
     )
 
 
-async def collect_quality(
-    corpora: list[Corpus], index_store: StoreKind | None
-) -> list[CorpusQuality]:
+async def collect_quality(corpora: list[Corpus], options: ServerOptions) -> list[CorpusQuality]:
     measured: list[CorpusQuality] = []
     off_topic = load_off_topic_questions()
     for corpus in corpora:
@@ -333,14 +361,14 @@ async def collect_quality(
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
             server_log.write(log_header("quality", corpus))
-            servers = ServerStarter(server_log, index_store)
+            servers = ServerStarter(server_log, options)
             async with servers.connect(Path(index_directory)) as connection:
                 measured.append(await measure_quality(corpus, working_tree, off_topic, connection))
     return measured
 
 
 async def collect_speed(
-    corpora: list[Corpus], index_store: StoreKind | None, edits: int
+    corpora: list[Corpus], options: ServerOptions, edits: int
 ) -> list[CorpusSpeed]:
     measured: list[CorpusSpeed] = []
     for corpus in corpora:
@@ -350,7 +378,7 @@ async def collect_speed(
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
             server_log.write(log_header("speed", corpus))
-            servers = ServerStarter(server_log, index_store)
+            servers = ServerStarter(server_log, options)
             measured.append(
                 await measure_speed(corpus, working_tree, Path(index_directory), edits, servers)
             )

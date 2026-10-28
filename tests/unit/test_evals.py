@@ -22,7 +22,13 @@ from evals.quality import (
     scores_by_kind,
     shares_answer_words,
 )
-from evals.server import INDEX_STORE_VARIABLE, SearchHit, server_environment
+from evals.server import (
+    BY_MEANING_VARIABLE,
+    INDEX_STORE_VARIABLE,
+    SearchHit,
+    ServerOptions,
+    server_environment,
+)
 from evals.speed import Edit, edit_text, edits_in_turn
 
 from semantic_code_mcp.app import build_chunker
@@ -380,12 +386,43 @@ def test_a_server_of_the_harness_keeps_its_indexes_in_the_store_a_run_names(
     """The caller's own setting never reaches it."""
     monkeypatch.setenv(INDEX_STORE_VARIABLE, StoreKind.lancedb)
 
-    environment = server_environment(tmp_path, index_store)
+    environment = server_environment(
+        tmp_path, ServerOptions(index_store=index_store, by_meaning=False)
+    )
 
     assert environment.get(INDEX_STORE_VARIABLE) == store_given
 
 
-@pytest.mark.parametrize("command", ["quality", "speed"])
-def test_a_run_in_a_store_of_its_own_is_never_saved_as_the_baseline(command: str):
+@pytest.mark.parametrize(
+    ("by_meaning", "setting_given"),
+    [
+        pytest.param(False, None, id="by words, the server's default"),
+        pytest.param(True, "true", id="by meaning, as a run asks"),
+    ],
+)
+def test_a_server_of_the_harness_searches_by_meaning_only_where_a_run_asks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, by_meaning: bool, setting_given: str | None
+):
+    """The caller's own setting never reaches it."""
+    monkeypatch.setenv(BY_MEANING_VARIABLE, "true")
+
+    environment = server_environment(
+        tmp_path, ServerOptions(index_store=None, by_meaning=by_meaning)
+    )
+
+    assert environment.get(BY_MEANING_VARIABLE) == setting_given
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(["quality", "--store", StoreKind.sqlite], id="quality in a store of its own"),
+        pytest.param(["speed", "--store", StoreKind.sqlite], id="speed in a store of its own"),
+        pytest.param(["quality", "--by-meaning"], id="quality by meaning"),
+    ],
+)
+def test_a_run_other_than_the_server_s_default_is_never_saved_as_the_baseline(
+    arguments: list[str],
+):
     with pytest.raises(SystemExit):
-        parse_arguments([command, "--store", StoreKind.sqlite, "--save-baseline"])
+        parse_arguments([*arguments, "--save-baseline"])

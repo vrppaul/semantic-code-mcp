@@ -1,17 +1,18 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own: the model load (a search of a
-one-file project), a full index from scratch with the model already loaded, warm search
-latency, plain and narrowed to functions and methods outside every tests directory (a
-narrowing every corpus takes, which both filters read), an `index_status` call (each
-search makes one first), how much the index grows with each edit of a file other than
-the last (the copies upkeep keeps for a few seconds included) and how long the search
-after it takes, at the median and at the slowest (it re-indexes the edited file first;
-one in twenty compacts the index), the server's peak memory and what it still holds once
-its work is done, as a session's idle server keeps it, and the first answer of a freshly
-started server on an up-to-date index — the process start and model load an agent waits
-for — and, last, the first answer on a repository never indexed: a server started on an
-empty index directory, until its first search answers, the whole index built inside it.
+Measured per corpus, in server processes of its own, every search by words, the default,
+but the model's: a full index from scratch, warm search latency, plain and narrowed to
+functions and methods outside every tests directory (a narrowing every corpus takes, which
+both filters read), an `index_status` call (each search makes one first), how much the
+index grows with each edit of a file other than the last (the copies upkeep keeps for a few
+seconds included) and how long the search after it takes, at the median and at the slowest
+(it re-indexes the edited file first; one in twenty compacts a LanceDB index), the server's
+peak memory and what it still holds once its work is done, as a session's idle server keeps
+it, with no model loaded; the model load, a search by meaning of a one-file project in a
+server of its own; the first answer of a freshly started server on an up-to-date index —
+the process start an agent waits for — and, last, the first answer on a repository never
+indexed: a server started on an empty index directory, until its first search answers, the
+whole index built inside it.
 Memory is read from `/proc`, so it is reported on Linux only. With 15 to 20 questions per
 corpus, p95 is close to the slowest search: read it as that.
 """
@@ -133,7 +134,6 @@ async def measure_speed(
     queries = [query.text for query in corpus.queries]
 
     async with servers.connect(index_directory) as connection:
-        model_load_seconds = await timed_model_load_seconds(connection)
         report = await connection.index(working_tree)
         latencies = [
             await timed_search_seconds(connection, working_tree, query, None) for query in queries
@@ -151,6 +151,9 @@ async def measure_speed(
         await connection.index(working_tree)
         peak_memory = server_memory_megabytes(PEAK_RESIDENT_FIELD)
         resident_memory = server_memory_megabytes(RESIDENT_FIELD)
+
+    async with servers.connect(index_directory) as connection:
+        model_load_seconds = await timed_model_load_seconds(connection)
 
     started = time.perf_counter()
     async with servers.connect(index_directory) as connection:
@@ -200,15 +203,18 @@ async def timed_cold_first_answer_seconds(
 
 
 async def timed_model_load_seconds(connection: ServerConnection) -> float:
-    """How long the server takes to load its model: a search of a project of one tiny file.
+    """How long the server takes to load its model: a search by meaning of a project of one
+    tiny file.
 
     The file makes the search embed something, so the model loads; an empty project
-    would be answered without it.
+    would be answered without it, and a search by words never loads it.
     """
     with tempfile.TemporaryDirectory() as warm_up_project:
         (Path(warm_up_project) / WARM_UP_FILE_NAME).write_text(WARM_UP_SOURCE)
         started = time.perf_counter()
-        await connection.search(Path(warm_up_project), WARM_UP_QUERY, RESULTS_PER_QUERY)
+        await connection.search(
+            Path(warm_up_project), WARM_UP_QUERY, RESULTS_PER_QUERY, by_meaning=True
+        )
         return time.perf_counter() - started
 
 

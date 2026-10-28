@@ -22,6 +22,9 @@ from semantic_code_mcp.domain.models import StoreKind
 SETTINGS_PREFIX = "SEMANTIC_CODE_MCP_"
 CACHE_DIR_VARIABLE = f"{SETTINGS_PREFIX}CACHE_DIR"
 INDEX_STORE_VARIABLE = f"{SETTINGS_PREFIX}INDEX_STORE"
+BY_MEANING_VARIABLE = f"{SETTINGS_PREFIX}BY_MEANING"
+# How a server's setting reads a flag that is on
+SETTING_ON = "true"
 SERVER_MODULE = "semantic_code_mcp"
 # Long enough for a full index of the largest corpus with a cold model download: `agents`
 # indexes corpora kept outside the repository, and one of Sentry's 87,694 chunks took about
@@ -94,14 +97,23 @@ class ServerConnection:
         return StatusReport.model_validate(tool_payload(result))
 
     async def search(
-        self, project: Path, query: str, limit: int, narrowing: SearchNarrowing | None = None
+        self,
+        project: Path,
+        query: str,
+        limit: int,
+        narrowing: SearchNarrowing | None = None,
+        *,
+        by_meaning: bool | None = None,
     ) -> SearchAnswer:
-        """Search a project as an agent would, narrowed where a narrowing is given."""
+        """Search a project as an agent would, narrowed where a narrowing is given, and by
+        meaning where asked; left out, as the server's setting says."""
         arguments: dict[str, object] = {
             "query": query,
             "project_path": str(project),
             "limit": limit,
         }
+        if by_meaning is not None:
+            arguments["by_meaning"] = by_meaning
         if narrowing is not None:
             arguments |= {
                 "chunk_kinds": list(narrowing.chunk_kinds),
@@ -111,17 +123,32 @@ class ServerConnection:
         return SearchAnswer.model_validate(tool_payload(result))
 
 
+class ServerOptions(BaseModel):
+    """What a run sets of the servers it starts: the store that keeps their indexes, the
+    server's default where it names none, and whether a search that does not say searches
+    by meaning too."""
+
+    model_config = ConfigDict(frozen=True)
+
+    index_store: StoreKind | None
+    by_meaning: bool
+
+
+# The servers of a run that sets nothing: the default store, a search by words
+DEFAULT_OPTIONS = ServerOptions(index_store=None, by_meaning=False)
+
+
 class ServerStarter:
-    """Starts the server processes of a run, their logs written to one file, their indexes
-    kept in the store the run names, or in the server's default store where it names none.
+    """Starts the server processes of a run, their logs written to one file, as the run's
+    options set them.
 
     Settings of the caller's environment (`SEMANTIC_CODE_MCP_*`) are left out, so a
-    measurement depends on the defaults, the store and the index directory alone.
+    measurement depends on the defaults, the options and the index directory alone.
     """
 
-    def __init__(self, server_log: TextIO, index_store: StoreKind | None) -> None:
+    def __init__(self, server_log: TextIO, options: ServerOptions) -> None:
         self._server_log = server_log
-        self._index_store = index_store
+        self._options = options
 
     @asynccontextmanager
     async def connect(self, index_directory: Path) -> AsyncGenerator[ServerConnection]:
@@ -129,7 +156,7 @@ class ServerStarter:
         parameters = StdioServerParameters(
             command=sys.executable,
             args=["-m", SERVER_MODULE],
-            env=server_environment(index_directory, self._index_store),
+            env=server_environment(index_directory, self._options),
         )
         async with (
             stdio_client(parameters, errlog=self._server_log) as (read_stream, write_stream),
@@ -141,13 +168,16 @@ class ServerStarter:
             yield ServerConnection(session)
 
 
-def server_environment(index_directory: Path, index_store: StoreKind | None) -> dict[str, str]:
+def server_environment(index_directory: Path, options: ServerOptions) -> dict[str, str]:
     """The environment a server of the harness runs in: the caller's without its settings,
-    the index directory, and the store a run names, where it names one."""
+    the index directory, the store a run names, where it names one, and a search by meaning,
+    where it asks for one."""
     environment = environment_without_settings()
     environment[CACHE_DIR_VARIABLE] = str(index_directory)
-    if index_store is not None:
-        environment[INDEX_STORE_VARIABLE] = index_store
+    if options.index_store is not None:
+        environment[INDEX_STORE_VARIABLE] = options.index_store
+    if options.by_meaning:
+        environment[BY_MEANING_VARIABLE] = SETTING_ON
     return environment
 
 
