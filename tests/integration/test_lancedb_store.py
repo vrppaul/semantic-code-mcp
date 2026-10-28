@@ -30,18 +30,20 @@ from semantic_code_mcp.domain.models import (
 )
 from semantic_code_mcp.storage import lancedb as lancedb_store
 from semantic_code_mcp.storage.globs import glob_pattern
+from semantic_code_mcp.storage.index_directories import (
+    MANIFEST_FILE,
+    REMOVING_PREFIX,
+    USE_MARK_INTERVAL,
+    USE_STAMP_FILE,
+)
 from semantic_code_mcp.storage.lancedb import (
     CHUNKS_TABLE,
     FILES_TABLE,
-    MANIFEST_FILE,
     NO_CANDIDATES,
-    REMOVING_PREFIX,
     REPLACED_ROWS_SHARE_BEFORE_COMPACTION,
     ROWS_PER_FRAGMENT,
     SCHEMA_VERSION,
     UPKEEPS_PER_COMPACTION,
-    USE_MARK_INTERVAL,
-    USE_STAMP_FILE,
     LanceDBIndexStore,
 )
 from semantic_code_mcp.storage.search_text import search_text

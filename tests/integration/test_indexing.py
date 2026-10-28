@@ -24,7 +24,8 @@ from semantic_code_mcp.domain.models import IndexCounts, IndexIdentity
 from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.storage.lancedb import FILES_TABLE, LEGACY_ENTRIES, NO_CANDIDATES
+from semantic_code_mcp.storage.index_directories import LEGACY_ENTRIES
+from semantic_code_mcp.storage.lancedb import FILES_TABLE, NO_CANDIDATES
 from tests.conftest import MODEL_NAME
 from tests.fakes import (
     EMBEDDING_DIMENSION,
