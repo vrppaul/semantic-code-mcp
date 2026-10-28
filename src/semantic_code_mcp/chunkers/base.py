@@ -10,7 +10,7 @@ import structlog
 import tree_sitter
 from tree_sitter import Node, Parser
 
-from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language
+from semantic_code_mcp.domain.models import PARENT_SEPARATORS, Chunk, ChunkKind, Language
 
 log = structlog.get_logger()
 
@@ -145,9 +145,9 @@ class BaseTreeSitterChunker(ABC):
     """Base class for tree-sitter based code chunkers.
 
     Provides shared logic for parsing, file reading, and Chunk construction.
-    Subclasses set `language`, its tree-sitter `grammar`, the `extensions` it reads and
-    the `parent_separator` of its qualified names, then implement `_extract_chunks()` for
-    language-specific AST walking.
+    Subclasses set `language`, its tree-sitter `grammar` and the `extensions` it reads, then
+    implement `_extract_chunks()` for language-specific AST walking; the language's
+    `PARENT_SEPARATORS` entry joins its qualified names.
 
     A file in which a subclass finds no definition — nothing but a module docstring,
     or nothing at all — is indexed whole instead, in windows of lines, so a script or
@@ -159,8 +159,6 @@ class BaseTreeSitterChunker(ABC):
     language: ClassVar[Language]
     grammar: ClassVar[tree_sitter.Language]
     extensions: ClassVar[tuple[str, ...]]
-    # Joins an owner's name to what is defined in it, as the language writes it
-    parent_separator: ClassVar[str]
     whole_file_fallback: ClassVar[bool] = True
 
     def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
@@ -221,7 +219,7 @@ class BaseTreeSitterChunker(ABC):
             return parent
         if parent is None:
             return name
-        return f"{parent}{self.parent_separator}{name}"
+        return f"{parent}{PARENT_SEPARATORS[self.language]}{name}"
 
     @abstractmethod
     def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:

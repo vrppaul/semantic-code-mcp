@@ -22,7 +22,10 @@ from semantic_code_mcp.domain.models import (
     IndexUpdate,
     SearchCandidates,
     SearchQuery,
+    SearchScope,
     SourceFile,
+    StoreKind,
+    VectorIdentity,
 )
 
 EMBEDDING_DIMENSION = 384
@@ -34,6 +37,10 @@ BYTE_RANGE = 255
 # A digest byte scaled into [-1, 1]
 VECTOR_SPAN = 2
 VECTOR_OFFSET = 1
+# What makes the fake embedder's vectors
+FAKE_MODEL = VectorIdentity(
+    model_name=FAKE_MODEL_NAME, model_revision=None, embedder_version=FAKE_EMBEDDER_VERSION
+)
 
 
 class FakeEmbedder(Embedder):
@@ -102,15 +109,16 @@ class FakeEmbedder(Embedder):
 
 
 class FakeIndexStore(IndexStore):
-    """A store that answers every search with the candidates it was given and keeps what
-    is written: each chunk with its vector, each file's record. Once written, its manifest
-    names the fake model; it has no full-text index to keep up."""
+    """A store that answers every search with the candidates it was given, by words with the
+    chunks of its keyword candidates and by name with any candidate of that name, and keeps
+    what is written: each file's chunks and record, and each model's vectors by chunk id.
+    Once written, its manifest names the fake chunker; it has no full-text index to keep up."""
 
     def __init__(self, candidates: SearchCandidates) -> None:
         self.candidates = candidates
         self.searched: list[SearchQuery] = []
         self.chunks_by_file: dict[Path, list[Chunk]] = defaultdict(list)
-        self.vectors_by_file: dict[Path, list[Vector]] = defaultdict(list)
+        self.vectors_by_model: dict[VectorIdentity, dict[str, Vector]] = defaultdict(dict)
         self.files_by_path: dict[Path, SourceFile] = {}
         self.written_manifest: IndexManifest | None = None
         self.updates: list[IndexUpdate] = []
@@ -125,53 +133,81 @@ class FakeIndexStore(IndexStore):
         return IndexedFiles(records=list(self.files_by_path.values()), unrecorded_paths=[])
 
     @override
-    def counts(self) -> IndexCounts:
+    def counts(self, model: VectorIdentity) -> IndexCounts:
         return IndexCounts(
             files=len(self.files_by_path),
-            chunks=sum(len(chunks) for chunks in self.chunks_by_file.values()),
+            chunks=len(self.stored_chunks()),
+            chunks_with_vectors=len(self.vectors_by_model[model]),
         )
 
     @override
-    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
-        stored = {
-            chunk.chunk_id: vector
-            for path, chunks in self.chunks_by_file.items()
-            for chunk, vector in zip(chunks, self.vectors_by_file[path], strict=True)
-        }
-        return {chunk_id: stored[chunk_id] for chunk_id in stored.keys() & set(chunk_ids)}
-
-    @override
-    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+    def write(self, update: IndexUpdate) -> None:
         self.updates.append(update)
         replaced = [*(file.path for file in update.files), *update.removed_paths]
+        kept_ids = {chunk.chunk_id for chunk in update.chunks}
         for path in replaced:
-            self.chunks_by_file.pop(path, None)
-            self.vectors_by_file.pop(path, None)
+            dropped_ids = {chunk.chunk_id for chunk in self.chunks_by_file.pop(path, [])} - kept_ids
+            for vectors in self.vectors_by_model.values():
+                for chunk_id in dropped_ids:
+                    vectors.pop(chunk_id, None)
             self.files_by_path.pop(path, None)
-        for chunk, vector in zip(update.chunks, vectors, strict=True):
+        for chunk in update.chunks:
             self.chunks_by_file[chunk.path].append(chunk)
-            self.vectors_by_file[chunk.path].append(vector)
         self.files_by_path.update({file.path: file for file in update.files})
         self.written_manifest = IndexManifest(
-            identity=IndexIdentity(
-                model_name=FAKE_MODEL_NAME,
-                model_revision=None,
-                embedder_version=FAKE_EMBEDDER_VERSION,
-                chunker_version=FAKE_CHUNKER_VERSION,
-            ),
+            identity=IndexIdentity(chunker_version=FAKE_CHUNKER_VERSION),
+            store_kind=StoreKind.sqlite,
             schema_version=FAKE_SCHEMA_VERSION,
             indexed_at=datetime.now(UTC),
         )
 
     @override
-    def search_candidates(
-        self, query_vector: Vector, query: SearchQuery, per_channel: int
+    def chunks_without_vectors(self, model: VectorIdentity) -> list[Chunk]:
+        pending = {chunk.chunk_id: chunk for chunk in self.stored_chunks()}
+        for chunk_id in self.vectors_by_model[model]:
+            pending.pop(chunk_id, None)
+        return list(pending.values())
+
+    @override
+    def add_vectors(
+        self, model: VectorIdentity, chunk_ids: list[str], vectors: VectorMatrix
+    ) -> None:
+        given = dict(zip(chunk_ids, vectors, strict=True))
+        held = {chunk.chunk_id for chunk in self.stored_chunks()}
+        self.vectors_by_model[model].update(
+            {chunk_id: given[chunk_id] for chunk_id in given.keys() & held}
+        )
+
+    @override
+    def remove_vectors(self, model: VectorIdentity) -> None:
+        self.vectors_by_model.pop(model, None)
+
+    @override
+    def search_words(self, query: SearchQuery, limit: int) -> list[Chunk]:
+        self.searched.append(query)
+        return [candidate.chunk for candidate in self.candidates.by_keyword[:limit]]
+
+    @override
+    def chunks_named(self, folded_name: str, scope: SearchScope) -> list[Chunk]:
+        chunks_by_name: dict[str, dict[str, Chunk]] = defaultdict(dict)
+        for candidate in [*self.candidates.by_vector, *self.candidates.by_keyword]:
+            chunk = candidate.chunk
+            chunks_by_name[chunk.name.casefold()][chunk.chunk_id] = chunk
+        return list(chunks_by_name[folded_name].values())
+
+    @override
+    def search(
+        self, model: VectorIdentity, query_vector: Vector, query: SearchQuery, per_channel: int
     ) -> SearchCandidates:
         self.searched.append(query)
         return SearchCandidates(
             by_vector=self.candidates.by_vector[:per_channel],
             by_keyword=self.candidates.by_keyword[:per_channel],
         )
+
+    def stored_chunks(self) -> list[Chunk]:
+        """Every chunk written, file by file in the order the files came."""
+        return [chunk for chunks in self.chunks_by_file.values() for chunk in chunks]
 
 
 class VersionedChunker(Chunker):
@@ -225,22 +261,40 @@ class DelegatingStore(IndexStore):
         return self._inner.indexed_files()
 
     @override
-    def counts(self) -> IndexCounts:
-        return self._inner.counts()
+    def counts(self, model: VectorIdentity) -> IndexCounts:
+        return self._inner.counts(model)
 
     @override
-    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
-        return self._inner.stored_vectors(chunk_ids)
+    def write(self, update: IndexUpdate) -> None:
+        self._inner.write(update)
 
     @override
-    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
-        self._inner.write(update, vectors)
+    def chunks_without_vectors(self, model: VectorIdentity) -> list[Chunk]:
+        return self._inner.chunks_without_vectors(model)
 
     @override
-    def search_candidates(
-        self, query_vector: Vector, query: SearchQuery, per_channel: int
+    def add_vectors(
+        self, model: VectorIdentity, chunk_ids: list[str], vectors: VectorMatrix
+    ) -> None:
+        self._inner.add_vectors(model, chunk_ids, vectors)
+
+    @override
+    def remove_vectors(self, model: VectorIdentity) -> None:
+        self._inner.remove_vectors(model)
+
+    @override
+    def search_words(self, query: SearchQuery, limit: int) -> list[Chunk]:
+        return self._inner.search_words(query, limit)
+
+    @override
+    def chunks_named(self, folded_name: str, scope: SearchScope) -> list[Chunk]:
+        return self._inner.chunks_named(folded_name, scope)
+
+    @override
+    def search(
+        self, model: VectorIdentity, query_vector: Vector, query: SearchQuery, per_channel: int
     ) -> SearchCandidates:
-        return self._inner.search_candidates(query_vector, query, per_channel)
+        return self._inner.search(model, query_vector, query, per_channel)
 
 
 class StoreCancelledAfterItsWrite(DelegatingStore):
@@ -248,8 +302,8 @@ class StoreCancelledAfterItsWrite(DelegatingStore):
     hung up while the run was under way."""
 
     @override
-    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
-        super().write(update, vectors)
+    def write(self, update: IndexUpdate) -> None:
+        super().write(update)
         raise asyncio.CancelledError
 
 
@@ -264,10 +318,10 @@ class StoreHeldInItsWrite(DelegatingStore):
         self.written = threading.Event()
 
     @override
-    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+    def write(self, update: IndexUpdate) -> None:
         self.writing.set()
         self.release.wait()
-        super().write(update, vectors)
+        super().write(update)
         self.written.set()
 
 
@@ -279,7 +333,7 @@ class ChunkCountRecorder:
         self.chunks_at_reports: list[int] = []
 
     async def __call__(self, _progress: float, _total: float, _message: str) -> None:
-        self.chunks_at_reports.append(self._store.counts().chunks)
+        self.chunks_at_reports.append(self._store.counts(FAKE_MODEL).chunks)
 
 
 def vector_of(text: str, dimension: int) -> Vector:

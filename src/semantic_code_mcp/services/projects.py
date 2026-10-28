@@ -8,9 +8,10 @@ from pydantic import BaseModel, ConfigDict
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
-from semantic_code_mcp.domain.models import IndexIdentity
+from semantic_code_mcp.domain.models import IndexIdentity, VectorIdentity
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
+from semantic_code_mcp.services.vectors import VectorService
 
 # Opens the store of a project's index of one identity, kept under the project's index
 # directory; the composition root says which store
@@ -50,8 +51,8 @@ class ProjectRegistry:
     project has one store and one set of locks. Building touches no disk — a store opens
     its connection when first used, in a worker thread — so a lookup and its insert run
     with no await between them, and two first requests cannot build a project twice.
-    The embedding model is shared by every project, and with the chunker it names the
-    identity of every index this server keeps.
+    The chunker names the identity of every index this server keeps, and the embedding
+    model, shared by every project, that of the vectors it keeps in them.
     """
 
     def __init__(
@@ -69,6 +70,11 @@ class ProjectRegistry:
         self._discovery = discovery
         self._open_store = open_store
         self._services_by_index: dict[Path, ProjectServices] = {}
+
+    @property
+    def meaning_by_default(self) -> bool:
+        """Whether a search that does not say searches by meaning too."""
+        return self._settings.by_meaning
 
     def locate(self, directory: Path) -> ProjectLocation:
         """Where a directory lies: in the git work tree around it, whose root is its
@@ -88,28 +94,31 @@ class ProjectRegistry:
         return services
 
     def _build(self, index_path: Path) -> ProjectServices:
-        identity = IndexIdentity(
-            model_name=self._embedder.model_name,
-            model_revision=self._embedder.revision,
-            embedder_version=self._embedder.version,
-            chunker_version=self._chunker.version,
-        )
-        store = self._open_store(index_path, identity)
+        store = self._open_store(index_path, IndexIdentity(chunker_version=self._chunker.version))
+        model = vector_identity(self._embedder)
         indexing = IndexingService(
-            discovery=self._discovery,
-            chunker=self._chunker,
-            embedder=self._embedder,
-            store=store,
+            discovery=self._discovery, chunker=self._chunker, store=store, model=model
         )
         return ProjectServices(
             indexing=indexing,
             search=SearchService(
                 store=store,
                 embedder=self._embedder,
+                model=model,
                 indexing=indexing,
+                vectors=VectorService(embedder=self._embedder, store=store, model=model),
                 floors=similarity_floors(self._settings),
             ),
         )
+
+
+def vector_identity(embedder: Embedder) -> VectorIdentity:
+    """What makes the vectors an embedder gives."""
+    return VectorIdentity(
+        model_name=embedder.model_name,
+        model_revision=embedder.revision,
+        embedder_version=embedder.version,
+    )
 
 
 def similarity_floors(settings: Settings) -> SimilarityFloors:

@@ -42,7 +42,6 @@ class PythonChunker(BaseTreeSitterChunker):
     language = Language.python
     grammar = tree_sitter.Language(tspython.language())
     extensions = (".py",)
-    parent_separator = "."
 
     @override
     def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:

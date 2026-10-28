@@ -11,7 +11,9 @@ from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
 from semantic_code_mcp.services.indexing import IndexingService
-from semantic_code_mcp.services.projects import ProjectRegistry
+from semantic_code_mcp.services.projects import ProjectRegistry, vector_identity
+from semantic_code_mcp.services.vectors import VectorService
+from tests.fakes import FAKE_MODEL
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -55,16 +57,17 @@ def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:
     )
 
 
-def indexing_service(
-    store: IndexStore, embedder: Embedder, settings: Settings, chunker: Chunker
-) -> IndexingService:
-    """The indexing of a project over the given parts, with the real discovery."""
+def indexing_service(store: IndexStore, settings: Settings, chunker: Chunker) -> IndexingService:
+    """The indexing of a project's words over the given parts, with the real discovery, its
+    status counting the fake model's vectors."""
     return IndexingService(
-        discovery=discovery_for(settings, chunker),
-        chunker=chunker,
-        embedder=embedder,
-        store=store,
+        discovery=discovery_for(settings, chunker), chunker=chunker, store=store, model=FAKE_MODEL
     )
+
+
+def vector_service(store: IndexStore, embedder: Embedder) -> VectorService:
+    """What gives the chunks of a store the vectors of an embedder's model."""
+    return VectorService(embedder=embedder, store=store, model=vector_identity(embedder))
 
 
 def registry_of(settings: Settings, embedder: Embedder, chunker: Chunker) -> ProjectRegistry:

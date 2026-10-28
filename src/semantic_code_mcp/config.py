@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     local_index: bool = False
     # What keeps the indexes (ADR 009, D8); each store keeps indexes of its own
     index_store: StoreKind = StoreKind.sqlite
+    # Whether a search that does not say searches by meaning too, for a user who wants it
+    # always: by default it reads words alone and loads no model (ADR 009, D2)
+    by_meaning: bool = False
 
     debug: bool = False
     # Profile every request with pyinstrument, a dev dependency

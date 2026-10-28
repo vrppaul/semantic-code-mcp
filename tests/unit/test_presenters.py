@@ -10,9 +10,10 @@ from semantic_code_mcp.domain.models import (
     IndexManifest,
     IndexStatus,
     Language,
-    SearchHit,
     SearchReport,
     SearchTimings,
+    StoreKind,
+    VectorIdentity,
 )
 from semantic_code_mcp.server.presenters import (
     MAX_RESULT_LINES,
@@ -27,8 +28,8 @@ PROJECT_ROOT = Path("/project")
 AT_THE_ROOT = ProjectLocation(root=PROJECT_ROOT, directory=None, is_repository=True)
 
 
-def hit_of(content: str) -> SearchHit:
-    chunk = Chunk(
+def hit_of(content: str) -> Chunk:
+    return Chunk(
         chunk_id="module-method",
         path=Path("src/module.py"),
         language=Language.python,
@@ -38,9 +39,6 @@ def hit_of(content: str) -> SearchHit:
         line_start=1,
         line_end=content.count("\n") + 1,
         content=content,
-    )
-    return SearchHit(
-        chunk=chunk, similarity=0.5, vector_rank=1, keyword_rank=None, fused_score=1 / 61
     )
 
 
@@ -80,15 +78,28 @@ def test_debug_details_only_when_asked():
     assert present_search(report, AT_THE_ROOT, include_debug=True).debug is not None
 
 
-def test_a_status_names_the_model_its_revision_and_the_embedder_that_built_the_index():
-    identity = IndexIdentity(
-        model_name="model", model_revision="revision", embedder_version=2, chunker_version=3
-    )
+def test_a_status_names_the_chunker_that_built_the_index_and_the_model_of_its_vectors():
     manifest = IndexManifest(
-        identity=identity, schema_version=2, indexed_at=datetime(2026, 1, 1, tzinfo=UTC)
+        identity=IndexIdentity(chunker_version=3),
+        store_kind=StoreKind.sqlite,
+        schema_version=2,
+        indexed_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
-    status = IndexStatus(files_count=1, chunks_count=1, stale_files_count=0, manifest=manifest)
+    status = IndexStatus(
+        files_count=1,
+        chunks_count=2,
+        model=VectorIdentity(model_name="model", model_revision="revision", embedder_version=4),
+        chunks_with_vectors_count=1,
+        stale_files_count=0,
+        manifest=manifest,
+    )
 
-    view = present_status(status, PROJECT_ROOT).manifest
+    view = present_status(status, PROJECT_ROOT)
 
-    assert (view.model_name, view.model_revision, view.embedder_version) == ("model", "revision", 2)
+    assert (
+        view.manifest.model_name,
+        view.manifest.model_revision,
+        view.manifest.embedder_version,
+        view.manifest.chunker_version,
+        view.embedded_chunks_count,
+    ) == ("model", "revision", 4, 3, 1)

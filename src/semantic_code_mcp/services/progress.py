@@ -43,3 +43,9 @@ class ProgressReporter:
             band_start=self._band_start + start * share_of_band,
             band_end=self._band_start + end * share_of_band,
         )
+
+
+def share_done(done: int, total: int) -> float:
+    """How far along work of `total` items is once `done` are behind it, on the scale of a
+    reporter; at its start where there is nothing to do."""
+    return PROGRESS_START if total == 0 else done / total * PROGRESS_TOTAL

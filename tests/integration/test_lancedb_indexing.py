@@ -16,7 +16,7 @@ from semantic_code_mcp.domain.models import IndexCounts
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.storage.index_directories import IndexDirectory
 from semantic_code_mcp.storage.lancedb import FILES_TABLE, LanceDBIndexStore
-from tests.fakes import FakeEmbedder, StoreHeldInItsWrite
+from tests.fakes import FAKE_MODEL, StoreHeldInItsWrite
 from tests.helpers import indexing_service
 from tests.indexing import (
     ADDED_FUNCTION,
@@ -61,13 +61,16 @@ async def test_files_whose_records_were_lost_are_indexed_again_without_doubled_c
     index_directory: IndexDirectory,
     store: LanceDBIndexStore,
 ):
-    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+    indexing = indexing_service(store, test_settings, build_chunker())
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
     delete_records(index_directory, MATCH_EVERY_ROW)
 
     report = await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
-    assert (report.files_indexed, store.counts()) == (2, IndexCounts(files=2, chunks=6))
+    assert (report.files_indexed, store.counts(FAKE_MODEL)) == (
+        2,
+        IndexCounts(files=2, chunks=6, chunks_with_vectors=0),
+    )
 
 
 async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_index(
@@ -78,7 +81,7 @@ async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_
 ):
     """A write that stopped between a new file's chunks and its record left them behind."""
     (sample_project / "gone.py").write_text("def gone():\n    return 0\n")
-    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+    indexing = indexing_service(store, test_settings, build_chunker())
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
     delete_records(index_directory, "path = 'gone.py'")
     (sample_project / "gone.py").unlink()
@@ -86,7 +89,10 @@ async def test_chunks_of_a_file_deleted_before_its_record_was_written_leave_the_
     status = await indexing.status(sample_project)
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
-    assert (status.stale_files_count, store.counts()) == (1, IndexCounts(files=2, chunks=6))
+    assert (status.stale_files_count, store.counts(FAKE_MODEL)) == (
+        1,
+        IndexCounts(files=2, chunks=6, chunks_with_vectors=0),
+    )
 
 
 async def forced_run(indexing: IndexingService, project: Path) -> None:
@@ -122,7 +128,7 @@ async def test_a_run_that_wrote_leaves_every_chunk_in_the_full_text_index(
     """Rows the full-text index has not folded in score on another scale, so the chunks a
     run wrote, the ones an agent asks about next, would rank apart until upkeep."""
     project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
-    indexing = indexing_service(store, FakeEmbedder(), test_settings, build_chunker())
+    indexing = indexing_service(store, test_settings, build_chunker())
 
     await runs(indexing, project)
 
@@ -138,14 +144,12 @@ async def test_a_run_cancelled_while_its_last_write_lands_leaves_every_chunk_in_
     """A client that hangs up as a run writes: the write still lands in its thread, and the
     chunks it wrote must score on the full-text index's scale, not another."""
     project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
-    await first_index(
-        indexing_service(store, FakeEmbedder(), test_settings, build_chunker()), project
-    )
+    await first_index(indexing_service(store, test_settings, build_chunker()), project)
     edited = project / FIRST_MODULE
     edited.write_text(edited.read_text() + ADDED_FUNCTION)
     touch_later(edited)
     held = StoreHeldInItsWrite(store)
-    indexing = indexing_service(held, FakeEmbedder(), test_settings, build_chunker())
+    indexing = indexing_service(held, test_settings, build_chunker())
     run = asyncio.create_task(indexing.index(project, force=False, progress=NO_PROGRESS))
 
     write_began = await asyncio.to_thread(held.writing.wait, HELD_WRITE_TIMEOUT_SECONDS)

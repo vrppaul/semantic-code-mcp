@@ -9,17 +9,21 @@ ranks first. Every kind of chunk is fused alike: on the harness, weighing prose 
 gained nothing once every right answer counted (ADR 006, stage 6: prose is fused as code is).
 """
 
+import math
+
 from semantic_code_mcp.domain.models import Candidate, SearchCandidates, SearchHit
 
 # The constant of Reciprocal Rank Fusion, as its authors set it (Cormack, Clarke and
 # Büttcher, 2009): large enough that one channel's first few hits do not drown the rest
 RRF_K = 60
 FIRST_RANK = 1
+# Where a hit without a vector stands among hits fused alike: after every one with a vector
+NO_SIMILARITY_ORDER = -math.inf
 
 
 def fuse(candidates: SearchCandidates) -> list[SearchHit]:
     """Every chunk either channel found, once, best fused score first; chunks fused alike
-    come closest to the query in meaning first."""
+    come closest to the query in meaning first, those without a vector last."""
     vector_ranks = ranks_of(candidates.by_vector)
     keyword_ranks = ranks_of(candidates.by_keyword)
     found = {
@@ -30,7 +34,12 @@ def fuse(candidates: SearchCandidates) -> list[SearchHit]:
         hit_of(candidate, vector_ranks.get(chunk_id), keyword_ranks.get(chunk_id))
         for chunk_id, candidate in found.items()
     ]
-    return sorted(hits, key=lambda hit: (hit.fused_score, hit.similarity), reverse=True)
+    return sorted(hits, key=lambda hit: (hit.fused_score, similarity_order(hit)), reverse=True)
+
+
+def similarity_order(hit: SearchHit) -> float:
+    """What orders hits fused alike: their similarity, NO_SIMILARITY_ORDER for none."""
+    return NO_SIMILARITY_ORDER if hit.similarity is None else hit.similarity
 
 
 def ranks_of(found: list[Candidate]) -> dict[str, int]:

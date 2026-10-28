@@ -1,12 +1,12 @@
 """Where a project's index lives, and what every store does there alike.
 
-A project's index directory holds an index for each identity — the model and its
-revision, the embedder's version, the chunker's version — and layout — the store that
-keeps it and the version of that store's schema — each in a directory of its own named
-after them, with its write lock beside it. So a session of another model, revision,
-version or store, or a server upgraded or rolled back, uses an index of its own and never
-builds this one again, nor meets another store's files; switching back finds the old one
-still there. A store is built on its index's directory and owns only what lies inside it.
+A project's index directory holds an index for each identity — the chunker's version — and
+layout — the store that keeps it and the version of that store's schema — each in a
+directory of its own named after them, with its write lock beside it. So a session of
+another version or store, or a server upgraded or rolled back, uses an index of its own and
+never builds this one again, nor meets another store's files; switching back finds the old
+one still there. The vectors of each model live inside the index, kept apart by a digest of
+what made them. A store is built on its index's directory and owns only what lies inside it.
 
 An index nobody used for UNUSED_INDEX_RETENTION is removed, and so is what 0.4 kept
 directly in the project's directory. A write renames a new manifest into the index's
@@ -50,6 +50,7 @@ log = structlog.get_logger()
 # its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
 INDEX_DIRECTORY_FORMAT = "schema-{schema_version}-{identity_digest}-{store_kind}"
 INDEX_DIRECTORY_PATTERN = "schema-*"
+# How many hex digits of a digest name an identity: an index's, or a model's in its index
 IDENTITY_DIGEST_LENGTH = 16
 WRITE_LOCK_SUFFIX = ".lock"
 # An index nobody read or wrote for this long is removed: no session used its model or
@@ -174,6 +175,7 @@ class IndexDirectory:
         over the old one."""
         manifest = IndexManifest(
             identity=self._identity,
+            store_kind=self._layout.store_kind,
             schema_version=self._layout.schema_version,
             indexed_at=datetime.now(UTC),
         )
@@ -214,12 +216,18 @@ class DirectoryStore(IndexStore):
 
 def index_directory_name(identity: IndexIdentity, layout: IndexLayout) -> str:
     """The name of the directory an index of this identity and layout lives in."""
-    digest = hashlib.sha256(identity.model_dump_json().encode()).hexdigest()
     return INDEX_DIRECTORY_FORMAT.format(
         schema_version=layout.schema_version,
-        identity_digest=digest[:IDENTITY_DIGEST_LENGTH],
+        identity_digest=identity_digest(identity),
         store_kind=layout.store_kind,
     )
+
+
+def identity_digest(identity: BaseModel) -> str:
+    """A short digest of what an identity holds, which names it on disk and in a table: the
+    same for equal identities, another for any field changed."""
+    digest = hashlib.sha256(identity.model_dump_json().encode()).hexdigest()
+    return digest[:IDENTITY_DIGEST_LENGTH]
 
 
 def write_lock_of(index_directory: Path) -> Path:

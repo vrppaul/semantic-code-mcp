@@ -3,11 +3,12 @@
 from pathlib import Path
 
 from semantic_code_mcp.domain.models import (
+    Chunk,
     IndexManifest,
     IndexReport,
     IndexStatus,
-    SearchHit,
     SearchReport,
+    VectorIdentity,
 )
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
@@ -28,7 +29,6 @@ MAX_RESULT_LINES = 50
 TRUNCATION_MARK = "\n... (truncated)"
 # What ends a line of a chunk's content, which the cut counts by
 LINE_SEPARATOR = "\n"
-SIMILARITY_DECIMALS = 3
 # A rough count of tokens in English text and code
 CHARACTERS_PER_TOKEN = 4
 
@@ -38,7 +38,7 @@ def present_search(
 ) -> SearchCodeResponse:
     """The answer of `search_code` asked at a location, with timings and counts when asked
     for."""
-    results = [present_hit(hit, location.root) for hit in report.results]
+    results = [present_hit(chunk, location.root) for chunk in report.results]
     return SearchCodeResponse(
         project_root=str(location.root),
         searched_directory=str(location.absolute_directory),
@@ -47,9 +47,8 @@ def present_search(
     )
 
 
-def present_hit(hit: SearchHit, project_root: Path) -> SearchResultView:
+def present_hit(chunk: Chunk, project_root: Path) -> SearchResultView:
     """One hit, its file by its absolute path, its content cut to MAX_RESULT_LINES."""
-    chunk = hit.chunk
     lines = chunk.content.split(LINE_SEPARATOR)
     truncated = len(lines) > MAX_RESULT_LINES
     content = (
@@ -65,7 +64,6 @@ def present_hit(hit: SearchHit, project_root: Path) -> SearchResultView:
         kind=chunk.kind,
         parent=chunk.parent,
         content=content,
-        similarity=round(hit.similarity, SIMILARITY_DECIMALS),
         truncated=truncated,
     )
 
@@ -116,17 +114,21 @@ def present_status(status: IndexStatus, project_root: Path) -> IndexStatusRespon
         last_updated=None if status.manifest is None else status.manifest.indexed_at.isoformat(),
         files_count=status.files_count,
         chunks_count=status.chunks_count,
+        embedded_chunks_count=status.chunks_with_vectors_count,
         stale_files_count=status.stale_files_count,
-        manifest=None if status.manifest is None else present_manifest(status.manifest),
+        manifest=None
+        if status.manifest is None
+        else present_manifest(status.manifest, status.model),
     )
 
 
-def present_manifest(manifest: IndexManifest) -> IndexManifestView:
-    """What built an index, as `index_status` tells it."""
+def present_manifest(manifest: IndexManifest, model: VectorIdentity) -> IndexManifestView:
+    """What built an index, and the model whose vectors in it the status counts, as
+    `index_status` tells them."""
     return IndexManifestView(
-        model_name=manifest.identity.model_name,
-        model_revision=manifest.identity.model_revision,
-        embedder_version=manifest.identity.embedder_version,
+        model_name=model.model_name,
+        model_revision=model.model_revision,
+        embedder_version=model.embedder_version,
         chunker_version=manifest.identity.chunker_version,
         schema_version=manifest.schema_version,
     )

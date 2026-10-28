@@ -8,7 +8,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import lancedb
-import numpy
 import pytest
 from pydantic import BaseModel, ConfigDict
 
@@ -26,6 +25,7 @@ from semantic_code_mcp.storage.lancedb import (
     ROWS_PER_FRAGMENT,
     UPKEEPS_PER_COMPACTION,
     LanceDBIndexStore,
+    vectors_table_name,
 )
 from semantic_code_mcp.storage.search_text import search_text
 from tests.lancedb_tables import (
@@ -40,8 +40,10 @@ from tests.stores import (
     AWAY_FROM_QUERY,
     IDENTITY,
     LIMIT,
+    MODEL,
     QUERY,
     TOWARD_QUERY,
+    fill,
     function_chunk,
     index_directory_of,
     query_of,
@@ -114,7 +116,7 @@ class RecordedSchema(BaseModel):
 def stored_schema(chunks: list[Chunk], index_directory: IndexDirectory) -> StoredSchema:
     """What the store keeps of the chunks once it has written them."""
     store = LanceDBIndexStore(index_directory)
-    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
+    fill(store, chunks, vectors_of(*([TOWARD_QUERY] * len(chunks))))
     database = lancedb.connect(str(index_directory.path))
     tables = [
         StoredTable(
@@ -124,7 +126,7 @@ def stored_schema(chunks: list[Chunk], index_directory: IndexDirectory) -> Store
                 for field in database.open_table(name).schema
             ],
         )
-        for name in (CHUNKS_TABLE, FILES_TABLE)
+        for name in (CHUNKS_TABLE, FILES_TABLE, vectors_table_name(MODEL))
     ]
     return StoredSchema(search_texts=[search_text(chunk) for chunk in chunks], tables=tables)
 
@@ -167,10 +169,7 @@ def filled_store(store: LanceDBIndexStore) -> LanceDBIndexStore:
         ),
         function_chunk("far", "far.py", "def far(): return None"),
     ]
-    store.write(
-        update_of(chunks, removed_paths=[]),
-        vectors_of(TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY),
-    )
+    fill(store, chunks, vectors_of(TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY))
     return store
 
 
@@ -193,7 +192,7 @@ def test_a_search_warns_of_nothing(
     that warns on every search shows here."""
     capfd.readouterr()
 
-    filled_store.search_candidates(QUERY, query_of("duration_ms"), LIMIT)
+    filled_store.search(MODEL, QUERY, query_of("duration_ms"), LIMIT)
 
     assert capfd.readouterr().err == ""
 
@@ -214,7 +213,7 @@ def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     )
 
     with pytest.raises((OSError, RuntimeError)):
-        filled_store.write(update, vectors_of(TOWARD_QUERY))
+        filled_store.write(update)
     set_mode_of_tree(chunks_table_directory, WRITABLE)
 
     assert sorted(filled_store.indexed_files().records, key=lambda file: file.path) == [
@@ -240,7 +239,7 @@ def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_we
     )
 
     with pytest.raises((OSError, RuntimeError)):
-        filled_store.write(update, vectors_of(TOWARD_QUERY))
+        filled_store.write(update)
     set_mode_of_tree(indices_directory, WRITABLE)
 
     assert sorted(filled_store.indexed_files().records, key=lambda file: file.path) == [
@@ -262,10 +261,10 @@ def test_a_file_s_new_chunks_take_the_place_of_its_old_ones_in_one_commit(
         files=[record_of("near.py")], chunks=[edited], removed_paths=[], last_of_run=False
     )
 
-    filled_store.write(update, vectors_of(TOWARD_QUERY))
+    filled_store.write(update)
 
     chunks_table.checkout_latest()
-    assert (chunks_table.version, filled_store.counts().chunks) == (version_before + 1, 3)
+    assert (chunks_table.version, filled_store.counts(MODEL).chunks) == (version_before + 1, 3)
 
 
 def test_chunks_with_no_record_come_back_as_unrecorded_paths(
@@ -285,7 +284,7 @@ def test_a_run_s_last_write_folds_every_chunk_into_the_full_text_index(
     folded in, which score on another scale."""
     later = function_chunk("later", "later.py", "def later(): return retry_budget")
 
-    filled_store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    filled_store.write(update_of([later], removed_paths=[]))
 
     assert chunks_outside_the_full_text_index(index_directory) == 0
 
@@ -301,7 +300,7 @@ def write_a_new_file(store: LanceDBIndexStore, number: int) -> None:
     in; it replaces no row, so only the countdown, not the rows replaced, calls for upkeep's
     compaction."""
     added = function_chunk(f"added_{number}", f"added_{number}.py", f"def added_{number}(): pass")
-    store.write(update_of([added], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    store.write(update_of([added], removed_paths=[]))
 
 
 def same_store_after_its_upkeeps(
@@ -355,7 +354,7 @@ def test_an_upkeep_between_compactions_rewrites_no_fragment(
     kept = [fragment.fragment_id for fragment in chunks_fragments(index_directory)]
     later = function_chunk("later", "later.py", "def later(): pass")
 
-    filled_store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    filled_store.write(update_of([later], removed_paths=[]))
 
     fragments = [fragment.fragment_id for fragment in chunks_fragments(index_directory)]
     assert fragments[: len(kept)] == kept
@@ -370,7 +369,7 @@ def write_the_often_edited_file(store: LanceDBIndexStore, edit: int) -> None:
     update = IndexUpdate(
         files=[record_of(OFTEN_EDITED_FILE)], chunks=chunks, removed_paths=[], last_of_run=True
     )
-    store.write(update, vectors_of(*[TOWARD_QUERY] * len(chunks)))
+    store.write(update)
 
 
 @pytest.mark.parametrize(
@@ -398,13 +397,13 @@ def test_upkeep_compacts_once_replaced_rows_weigh_in_the_full_text_index(
         function_chunk(f"other_{number}", f"other_{number}.py", f"def other_{number}(): pass")
         for number in range(OTHER_CHUNKS)
     ]
-    store.write(update_of(others, removed_paths=[]), vectors_of(*[TOWARD_QUERY] * len(others)))
+    store.write(update_of(others, removed_paths=[]))
     for edit in range(edits):
         write_the_often_edited_file(store, edit)
 
     write_the_often_edited_file(store, edits)
 
-    replaced = full_text_index_documents(index_directory) - store.counts().chunks
+    replaced = full_text_index_documents(index_directory) - store.counts(MODEL).chunks
     assert replaced == replaced_rows_counted
 
 
@@ -418,15 +417,15 @@ def test_compaction_merges_small_fragments_and_leaves_full_ones(
         function_chunk(f"full_{number}", f"full_{number}.py", f"def full_{number}(): pass")
         for number in range(ROWS_PER_FRAGMENT)
     ]
-    store.write(update_of(full, removed_paths=[]), vectors_of(*[TOWARD_QUERY] * len(full)))
+    store.write(update_of(full, removed_paths=[]))
     full_fragment = chunks_fragments(index_directory)[0].fragment_id
     write_a_new_file(store, 0)
     later = function_chunk("later", "later.py", "def later(): pass")
-    store.write(update_of([later], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    store.write(update_of([later], removed_paths=[]))
     next_session = LanceDBIndexStore(index_directory)
 
     # A run that only ends: its upkeep, the session's first, compacts what earlier runs left
-    next_session.write(update_of([], removed_paths=[]), numpy.empty((0, 0), dtype=numpy.float32))
+    next_session.write(update_of([], removed_paths=[]))
 
     fragments = chunks_fragments(index_directory)
     assert (fragments[0].fragment_id, len(fragments)) == (full_fragment, 2)

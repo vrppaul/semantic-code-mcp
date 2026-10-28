@@ -22,6 +22,11 @@ class Language(StrEnum):
     markdown = auto()
 
 
+# What joins an owner's name to what is defined in it, as each language writes it:
+# `Stack.push`, `outer::Stack`, `Guide > Install`
+PARENT_SEPARATORS = {Language.python: ".", Language.rust: "::", Language.markdown: " > "}
+
+
 class ChunkKind(StrEnum):
     """What a chunk is. Rust's structs, enums, traits and impls are classes."""
 
@@ -90,18 +95,20 @@ def similarity_in_range(similarity: float) -> float:
 
 
 class Candidate(BaseModel):
-    """A chunk one channel of a search found, and how close its meaning is to the query."""
+    """A chunk one channel of a search by meaning found, and how close its meaning is to the
+    query's."""
 
     model_config = ConfigDict(frozen=True)
 
     chunk: Chunk
-    # The cosine similarity of the chunk's stored vector and the query's
-    similarity: float
+    # The cosine similarity of the chunk's vector of the model and the query's; None where
+    # the chunk has none yet, which only its words found
+    similarity: float | None
 
     @field_validator("similarity")
     @classmethod
-    def similarity_must_be_in_range(cls, similarity: float) -> float:
-        return similarity_in_range(similarity)
+    def similarity_must_be_in_range(cls, similarity: float | None) -> float | None:
+        return None if similarity is None else similarity_in_range(similarity)
 
 
 class SearchCandidates(BaseModel):
@@ -147,23 +154,26 @@ WHOLE_PROJECT = SearchScope(
 
 
 class SearchQuery(BaseModel):
-    """What a search is asked: its words, how many hits at most, and where to look."""
+    """What a search is asked: its words, how many hits at most, where to look, and whether
+    by meaning too."""
 
     model_config = ConfigDict(frozen=True)
 
     text: str
     limit: int
     scope: SearchScope
+    by_meaning: bool
 
 
 class SearchHit(BaseModel):
-    """A chunk a search returns: where each channel ranked it, and the score fusing those
-    ranks, which orders the hits."""
+    """A chunk a search by meaning returns: where each channel ranked it, and the score
+    fusing those ranks, which orders the hits."""
 
     model_config = ConfigDict(frozen=True)
 
     chunk: Chunk
-    similarity: float
+    # None where the chunk has no vector of the model yet
+    similarity: float | None
     # Counted from one; None where the channel did not find the chunk
     vector_rank: int | None
     keyword_rank: int | None
@@ -171,8 +181,8 @@ class SearchHit(BaseModel):
 
     @field_validator("similarity")
     @classmethod
-    def similarity_must_be_in_range(cls, similarity: float) -> float:
-        return similarity_in_range(similarity)
+    def similarity_must_be_in_range(cls, similarity: float | None) -> float | None:
+        return None if similarity is None else similarity_in_range(similarity)
 
 
 class SourceFile(BaseModel):
@@ -211,14 +221,28 @@ class IndexDelta(BaseModel):
 
 
 class IndexIdentity(BaseModel):
-    """What an index is built from: the model that embeds, by its name and the revision of
-    its weights, the version of how the embedder reads it, and the version of the chunker
-    that splits. A project keeps an index for each, so a session of another model,
-    revision or version never builds the index of this one again, and newer weights under
-    a model's name, or a new reading of them, never meet its old vectors.
+    """What a project's index of words is built from: the version of the chunker that
+    splits. A project keeps an index for each, so a session of another version never builds
+    the index of this one again.
 
-    The vectors' width is not part of it: the model fixes it, and the stored vector column
-    records it, so nothing needs the model loaded to pick an index.
+    The model is not part of it: the index keeps each model's vectors apart, by the
+    identity of what made them (`VectorIdentity`), so a change of model embeds again
+    without chunking again, and a setting of a model never used builds nothing.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    chunker_version: int
+
+
+class VectorIdentity(BaseModel):
+    """What makes a chunk's vector: the model, by its name and the revision of its weights,
+    and the version of how the embedder reads it. An index keeps the vectors of each apart,
+    so newer weights under a model's name, or a new reading of them, never meet its old
+    vectors.
+
+    The vectors' width is not part of it: the model fixes it, and the stored vectors record
+    it, so nothing needs the model loaded to find them.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -228,7 +252,6 @@ class IndexIdentity(BaseModel):
     # know), which are then trusted to stay what they were
     model_revision: str | None
     embedder_version: int
-    chunker_version: int
 
 
 class StoreKind(StrEnum):
@@ -239,11 +262,12 @@ class StoreKind(StrEnum):
 
 
 class IndexManifest(BaseModel):
-    """What built an index, in which layout of the store, and when it was last written."""
+    """What built an index, in which store and layout of it, and when it was last written."""
 
     model_config = ConfigDict(frozen=True)
 
     identity: IndexIdentity
+    store_kind: StoreKind
     schema_version: int
     indexed_at: datetime
 
@@ -251,7 +275,7 @@ class IndexManifest(BaseModel):
 class IndexUpdate(BaseModel):
     """One write of an index run: whole files with their chunks, which take the place of
     what the index held of them, and the paths removed. A run writes a slice of its files
-    at a time; the chunks' vectors travel beside it."""
+    at a time."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -286,12 +310,13 @@ class IndexedFiles(BaseModel):
 
 
 class IndexCounts(BaseModel):
-    """How much an index holds."""
+    """How much an index holds: files, chunks, and the chunks with a model's vectors."""
 
     model_config = ConfigDict(frozen=True)
 
     files: int
     chunks: int
+    chunks_with_vectors: int
 
 
 class IndexStatus(BaseModel):
@@ -301,6 +326,9 @@ class IndexStatus(BaseModel):
 
     files_count: int
     chunks_count: int
+    # The model a search by meaning embeds with, and how many chunks have its vectors
+    model: VectorIdentity
+    chunks_with_vectors_count: int
     # Files the index no longer matches: new, modified or deleted since it was written
     stale_files_count: int
     manifest: IndexManifest | None
@@ -332,11 +360,11 @@ class SearchTimings(BaseModel):
 
 
 class SearchReport(BaseModel):
-    """What one search found, how much it dropped, and what it cost."""
+    """What one search found, best first, how much it dropped, and what it cost."""
 
     model_config = ConfigDict(frozen=True)
 
-    results: list[SearchHit]
+    results: list[Chunk]
     filtered_count: int
     timings: SearchTimings
     # Set when the search had to index stale files first

@@ -1,8 +1,11 @@
-"""Tests for search: what it keeps of the store's hits, and the indexing it does first."""
+"""Tests for search: by words, the chunks named as the query first; by meaning, what it keeps
+of the store's hits; and the indexing and embedding it does first."""
 
 import asyncio
 import threading
 from pathlib import Path
+
+import pytest
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
@@ -19,8 +22,8 @@ from semantic_code_mcp.domain.models import (
 )
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
-from tests.fakes import FakeEmbedder, FakeIndexStore, ProgressRecorder
-from tests.helpers import indexing_service, registry_of
+from tests.fakes import FAKE_MODEL, FakeEmbedder, FakeIndexStore, ProgressRecorder
+from tests.helpers import indexing_service, registry_of, vector_service
 from tests.stores import NO_CANDIDATES
 
 NO_PROGRESS = ProgressReporter(None)
@@ -34,14 +37,16 @@ BELOW_BOTH_FLOORS = FLOORS.words_match / 2
 ELSEWHERE = "nowhere/old.py"
 
 
-def candidate(name: str, similarity: float, path: str = ELSEWHERE) -> Candidate:
+def candidate(
+    name: str, similarity: float | None, path: str = ELSEWHERE, parent: str | None = None
+) -> Candidate:
     chunk = Chunk(
-        chunk_id=f"{path}#{name}",
+        chunk_id=f"{path}#{parent}#{name}",
         path=Path(path),
         language=Language.python,
         kind=ChunkKind.function,
         name=name,
-        parent=None,
+        parent=parent,
         line_start=1,
         line_end=2,
         content=f"def {name}(): pass",
@@ -49,9 +54,14 @@ def candidate(name: str, similarity: float, path: str = ELSEWHERE) -> Candidate:
     return Candidate(chunk=chunk, similarity=similarity)
 
 
-def query_of(text: str) -> SearchQuery:
-    """A query of the whole project."""
-    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
+def words_query(text: str) -> SearchQuery:
+    """A query of the whole project, by words alone."""
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=False)
+
+
+def meaning_query(text: str) -> SearchQuery:
+    """A query of the whole project, by meaning too."""
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=True)
 
 
 def found_by_vector(*candidates: Candidate) -> SearchCandidates:
@@ -61,26 +71,133 @@ def found_by_vector(*candidates: Candidate) -> SearchCandidates:
 def search_service(
     store: FakeIndexStore, settings: Settings, embedder: FakeEmbedder
 ) -> SearchService:
-    indexing = indexing_service(store, embedder, settings, build_chunker())
-    return SearchService(store=store, embedder=embedder, indexing=indexing, floors=FLOORS)
+    return SearchService(
+        store=store,
+        embedder=embedder,
+        model=FAKE_MODEL,
+        indexing=indexing_service(store, settings, build_chunker()),
+        vectors=vector_service(store, embedder),
+        floors=FLOORS,
+    )
+
+
+def names_of(chunks: list[Chunk]) -> list[str]:
+    return [chunk.name for chunk in chunks]
+
+
+async def test_a_search_by_words_returns_what_the_words_ranked_without_the_model(
+    test_settings: Settings, sample_project: Path
+):
+    """No floor holds a hit by words back, however far its meaning."""
+    store = FakeIndexStore(
+        SearchCandidates(
+            by_vector=[],
+            by_keyword=[candidate("first", BELOW_BOTH_FLOORS), candidate("second", None)],
+        )
+    )
+    embedder = FakeEmbedder(loaded=False)
+    service = search_service(store, test_settings, embedder)
+
+    report = await service.search(words_query("anything"), sample_project, progress=NO_PROGRESS)
+
+    assert (names_of(report.results), embedder.is_loaded) == (["first", "second"], False)
+
+
+async def test_the_chunks_named_as_the_query_come_first_then_the_rest_by_words(
+    test_settings: Settings, sample_project: Path
+):
+    """Those of the name the words ranked first in that order, then those they did not."""
+    named_unranked = candidate("parse", CLOSE, "b.py")
+    store = FakeIndexStore(
+        SearchCandidates(
+            by_vector=[named_unranked],
+            by_keyword=[
+                candidate("caller", CLOSE, "c.py"),
+                candidate("parse", CLOSE, "a.py"),
+                candidate("parse_config", CLOSE, "d.py"),
+            ],
+        )
+    )
+    service = search_service(store, test_settings, FakeEmbedder())
+
+    report = await service.search(words_query(" Parse "), sample_project, progress=NO_PROGRESS)
+
+    assert [(chunk.name, chunk.path.as_posix()) for chunk in report.results] == [
+        ("parse", "a.py"),
+        ("parse", "b.py"),
+        ("caller", "c.py"),
+        ("parse_config", "d.py"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        pytest.param("Stack.push", id="as Python writes it"),
+        pytest.param("stack::push", id="as Rust writes it, in another case"),
+    ],
+)
+async def test_a_qualified_name_brings_the_chunks_of_that_name_under_that_parent_first(
+    test_settings: Settings, sample_project: Path, query: str
+):
+    store = FakeIndexStore(
+        SearchCandidates(
+            by_vector=[],
+            by_keyword=[
+                candidate("push", CLOSE, "queue.py", parent="Queue"),
+                candidate("caller", CLOSE, "caller.py"),
+                candidate("push", CLOSE, "stack.py", parent="Stack"),
+            ],
+        )
+    )
+    service = search_service(store, test_settings, FakeEmbedder())
+
+    report = await service.search(words_query(query), sample_project, progress=NO_PROGRESS)
+
+    assert [chunk.path.as_posix() for chunk in report.results] == [
+        "stack.py",
+        "queue.py",
+        "caller.py",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("by_meaning", "chunks_embedded"),
+    [pytest.param(False, 0, id="by words"), pytest.param(True, 6, id="by meaning")],
+)
+async def test_a_search_by_meaning_embeds_the_chunks_without_vectors_first(
+    test_settings: Settings, sample_project: Path, *, by_meaning: bool, chunks_embedded: int
+):
+    store = FakeIndexStore(NO_CANDIDATES)
+    service = search_service(store, test_settings, FakeEmbedder())
+    query = SearchQuery(text="greet", limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=by_meaning)
+
+    await service.search(query, sample_project, progress=NO_PROGRESS)
+
+    assert store.counts(FAKE_MODEL).chunks_with_vectors == chunks_embedded
 
 
 async def test_a_hit_far_in_meaning_is_dropped_and_one_whose_words_match_further(
     test_settings: Settings, sample_project: Path
 ):
+    """One without a vector yet stays: only its words found it."""
     named = candidate("named", BETWEEN_THE_FLOORS)
     store = FakeIndexStore(
         SearchCandidates(
             by_vector=[candidate("close", CLOSE), candidate("far", BETWEEN_THE_FLOORS), named],
-            by_keyword=[named, candidate("word_by_chance", BELOW_BOTH_FLOORS)],
+            by_keyword=[
+                named,
+                candidate("word_by_chance", BELOW_BOTH_FLOORS),
+                candidate("not_embedded", None),
+            ],
         )
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
+    report = await service.search(meaning_query("anything"), sample_project, progress=NO_PROGRESS)
 
-    assert ([hit.chunk.name for hit in report.results], report.filtered_count) == (
-        ["named", "close"],
+    assert (names_of(report.results), report.filtered_count) == (
+        ["named", "close", "not_embedded"],
         2,
     )
 
@@ -101,19 +218,23 @@ async def test_a_hit_named_as_the_query_stays_however_far_in_meaning(
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search(query_of(" Main "), sample_project, progress=NO_PROGRESS)
+    report = await service.search(meaning_query(" Main "), sample_project, progress=NO_PROGRESS)
 
-    assert [hit.chunk.name for hit in report.results] == ["main"]
+    assert names_of(report.results) == ["main"]
 
 
-async def test_no_more_hits_than_the_limit(test_settings: Settings, sample_project: Path):
-    store = FakeIndexStore(
-        found_by_vector(*(candidate(f"function_{rank}", CLOSE) for rank in range(LIMIT)))
-    )
+@pytest.mark.parametrize(
+    "by_meaning", [pytest.param(False, id="by words"), pytest.param(True, id="by meaning")]
+)
+async def test_no_more_hits_than_the_limit(
+    test_settings: Settings, sample_project: Path, *, by_meaning: bool
+):
+    found = [candidate(f"function_{rank}", CLOSE) for rank in range(LIMIT)]
+    store = FakeIndexStore(SearchCandidates(by_vector=found, by_keyword=found))
     service = search_service(store, test_settings, FakeEmbedder())
 
     report = await service.search(
-        SearchQuery(text="anything", limit=3, scope=WHOLE_PROJECT),
+        SearchQuery(text="anything", limit=3, scope=WHOLE_PROJECT, by_meaning=by_meaning),
         sample_project,
         progress=NO_PROGRESS,
     )
@@ -121,7 +242,7 @@ async def test_no_more_hits_than_the_limit(test_settings: Settings, sample_proje
     assert len(report.results) == 3
 
 
-async def test_hits_come_in_fused_order_whichever_file_they_are_in(
+async def test_hits_by_meaning_come_in_fused_order_whichever_file_they_are_in(
     test_settings: Settings, sample_project: Path
 ):
     store = FakeIndexStore(
@@ -133,9 +254,9 @@ async def test_hits_come_in_fused_order_whichever_file_they_are_in(
     )
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
+    report = await service.search(meaning_query("anything"), sample_project, progress=NO_PROGRESS)
 
-    assert [hit.chunk.name for hit in report.results] == ["best", "second", "third"]
+    assert names_of(report.results) == ["best", "second", "third"]
 
 
 async def test_a_project_never_indexed_is_indexed_before_the_search(
@@ -144,7 +265,7 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
     store = FakeIndexStore(NO_CANDIDATES)
     service = search_service(store, test_settings, FakeEmbedder())
 
-    report = await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
+    report = await service.search(words_query("anything"), sample_project, progress=NO_PROGRESS)
 
     assert report.index_report is not None
     assert report.index_report.files_indexed == 2
@@ -153,20 +274,27 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
 async def test_an_index_up_to_date_is_not_touched(test_settings: Settings, sample_project: Path):
     store = FakeIndexStore(NO_CANDIDATES)
     service = search_service(store, test_settings, FakeEmbedder())
-    await service.search(query_of("first"), sample_project, progress=NO_PROGRESS)
+    await service.search(words_query("first"), sample_project, progress=NO_PROGRESS)
 
-    report = await service.search(query_of("second"), sample_project, progress=NO_PROGRESS)
+    report = await service.search(words_query("second"), sample_project, progress=NO_PROGRESS)
 
     assert report.index_report is None
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        pytest.param(words_query("anything"), id="by words"),
+        pytest.param(meaning_query("anything"), id="by meaning"),
+    ],
+)
 async def test_progress_of_a_search_that_indexes_only_moves_forward(
-    test_settings: Settings, sample_project: Path
+    test_settings: Settings, sample_project: Path, query: SearchQuery
 ):
     recorder = ProgressRecorder()
     service = search_service(FakeIndexStore(NO_CANDIDATES), test_settings, FakeEmbedder())
 
-    await service.search(query_of("anything"), sample_project, progress=ProgressReporter(recorder))
+    await service.search(query, sample_project, progress=ProgressReporter(recorder))
 
     assert recorder.progress_values == sorted(recorder.progress_values)
 
@@ -174,12 +302,13 @@ async def test_progress_of_a_search_that_indexes_only_moves_forward(
 async def test_a_project_with_nothing_indexed_is_answered_without_the_model(
     test_settings: Settings, tmp_path: Path
 ):
+    """Even by meaning: nothing to embed, nothing to find."""
     empty_project = tmp_path / "empty"
     empty_project.mkdir()
     embedder = FakeEmbedder(loaded=False)
     service = search_service(FakeIndexStore(NO_CANDIDATES), test_settings, embedder)
 
-    report = await service.search(query_of("anything"), empty_project, progress=NO_PROGRESS)
+    report = await service.search(meaning_query("anything"), empty_project, progress=NO_PROGRESS)
 
     assert (report.results, embedder.is_loaded) == ([], False)
 
@@ -187,15 +316,16 @@ async def test_a_project_with_nothing_indexed_is_answered_without_the_model(
 async def test_a_fresh_server_loads_the_model_for_the_query_off_the_event_loop(
     test_settings: Settings, sample_project: Path
 ):
-    """An up-to-date index and a model not yet loaded: the first search after a restart."""
+    """An index up to date and embedded, and a model not yet loaded: the first search by
+    meaning after a restart."""
     store = FakeIndexStore(NO_CANDIDATES)
-    await indexing_service(store, FakeEmbedder(), test_settings, build_chunker()).index(
-        sample_project, force=False, progress=NO_PROGRESS
+    await search_service(store, test_settings, FakeEmbedder()).search(
+        meaning_query("anything"), sample_project, progress=NO_PROGRESS
     )
     fresh_embedder = FakeEmbedder(loaded=False)
     service = search_service(store, test_settings, fresh_embedder)
 
-    await service.search(query_of("anything"), sample_project, progress=NO_PROGRESS)
+    await service.search(meaning_query("anything"), sample_project, progress=NO_PROGRESS)
 
     assert fresh_embedder.calling_threads
     assert threading.main_thread() not in fresh_embedder.calling_threads
@@ -209,17 +339,14 @@ async def test_two_first_searches_at_once_both_find_the_code(
     service = search_service(store, test_settings, FakeEmbedder())
 
     reports = await asyncio.gather(
-        service.search(query_of("anything"), sample_project, progress=NO_PROGRESS),
-        service.search(query_of("anything"), sample_project, progress=NO_PROGRESS),
+        service.search(meaning_query("anything"), sample_project, progress=NO_PROGRESS),
+        service.search(meaning_query("anything"), sample_project, progress=NO_PROGRESS),
     )
 
-    assert [[hit.chunk.name for hit in report.results] for report in reports] == [
-        ["found"],
-        ["found"],
-    ]
+    assert [names_of(report.results) for report in reports] == [["found"], ["found"]]
 
 
-async def test_a_search_keeps_what_the_floors_of_the_settings_let_through(
+async def test_a_search_by_meaning_keeps_what_the_floors_of_the_settings_let_through(
     test_settings: Settings, sample_project: Path
 ):
     """Floors at the lowest similarity let every chunk of the project through, those the
@@ -231,7 +358,9 @@ async def test_a_search_keeps_what_the_floors_of_the_settings_let_through(
     )
     search = registry_of(settings, FakeEmbedder(), build_chunker()).services_for(sample_project)
 
-    report = await search.search.search(query_of("greet"), sample_project, progress=NO_PROGRESS)
+    report = await search.search.search(
+        meaning_query("greet"), sample_project, progress=NO_PROGRESS
+    )
 
     assert len(report.results) == 6
 
@@ -248,7 +377,9 @@ async def test_a_search_hands_its_scope_to_the_store(test_settings: Settings, sa
     service = search_service(store, test_settings, FakeEmbedder())
 
     await service.search(
-        SearchQuery(text="anything", limit=LIMIT, scope=scope), sample_project, progress=NO_PROGRESS
+        SearchQuery(text="anything", limit=LIMIT, scope=scope, by_meaning=False),
+        sample_project,
+        progress=NO_PROGRESS,
     )
 
     assert [query.scope for query in store.searched] == [scope]

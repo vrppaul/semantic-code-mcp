@@ -14,10 +14,12 @@ from semantic_code_mcp.storage.search_text import search_text
 from semantic_code_mcp.storage.sqlite import DATABASE_FILE, SqliteIndexStore, SqliteStoreError
 from tests.stores import (
     IDENTITY,
+    MODEL,
     TOWARD_QUERY,
+    fill,
     function_chunk,
     index_directory_of,
-    nearest,
+    matching,
     record_of,
     update_of,
     vectors_of,
@@ -66,7 +68,7 @@ def stored_schema(chunks: list[Chunk], project_directory: Path) -> StoredSchema:
     """What the store keeps of the chunks once it has written them."""
     index_directory = index_directory_of(SqliteIndexStore, project_directory, IDENTITY)
     store = SqliteIndexStore(index_directory)
-    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
+    store.write(update_of(chunks, removed_paths=[]))
     with sqlite3.connect(index_directory.path / DATABASE_FILE) as connection:
         rows = connection.execute(SCHEMA_STATEMENTS).fetchall()
     return StoredSchema(
@@ -106,7 +108,7 @@ def test_a_write_that_fails_midway_leaves_the_index_as_it_was(tmp_path: Path):
     caller learns why."""
     store = SqliteIndexStore(index_directory_of(SqliteIndexStore, tmp_path / "index", IDENTITY))
     kept = function_chunk("kept", "kept.py", "def kept(): pass")
-    store.write(update_of([kept], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    fill(store, [kept], vectors_of(TOWARD_QUERY))
     twice = function_chunk("twice", "twice.py", "def twice(): pass")
     # The same chunk twice fails at its second insert, after the removal ran
     update = IndexUpdate(
@@ -117,9 +119,10 @@ def test_a_write_that_fails_midway_leaves_the_index_as_it_was(tmp_path: Path):
     )
 
     with pytest.raises(SqliteStoreError):
-        store.write(update, vectors_of(TOWARD_QUERY, TOWARD_QUERY))
+        store.write(update)
 
     assert (
         store.indexed_files().records,
-        [candidate.chunk.name for candidate in nearest(store)],
-    ) == ([record_of("kept.py")], ["kept"])
+        [chunk.name for chunk in matching(store, "kept")],
+        store.counts(MODEL).chunks_with_vectors,
+    ) == ([record_of("kept.py")], ["kept"], 1)

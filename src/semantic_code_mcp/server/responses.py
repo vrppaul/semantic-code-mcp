@@ -4,12 +4,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from semantic_code_mcp.domain.models import ChunkKind
 
-# What an agent reads of a hit's similarity in the tool's output schema
-SIMILARITY_DESCRIPTION = (
-    "How close the chunk's meaning is to the query's alone, a cosine similarity from -1 to 1."
-    " Results come best first by meaning and words together, so a hit its words found can"
-    " show a low similarity."
-)
 # What an agent reads of the root an index tool answers for
 PROJECT_ROOT_DESCRIPTION = (
     "The root of the project whose index this is: a directory inside a git repository is"
@@ -19,6 +13,11 @@ PROJECT_ROOT_DESCRIPTION = (
 SEARCH_ROOT_DESCRIPTION = (
     "The root of the project whose index answered: as project_path, it searches the whole"
     " repository."
+)
+# What an agent reads of how much of an index a search by meaning reads without embedding
+EMBEDDED_CHUNKS_DESCRIPTION = (
+    "How many of the chunks have the server's model's vectors; a search by meaning embeds"
+    " the rest before it answers."
 )
 SEARCHED_DIRECTORY_DESCRIPTION = (
     "The directory the search kept to: project_root, or a directory under it; the search did"
@@ -41,7 +40,6 @@ class SearchResultView(BaseModel):
     # The qualified name of what the chunk is defined in: a class, an impl, a heading
     parent: str | None
     content: str
-    similarity: float = Field(description=SIMILARITY_DESCRIPTION)
     truncated: bool
 
 
@@ -110,14 +108,16 @@ class IndexCodebaseResponse(BaseModel):
 
 
 class IndexManifestView(BaseModel):
-    """What built an index."""
+    """What built an index: its chunker and the store's schema, each of whose versions keeps
+    an index of its own; and the model whose vectors `embedded_chunks_count` counts, which
+    the index keeps apart from other models'."""
 
     model_config = ConfigDict(frozen=True)
 
     model_name: str
     # None where nothing pins the model's weights, as for a local path
     model_revision: str | None
-    # How the embedder read the model: another reading keeps an index of its own
+    # How the embedder reads the model: another reading embeds the chunks again
     embedder_version: int
     chunker_version: int
     schema_version: int
@@ -133,5 +133,6 @@ class IndexStatusResponse(BaseModel):
     last_updated: str | None
     files_count: int
     chunks_count: int
+    embedded_chunks_count: int = Field(description=EMBEDDED_CHUNKS_DESCRIPTION)
     stale_files_count: int
     manifest: IndexManifestView | None

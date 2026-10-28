@@ -90,7 +90,6 @@ class RustChunker(BaseTreeSitterChunker):
     language = Language.rust
     grammar = tree_sitter.Language(tsrust.language())
     extensions = (".rs",)
-    parent_separator = "::"
 
     @override
     def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:

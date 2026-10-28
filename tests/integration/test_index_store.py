@@ -1,8 +1,10 @@
 """Tests of the store's contract, held over every store: what is written comes back, by
-vector and by words, within a search's scope; a write replaces, removes, records what built
-the index and waits for another writer; reads and writes mark the index as used, so the
-project's indexes nobody uses go. Where the index lies, and how unused ones go, is the
-index directory's (`test_index_directories.py`)."""
+vector, by words and by name, within a search's scope; a write replaces, removes, keeps the
+vectors of the chunks it keeps and drops those it drops, records what built the index and
+waits for another writer; each model's vectors are kept apart, added to the chunks stored,
+replaced when their width changes; reads and writes mark the index as used, so the project's
+indexes nobody uses go. Where the index lies, and how unused ones go, is the index
+directory's (`test_index_directories.py`)."""
 
 import os
 import re
@@ -17,6 +19,8 @@ from hypothesis import HealthCheck, given, settings, strategies
 
 from semantic_code_mcp.domain.interfaces import IndexStore
 from semantic_code_mcp.domain.models import (
+    WHOLE_PROJECT,
+    Candidate,
     Chunk,
     ChunkKind,
     IndexCounts,
@@ -32,12 +36,15 @@ from tests.stores import (
     AWAY_FROM_QUERY,
     IDENTITY,
     LIMIT,
+    MODEL,
     NO_CANDIDATES,
     NO_WORDS_MATCH,
     OTHER_IDENTITY,
+    OTHER_MODEL,
     QUERY,
     TOWARD_QUERY,
     StoreClass,
+    fill,
     function_chunk,
     index_directory_of,
     matching,
@@ -73,10 +80,7 @@ def filled_store(store: IndexStore) -> IndexStore:
         ),
         function_chunk("far", "far.py", "def far(): return None"),
     ]
-    store.write(
-        update_of(chunks, removed_paths=[]),
-        vectors_of(TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY),
-    )
+    fill(store, chunks, vectors_of(TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY))
     return store
 
 
@@ -109,9 +113,9 @@ def test_vector_search_brings_the_nearest_chunks_of_more_than_it_takes(store: In
     vectors = vectors_of(
         *([1.0] * count + [-1.0] * (EMBEDDING_DIMENSION - count) for count in agreeing_components)
     )
-    store.write(update_of(chunks, removed_paths=[]), vectors)
+    fill(store, chunks, vectors)
 
-    candidates = store.search_candidates(QUERY, query_of(NO_WORDS_MATCH), FEWER_THAN_STORED)
+    candidates = store.search(MODEL, QUERY, query_of(NO_WORDS_MATCH), FEWER_THAN_STORED)
 
     assert [candidate.chunk.name for candidate in candidates.by_vector] == [
         "agrees_in_8",
@@ -120,7 +124,8 @@ def test_vector_search_brings_the_nearest_chunks_of_more_than_it_takes(store: In
     ]
 
 
-def test_a_chunk_comes_back_from_a_search_as_it_was_written(store: IndexStore):
+def test_a_chunk_comes_back_from_each_search_as_it_was_written(store: IndexStore):
+    """By its vector, by its words and by its name."""
     method = Chunk(
         chunk_id="stack-push",
         path=Path("src/stack.rs"),
@@ -133,15 +138,17 @@ def test_a_chunk_comes_back_from_a_search_as_it_was_written(store: IndexStore):
         content="fn push(&mut self, item: T) {}",
     )
 
-    store.write(update_of([method], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    fill(store, [method], vectors_of(TOWARD_QUERY))
 
-    assert [candidate.chunk for candidate in nearest(store)] == [method]
+    assert [
+        [candidate.chunk for candidate in nearest(store)],
+        matching(store, "push"),
+        store.chunks_named("push", WHOLE_PROJECT),
+    ] == [[method], [method], [method]]
 
 
 def test_full_text_search_finds_an_exact_identifier(filled_store: IndexStore):
-    assert [candidate.chunk.name for candidate in matching(filled_store, "duration_ms")] == [
-        "keyword"
-    ]
+    assert [chunk.name for chunk in matching(filled_store, "duration_ms")] == ["keyword"]
 
 
 @pytest.mark.parametrize(
@@ -165,17 +172,15 @@ def test_full_text_search_finds_a_chunk_by_the_words_of_its_name_and_parent(
         line_end=6,
         content="fn addItem(&mut self) { self.count += 1; }",
     )
-    store.write(update_of([method], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    store.write(update_of([method], removed_paths=[]))
 
-    assert [candidate.chunk.name for candidate in matching(store, words)] == ["addItem"]
+    assert [chunk.name for chunk in matching(store, words)] == ["addItem"]
 
 
 def test_a_question_wholly_in_quotes_finds_a_chunk_by_its_words(filled_store: IndexStore):
     """An agent quotes an identifier it knows; LanceDB read such a text as a phrase, which
     an index without word positions cannot answer, and the search failed."""
-    assert [candidate.chunk.name for candidate in matching(filled_store, '"duration_ms"')] == [
-        "keyword"
-    ]
+    assert [chunk.name for chunk in matching(filled_store, '"duration_ms"')] == ["keyword"]
 
 
 # How many questions of any text a store is asked
@@ -191,41 +196,54 @@ ANY_QUESTION_EXAMPLES = 200
 def test_a_question_of_any_text_gets_an_answer(filled_store: IndexStore, question: str):
     """An agent's question is never read as a store's own query syntax: quotes, operators,
     brackets and words like OR, NEAR or NOT are only text."""
-    candidates = filled_store.search_candidates(QUERY, query_of(question), LIMIT)
+    by_words = filled_store.search_words(query_of(question), LIMIT)
+    candidates = filled_store.search(MODEL, QUERY, query_of(question), LIMIT)
 
-    assert len(candidates.by_vector) == len(FILLED_CHUNK_NAMES)
+    assert (len(by_words) <= LIMIT, len(candidates.by_vector)) == (True, len(FILLED_CHUNK_NAMES))
 
 
 def test_full_text_search_finds_chunks_of_a_later_write_and_not_removed_ones(
     filled_store: IndexStore,
 ):
     later = function_chunk("later", "later.py", "def later(): return retry_budget")
-    filled_store.write(
-        update_of([later], removed_paths=[Path("indexer.py")]), vectors_of(TOWARD_QUERY)
-    )
+    filled_store.write(update_of([later], removed_paths=[Path("indexer.py")]))
 
-    assert [candidate.chunk.name for candidate in matching(filled_store, "retry_budget")] == [
-        "later"
-    ]
+    assert [chunk.name for chunk in matching(filled_store, "retry_budget")] == ["later"]
     assert matching(filled_store, "duration_ms") == []
 
 
 def test_a_stop_word_still_finds_a_chunk(store: IndexStore):
     """The index keeps stop words, which LanceDB drops by default, as `not` here."""
     chunk = function_chunk("is_empty", "check.py", "def is_empty(items): return not items")
-    store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    store.write(update_of([chunk], removed_paths=[]))
 
-    assert [candidate.chunk.name for candidate in matching(store, "not")] == ["is_empty"]
+    assert [chunk.name for chunk in matching(store, "not")] == ["is_empty"]
 
 
 def test_each_candidate_carries_the_similarity_of_its_vector_to_the_query(
     filled_store: IndexStore,
 ):
-    candidates = filled_store.search_candidates(QUERY, query_of("duration_ms"), LIMIT)
+    candidates = filled_store.search(MODEL, QUERY, query_of("duration_ms"), LIMIT)
 
     assert [
         candidate.similarity for candidate in [*candidates.by_vector, *candidates.by_keyword]
     ] == pytest.approx([1.0, 0.0, -1.0, 0.0])
+
+
+def test_a_chunk_without_the_model_s_vector_is_found_by_its_words_with_no_similarity(
+    filled_store: IndexStore,
+):
+    """Its file written since the model last embedded, as a search by meaning finds it before
+    it embeds."""
+    later = function_chunk("later", "later.py", "def later(): return retry_budget")
+    filled_store.write(update_of([later], removed_paths=[]))
+
+    candidates = filled_store.search(MODEL, QUERY, query_of("retry_budget"), LIMIT)
+
+    assert (
+        [candidate.chunk.name for candidate in candidates.by_vector],
+        candidates.by_keyword,
+    ) == (list(FILLED_CHUNK_NAMES), [Candidate(chunk=later, similarity=None)])
 
 
 # More chunks near the query than a channel brings, all code under src/
@@ -258,10 +276,7 @@ def code_and_a_guide(store: IndexStore, request: pytest.FixtureRequest) -> Index
         line_end=3,
         content="A guide.",
     )
-    store.write(
-        update_of([*code, guide], removed_paths=[]),
-        vectors_of(*([TOWARD_QUERY] * NEAR_CODE_CHUNKS), AWAY_FROM_QUERY),
-    )
+    fill(store, [*code, guide], vectors_of(*([TOWARD_QUERY] * NEAR_CODE_CHUNKS), AWAY_FROM_QUERY))
     return store
 
 
@@ -314,19 +329,40 @@ def code_and_a_guide(store: IndexStore, request: pytest.FixtureRequest) -> Index
         ),
     ],
 )
-def test_both_channels_find_within_the_scope_before_they_cut(
+def test_every_search_finds_within_the_scope_before_it_cuts(
     code_and_a_guide: IndexStore, scope: SearchScope
 ):
     """The guide is further than every chunk a narrow channel would bring unfiltered by
     vector, and by words too in the first case."""
-    query = SearchQuery(text=GUIDE_QUESTION, limit=NARROW_CHANNEL, scope=scope)
+    query = SearchQuery(text=GUIDE_QUESTION, limit=NARROW_CHANNEL, scope=scope, by_meaning=True)
 
-    candidates = code_and_a_guide.search_candidates(QUERY, query, NARROW_CHANNEL)
+    candidates = code_and_a_guide.search(MODEL, QUERY, query, NARROW_CHANNEL)
+    by_words = code_and_a_guide.search_words(query, NARROW_CHANNEL)
 
     assert [
         [candidate.chunk.name for candidate in candidates.by_vector],
         [candidate.chunk.name for candidate in candidates.by_keyword],
-    ] == [["guide"], ["guide"]]
+        [chunk.name for chunk in by_words],
+    ] == [["guide"], ["guide"], ["guide"]]
+
+
+def test_the_chunks_of_a_name_are_found_its_case_aside_within_the_scope(store: IndexStore):
+    """A name's case-folded form finds every chunk of it, in the order of their paths, and a
+    scope keeps to its own; a name the asked one is only part of is not one of them."""
+    chunks = [
+        function_chunk("Shared", "src/shared.py", "def Shared(): pass"),
+        function_chunk("shared", "docs/shared.py", "def shared(): pass"),
+        function_chunk("shared_helper", "docs/helper.py", "def shared_helper(): pass"),
+    ]
+    store.write(update_of(chunks, removed_paths=[]))
+    in_docs = SearchScope(
+        kinds=[], languages=[], path_glob=None, exclude_glob=None, directory=Path("docs")
+    )
+
+    assert [
+        [chunk.path.as_posix() for chunk in store.chunks_named("shared", WHOLE_PROJECT)],
+        [chunk.path.as_posix() for chunk in store.chunks_named("shared", in_docs)],
+    ] == [["docs/shared.py", "src/shared.py"], ["docs/shared.py"]]
 
 
 # Paths whose characters a regex, SQL or a glob reads apart, each in a file of its own
@@ -363,7 +399,7 @@ def awkward_store(store: IndexStore) -> IndexStore:
         function_chunk(f"function_{number}", path, "def f(): return shared")
         for number, path in enumerate(AWKWARD_PATHS)
     ]
-    store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
+    fill(store, chunks, vectors_of(*([TOWARD_QUERY] * len(chunks))))
     return store
 
 
@@ -373,36 +409,42 @@ def awkward_store(store: IndexStore) -> IndexStore:
 def test_the_store_reads_a_glob_as_its_pattern_says(awkward_store: IndexStore, glob: str):
     """LanceDB's regex is Rust's, which refuses or reads apart what Python's would read."""
     scope = SearchScope(kinds=[], languages=[], path_glob=glob, exclude_glob=None, directory=None)
-    query = SearchQuery(text="shared", limit=EVERY_CHUNK, scope=scope)
+    query = SearchQuery(text="shared", limit=EVERY_CHUNK, scope=scope, by_meaning=True)
 
-    candidates = awkward_store.search_candidates(QUERY, query, EVERY_CHUNK)
+    candidates = awkward_store.search(MODEL, QUERY, query, EVERY_CHUNK)
+    by_words = awkward_store.search_words(query, EVERY_CHUNK)
 
     pattern = re.compile(glob_pattern(glob, base=None))
     named = {path: bool(pattern.fullmatch(path)) for path in AWKWARD_PATHS}
     found = {candidate.chunk.path.as_posix() for candidate in candidates.by_vector}
-    found_by_words = {candidate.chunk.path.as_posix() for candidate in candidates.by_keyword}
+    found_by_keyword = {candidate.chunk.path.as_posix() for candidate in candidates.by_keyword}
+    found_by_words = {chunk.path.as_posix() for chunk in by_words}
     assert [
         scope.path_glob,
         {path: path in found for path in AWKWARD_PATHS},
+        {path: path in found_by_keyword for path in AWKWARD_PATHS},
         {path: path in found_by_words for path in AWKWARD_PATHS},
-    ] == [glob, named, named]
+    ] == [glob, named, named, named]
 
 
 def test_an_empty_store_finds_nothing(store: IndexStore):
-    assert store.search_candidates(QUERY, query_of("anything"), LIMIT) == NO_CANDIDATES
+    assert [
+        store.search(MODEL, QUERY, query_of("anything"), LIMIT),
+        store.search_words(query_of("anything"), LIMIT),
+        store.chunks_named("anything", WHOLE_PROJECT),
+        store.chunks_without_vectors(MODEL),
+        store.counts(MODEL),
+    ] == [NO_CANDIDATES, [], [], [], IndexCounts(files=0, chunks=0, chunks_with_vectors=0)]
 
 
-def test_removing_files_takes_only_their_chunks_and_records(filled_store: IndexStore):
-    filled_store.write(
-        update_of([], removed_paths=[Path("near.py"), Path("it's quoted.py")]),
-        numpy.empty((0, 0), dtype=numpy.float32),
-    )
+def test_removing_files_takes_only_their_chunks_records_and_vectors(filled_store: IndexStore):
+    filled_store.write(update_of([], removed_paths=[Path("near.py"), Path("it's quoted.py")]))
 
     assert sorted(str(file.path) for file in filled_store.indexed_files().records) == [
         "far.py",
         "indexer.py",
     ]
-    assert filled_store.counts().chunks == 2
+    assert filled_store.counts(MODEL) == IndexCounts(files=2, chunks=2, chunks_with_vectors=2)
 
 
 def test_a_write_waits_while_another_process_writes(tmp_path: Path, store_class: StoreClass):
@@ -414,9 +456,9 @@ def test_a_write_waits_while_another_process_writes(tmp_path: Path, store_class:
     chunk = function_chunk("held", "held.py", "def held(): pass")
 
     with FileLock(directory.write_lock), pytest.raises(Timeout):
-        store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
+        store.write(update_of([chunk], removed_paths=[]))
 
-    assert store.counts().chunks == 0
+    assert store.counts(MODEL).chunks == 0
 
 
 def test_a_store_sees_what_another_store_on_its_directory_wrote(
@@ -427,12 +469,15 @@ def test_a_store_sees_what_another_store_on_its_directory_wrote(
     writer = store_class(index_directory)
     first = function_chunk("first", "first.py", "def first(): pass")
     second = function_chunk("second", "second.py", "def second(): pass")
-    writer.write(update_of([first], removed_paths=[]), vectors_of(TOWARD_QUERY))
-    before = reader.counts().chunks
+    fill(writer, [first], vectors_of(TOWARD_QUERY))
+    before = reader.counts(MODEL)
 
-    writer.write(update_of([second], removed_paths=[]), vectors_of(AWAY_FROM_QUERY))
+    fill(writer, [second], vectors_of(AWAY_FROM_QUERY))
 
-    assert (before, reader.counts().chunks) == (1, 2)
+    assert (before, reader.counts(MODEL)) == (
+        IndexCounts(files=1, chunks=1, chunks_with_vectors=1),
+        IndexCounts(files=2, chunks=2, chunks_with_vectors=2),
+    )
 
 
 # Nearer the query than every filled chunk but the nearest
@@ -443,15 +488,12 @@ def a_file_added_and_the_last_written_removed(writer: IndexStore) -> None:
     """The file whose chunk was written last goes, so a store that gave its row's id again
     would give it to the chunk added."""
     added = function_chunk("added", "added.py", "def added(): pass")
-    writer.write(
-        update_of([added], removed_paths=[Path("far.py")]), vectors_of(PARTLY_TOWARD_QUERY)
-    )
+    writer.write(update_of([added], removed_paths=[Path("far.py")]))
+    writer.add_vectors(MODEL, [added.chunk_id], vectors_of(PARTLY_TOWARD_QUERY))
 
 
 def a_file_removed_alone(writer: IndexStore) -> None:
-    writer.write(
-        update_of([], removed_paths=[Path("near.py")]), numpy.empty((0, 0), dtype=numpy.float32)
-    )
+    writer.write(update_of([], removed_paths=[Path("near.py")]))
 
 
 @pytest.mark.parametrize(
@@ -491,8 +533,9 @@ def test_a_search_after_its_index_was_removed_and_built_again_sees_the_new_one_a
         for number in range(len(FILLED_CHUNK_NAMES) + 1)
     ]
 
-    store_class(index_directory).write(
-        update_of(rebuilt, removed_paths=[]),
+    fill(
+        store_class(index_directory),
+        rebuilt,
         vectors_of(AWAY_FROM_QUERY, TOWARD_QUERY, ALTERNATING, PARTLY_TOWARD_QUERY),
     )
 
@@ -504,40 +547,123 @@ def test_a_search_after_its_index_was_removed_and_built_again_sees_the_new_one_a
     ]
 
 
-def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_unrecorded(
+def test_vectors_of_another_width_replace_the_model_s_and_leave_the_words(
     filled_store: IndexStore,
 ):
-    """A model replaced under a name nothing pins gives vectors of another width: the index starts
-    again from the files written, and the next run indexes the others, unrecorded now."""
+    """A model replaced under a name nothing pins gives vectors of another width: they take
+    the place of every vector of the model, so the rest are embedded again, and the words and
+    other models' vectors stay."""
+    filled_store.add_vectors(OTHER_MODEL, ["near.py#near"], vectors_of(TOWARD_QUERY))
     nearest(filled_store)
-    edited = function_chunk("near", "near.py", "def near(): return elapsed_time()")
 
-    filled_store.write(update_of([edited], removed_paths=[]), vectors_of(TOWARD_QUERY * 2))
+    filled_store.add_vectors(MODEL, ["near.py#near"], vectors_of(TOWARD_QUERY * 2))
 
     wide_query = numpy.full(2 * EMBEDDING_DIMENSION, 1.0, dtype=numpy.float32)
-    assert filled_store.counts() == IndexCounts(files=1, chunks=1)
-    assert [candidate.chunk.name for candidate in nearest(filled_store, wide_query)] == ["near"]
+    assert [
+        filled_store.counts(MODEL),
+        filled_store.counts(OTHER_MODEL).chunks_with_vectors,
+        [candidate.chunk.name for candidate in nearest(filled_store, wide_query)],
+        [chunk.name for chunk in filled_store.chunks_without_vectors(MODEL)],
+    ] == [IndexCounts(files=3, chunks=3, chunks_with_vectors=1), 1, ["near"], ["keyword", "far"]]
+
+
+def test_a_write_keeps_the_vectors_of_the_chunks_it_keeps_and_drops_the_others_of_every_model(
+    filled_store: IndexStore,
+):
+    """A chunk's id digests its text: an edit that leaves a chunk's text keeps its id and its
+    vectors, one that changes it gives a new id, whose old vectors go."""
+    filled_store.add_vectors(
+        OTHER_MODEL,
+        ["near.py#near", "indexer.py#keyword", "far.py#far"],
+        vectors_of(TOWARD_QUERY, ALTERNATING, AWAY_FROM_QUERY),
+    )
+    edited = Chunk(
+        chunk_id="near.py#near-edited",
+        path=Path("near.py"),
+        language=Language.python,
+        kind=ChunkKind.function,
+        name="near",
+        parent=None,
+        line_start=1,
+        line_end=3,
+        content="def near(): return elapsed_time() * 2",
+    )
+    unchanged = function_chunk("far", "far.py", "def far(): return None")
+
+    filled_store.write(update_of([edited, unchanged], removed_paths=[]))
+
+    assert [
+        filled_store.counts(MODEL).chunks_with_vectors,
+        filled_store.counts(OTHER_MODEL).chunks_with_vectors,
+        [chunk.chunk_id for chunk in filled_store.chunks_without_vectors(MODEL)],
+    ] == [2, 2, ["near.py#near-edited"]]
+
+
+def test_the_chunks_without_a_model_s_vectors_are_those_it_did_not_embed(store: IndexStore):
+    """In the order they were written; another model's vectors are kept apart and count for
+    nothing."""
+    chunks = [
+        function_chunk("first", "first.py", "def first(): pass"),
+        function_chunk("second", "second.py", "def second(): pass"),
+        function_chunk("third", "third.py", "def third(): pass"),
+    ]
+    store.write(update_of(chunks, removed_paths=[]))
+    store.add_vectors(MODEL, ["second.py#second"], vectors_of(TOWARD_QUERY))
+    store.add_vectors(
+        OTHER_MODEL,
+        [chunk.chunk_id for chunk in chunks],
+        vectors_of(TOWARD_QUERY, TOWARD_QUERY, TOWARD_QUERY),
+    )
+
+    assert [chunk.name for chunk in store.chunks_without_vectors(MODEL)] == ["first", "third"]
+
+
+def test_a_vector_of_a_chunk_the_index_no_longer_holds_is_skipped(filled_store: IndexStore):
+    """A write of words dropped the chunk while its vector was embedded."""
+    filled_store.remove_vectors(MODEL)
+    filled_store.write(update_of([], removed_paths=[Path("near.py")]))
+
+    filled_store.add_vectors(
+        MODEL, ["near.py#near", "far.py#far"], vectors_of(TOWARD_QUERY, AWAY_FROM_QUERY)
+    )
+
+    assert filled_store.counts(MODEL).chunks_with_vectors == 1
+
+
+def test_removing_a_model_s_vectors_leaves_the_words_and_other_models_vectors(
+    filled_store: IndexStore,
+):
+    filled_store.add_vectors(OTHER_MODEL, ["far.py#far"], vectors_of(AWAY_FROM_QUERY))
+
+    filled_store.remove_vectors(MODEL)
+
+    assert [
+        filled_store.counts(MODEL).chunks_with_vectors,
+        filled_store.counts(OTHER_MODEL).chunks_with_vectors,
+        [chunk.name for chunk in matching(filled_store, "duration_ms")],
+    ] == [0, 1, ["keyword"]]
 
 
 def test_a_write_records_what_built_the_index(store_class: StoreClass, store: IndexStore):
     before = store.manifest()
-    store.write(update_of([], removed_paths=[]), numpy.empty((0, 0), dtype=numpy.float32))
+    store.write(update_of([], removed_paths=[]))
     after = store.manifest()
 
-    assert (before, after.identity, after.schema_version) == (
+    assert (before, after.identity, after.store_kind, after.schema_version) == (
         None,
         IDENTITY,
+        store_class.LAYOUT.store_kind,
         store_class.LAYOUT.schema_version,
     )
 
 
 def write_own_index(store: IndexStore) -> None:
     chunk = function_chunk("own", "own.py", "def own(): pass")
-    store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    store.write(update_of([chunk], removed_paths=[]))
 
 
 def count_own_index(store: IndexStore) -> None:
-    store.counts()
+    store.counts(MODEL)
 
 
 def list_own_files(store: IndexStore) -> None:
@@ -545,11 +671,15 @@ def list_own_files(store: IndexStore) -> None:
 
 
 def search_own_index(store: IndexStore) -> None:
-    store.search_candidates(QUERY, query_of("own"), LIMIT)
+    store.search(MODEL, QUERY, query_of("own"), LIMIT)
 
 
-def read_own_vectors(store: IndexStore) -> None:
-    store.stored_vectors(["own.py#own"])
+def search_own_words(store: IndexStore) -> None:
+    store.search_words(query_of("own"), LIMIT)
+
+
+def list_own_chunks_to_embed(store: IndexStore) -> None:
+    store.chunks_without_vectors(MODEL)
 
 
 @pytest.mark.parametrize(
@@ -559,7 +689,8 @@ def read_own_vectors(store: IndexStore) -> None:
         pytest.param(count_own_index, id="counted"),
         pytest.param(list_own_files, id="its files listed"),
         pytest.param(search_own_index, id="searched"),
-        pytest.param(read_own_vectors, id="its vectors read"),
+        pytest.param(search_own_words, id="searched by words"),
+        pytest.param(list_own_chunks_to_embed, id="its chunks to embed listed"),
     ],
 )
 def test_an_index_nobody_used_for_a_week_is_removed_when_another_is_used(
@@ -586,7 +717,7 @@ def set_mtime_of_tree(directory: Path, seconds: int) -> None:
         os.utime(path, (seconds, seconds))
 
 
-def test_a_chunk_written_again_under_its_id_stands_where_it_now_is(
+def test_a_chunk_written_again_under_its_id_stands_where_it_now_is_with_its_vector(
     filled_store: IndexStore,
 ):
     """Lines inserted above a function move it, its text and id unchanged."""
@@ -603,13 +734,7 @@ def test_a_chunk_written_again_under_its_id_stands_where_it_now_is(
         content=near.content,
     )
 
-    filled_store.write(update_of([moved], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    filled_store.write(update_of([moved], removed_paths=[]))
 
-    assert nearest(filled_store)[0].chunk == moved
-
-
-def test_the_vectors_of_stored_chunks_come_back_by_their_ids(filled_store: IndexStore):
-    found = filled_store.stored_vectors(["near.py#near", "nowhere.py#missing"])
-
-    assert list(found) == ["near.py#near"]
-    assert numpy.array_equal(found["near.py#near"], vectors_of(TOWARD_QUERY)[0])
+    found = nearest(filled_store)[0]
+    assert (found.chunk, found.similarity) == (moved, pytest.approx(1.0))

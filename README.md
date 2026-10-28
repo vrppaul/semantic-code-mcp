@@ -1,6 +1,6 @@
 # semantic-code-mcp
 
-MCP server that provides semantic code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase with embeddings and returns ranked results by meaning.
+MCP server that provides code search for Claude Code. Instead of iterative grep/glob, it indexes your codebase's words in seconds and returns ranked functions, classes and sections, a definition first when you ask its name; on request it embeds the code and searches by meaning too.
 
 Supports **Python**, **Rust**, and **Markdown** — more languages planned.
 
@@ -16,11 +16,11 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 ```
 
 1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
-2. **Embedding** — onnxruntime runs the model's ONNX export on each chunk (all-MiniLM-L6-v2, 384d), with no torch
-3. **Storage** — the chunks, their vectors and a full-text index of their words in one SQLite database per index (LanceDB, an optional extra, in its place)
-4. **Search** — a search by meaning and one by words, fused by rank
+2. **Storage** — the chunks and a full-text index of their words in one SQLite database per index (LanceDB, an optional extra, in its place)
+3. **Search** — by words (BM25), the chunks named as the query first
+4. **Meaning, on request** — `by_meaning` embeds each chunk once with onnxruntime and the model's ONNX export (all-MiniLM-L6-v2, 384d, no torch), keeps each model's vectors beside the chunks, and fuses a search by meaning with one by words by rank
 
-Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each model, embedder version, chunker version and storage layout keeps an index of its own, so a new version or another model builds a new index once, and switching back finds the old one; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
+Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each chunker version and storage layout keeps an index of its own, so a new version builds a new index once, and switching back finds the old one; each model's vectors are kept apart inside it, so another model embeds again without chunking again; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads on the first search by meaning, never for a search by words.
 
 ## Installation
 
@@ -89,20 +89,21 @@ claude mcp add --scope user semantic-code -- uvx semantic-code-mcp@<version>
 
 ### `search_code`
 
-Search code by meaning, not just text matching. Auto-indexes on first search.
+Search code by the words it uses, and by meaning on request. Auto-indexes on first search.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `query` | `str` | required | Natural language description of what you're looking for |
+| `query` | `str` | required | The words to find, as code would write them, or a name (`Stack.push`), whose chunks come first |
 | `project_path` | `str` | the client's workspace root, inside a git repository | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 | `limit` | `int` | `10` | Maximum number of results, at most 50 |
 | `chunk_kinds` | `list[str]` | all | Only chunks of these kinds: `module`, `function`, `method`, `class`, `section` |
 | `languages` | `list[str]` | all | Only chunks of files in these languages: `python`, `rust`, `markdown` |
 | `path_glob` | `str` | none | Only files this glob names, as in a `.gitignore`: without a slash a name at any depth below the directory `project_path` names (`*.rs`, and `tests/`, as a trailing slash does not count), with one before a name a path from that directory (`src/**/*.py`, `/tests`); `*` stays within a directory, `**` crosses any number, even inside a name (`src**.py`, where a `.gitignore` reads it as `*`), `?` is one character, a directory takes what it holds; a character class (`[ab]`), braces, escapes, a leading `!`, `..` or more than 1000 characters is refused with the reason |
 | `exclude_glob` | `str` | none | No file this glob names, read as `path_glob` is |
+| `by_meaning` | `bool` | `SEMANTIC_CODE_MCP_BY_MEANING`, false | Search by meaning too, fused with the words; the first such search embeds every chunk, minutes on a large repository |
 | `include_debug` | `bool` | `False` | Also return timings and counts of the search |
 
-Returns `project_root` (the project's root: its repository's, or the directory itself outside git; given as `project_path`, it searches all of it), `searched_directory` (the directory the search kept to: `project_root`, or a directory under it) and ranked results with `file_path` (absolute), `line_start`, `line_end`, `name`, `kind` (`module`, `function`, `method`, `class`, `section`; Rust's structs, enums, traits and impls are classes), `parent` (the class, impl, module or heading the chunk sits in, as `Stack` for `Stack.push`), `content` (cut to 50 lines, `truncated` says so) and `similarity`, how close the chunk's meaning is to the query's; results come best first by meaning and words together. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
+Returns `project_root` (the project's root: its repository's, or the directory itself outside git; given as `project_path`, it searches all of it), `searched_directory` (the directory the search kept to: `project_root`, or a directory under it) and ranked results with `file_path` (absolute), `line_start`, `line_end`, `name`, `kind` (`module`, `function`, `method`, `class`, `section`; Rust's structs, enums, traits and impls are classes), `parent` (the class, impl, module or heading the chunk sits in, as `Stack` for `Stack.push`), `content` (cut to 50 lines, `truncated` says so); results come best first. A failure — a missing or relative path, an index that cannot be written — comes back as a tool error with its cause.
 
 ### `index_codebase`
 
@@ -123,7 +124,7 @@ Check indexing status for a project.
 |-----------|------|---------|-------------|
 | `project_path` | `str` | the client's workspace root, inside a git repository | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 
-Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `stale_files_count` and `manifest` (the model, its revision, and the embedder, chunker and storage versions that built the index).
+Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `embedded_chunks_count` (the chunks with the server's model's vectors, which a search by meaning reads without embedding first), `stale_files_count` and `manifest` (the chunker and storage versions that built the index, and the model, its revision and the embedder version whose vectors `embedded_chunks_count` counts).
 
 ## Configuration
 
@@ -139,7 +140,8 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
 | `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS` | `10` | How long git may take to list the files before discovery walks the file system instead |
-| `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | How close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share. Below 0.25, lower `MIN_SIMILARITY_WHEN_WORDS_MATCH` with it, or the server refuses to start |
+| `SEMANTIC_CODE_MCP_BY_MEANING` | `false` | Whether a search that leaves `by_meaning` out searches by meaning too |
+| `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | In a search by meaning, how close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share. Below 0.25, lower `MIN_SIMILARITY_WHEN_WORDS_MATCH` with it, or the server refuses to start |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.25` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY`. A result named as the query comes back however far |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
 

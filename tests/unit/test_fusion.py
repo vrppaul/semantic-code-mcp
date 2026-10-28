@@ -23,7 +23,7 @@ FOLLOWED = "followed"
 
 
 def candidate(
-    chunk_id: str, similarity: float = SIMILARITY, kind: ChunkKind = ChunkKind.function
+    chunk_id: str, similarity: float | None = SIMILARITY, kind: ChunkKind = ChunkKind.function
 ) -> Candidate:
     chunk = Chunk(
         chunk_id=chunk_id,
@@ -79,10 +79,13 @@ def test_a_chunk_both_channels_rank_second_comes_before_either_channel_s_first()
     [
         pytest.param(0.4, 0.6, ["keyword_first", "vector_first"], id="the keyword's closer"),
         pytest.param(0.6, 0.4, ["vector_first", "keyword_first"], id="the vector's closer"),
+        pytest.param(
+            -0.9, None, ["vector_first", "keyword_first"], id="the keyword's without a vector"
+        ),
     ],
 )
 def test_chunks_ranked_alike_come_closest_in_meaning_first(
-    vector_similarity: float, keyword_similarity: float, order: list[str]
+    vector_similarity: float, keyword_similarity: float | None, order: list[str]
 ):
     candidates = SearchCandidates(
         by_vector=[candidate("vector_first", similarity=vector_similarity)],

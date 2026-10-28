@@ -38,7 +38,6 @@ class MarkdownChunker(BaseTreeSitterChunker):
     # as any type, so the checker takes the deprecated overload for an int
     grammar = tree_sitter.Language(tsmarkdown.language())  # ty: ignore[deprecated]
     extensions = (".md",)
-    parent_separator = " > "
     # Sections already cover every line; a file of front matter alone stays out.
     whole_file_fallback = False
 

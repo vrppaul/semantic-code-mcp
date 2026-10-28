@@ -1,5 +1,6 @@
 """What the store tests share: chunks, their records and writes of them, vectors near and far
-from the query, the searches of each channel, and the stores the contract's tests run over."""
+from the query and the models that gave them, the searches of each channel, and the stores the
+contract's tests run over."""
 
 from pathlib import Path
 
@@ -18,11 +19,12 @@ from semantic_code_mcp.domain.models import (
     SearchCandidates,
     SearchQuery,
     SourceFile,
+    VectorIdentity,
 )
 from semantic_code_mcp.storage.index_directories import DirectoryStore, IndexDirectory
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 from semantic_code_mcp.storage.sqlite import SqliteIndexStore
-from tests.fakes import EMBEDDING_DIMENSION
+from tests.fakes import EMBEDDING_DIMENSION, FAKE_MODEL
 
 # A store's class, built on an index's directory in the layout the class names
 type StoreClass = type[DirectoryStore]
@@ -42,12 +44,11 @@ LIMIT = 10
 # A text no chunk's words match, so a search finds by vector alone
 NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
-IDENTITY = IndexIdentity(
-    model_name="fake-model", model_revision=None, embedder_version=1, chunker_version=1
-)
-OTHER_IDENTITY = IndexIdentity(
-    model_name="other-model", model_revision=None, embedder_version=1, chunker_version=1
-)
+IDENTITY = IndexIdentity(chunker_version=1)
+OTHER_IDENTITY = IndexIdentity(chunker_version=2)
+# The model whose vectors the tests add, and another, whose vectors an index keeps apart
+MODEL = FAKE_MODEL
+OTHER_MODEL = VectorIdentity(model_name="other-model", model_revision=None, embedder_version=1)
 
 
 def index_directory_of(
@@ -105,16 +106,23 @@ def vectors_of(*rows: list[float]) -> numpy.ndarray:
     return numpy.array(rows, dtype=numpy.float32)
 
 
+def fill(store: IndexStore, chunks: list[Chunk], vectors: numpy.ndarray) -> None:
+    """Write the chunks in a run of one write, then add the model's vectors of them, a row
+    each."""
+    store.write(update_of(chunks, removed_paths=[]))
+    store.add_vectors(MODEL, [chunk.chunk_id for chunk in chunks], vectors)
+
+
 def query_of(text: str) -> SearchQuery:
     """A query of the whole project."""
-    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT)
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=False)
 
 
 def nearest(store: IndexStore, query: numpy.ndarray = QUERY) -> list[Candidate]:
-    """What the vector channel of a search finds."""
-    return store.search_candidates(query, query_of(NO_WORDS_MATCH), LIMIT).by_vector
+    """What the vector channel of a search by the model's vectors finds."""
+    return store.search(MODEL, query, query_of(NO_WORDS_MATCH), LIMIT).by_vector
 
 
-def matching(store: IndexStore, text: str) -> list[Candidate]:
-    """What the keyword channel of a search for the text finds."""
-    return store.search_candidates(QUERY, query_of(text), LIMIT).by_keyword
+def matching(store: IndexStore, text: str) -> list[Chunk]:
+    """What a search by words for the text finds."""
+    return store.search_words(query_of(text), LIMIT)

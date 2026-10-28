@@ -18,6 +18,8 @@ from semantic_code_mcp.domain.models import (
     IndexUpdate,
     SearchCandidates,
     SearchQuery,
+    SearchScope,
+    VectorIdentity,
 )
 
 # The vector of one text
@@ -68,8 +70,10 @@ class Embedder(ABC):
 
 
 class IndexStore(ABC):
-    """Keeps one project's index of one identity: the chunks with their vectors, the record
-    of each file they came from, and the manifest of what built them; finds chunks again."""
+    """Keeps one project's index of one identity: the chunks and their words, the record of
+    each file they came from, the manifest of what built them, and beside the chunks the
+    vectors of each model that embedded them, kept apart by the model's identity; finds
+    chunks again."""
 
     @abstractmethod
     def manifest(self) -> IndexManifest | None:
@@ -81,35 +85,59 @@ class IndexStore(ABC):
         no record."""
 
     @abstractmethod
-    def counts(self) -> IndexCounts:
-        """How many files and chunks the index holds."""
+    def counts(self, model: VectorIdentity) -> IndexCounts:
+        """How many files and chunks the index holds, and how many of those chunks have the
+        model's vectors."""
 
     @abstractmethod
-    def stored_vectors(self, chunk_ids: list[str]) -> dict[str, Vector]:
-        """The stored vector of each of these chunks the index holds, by chunk id."""
-
-    @abstractmethod
-    def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+    def write(self, update: IndexUpdate) -> None:
         """Apply one write of an index run as a unit no other writer interleaves with, in
         this process or another, a cancelled request's thread included: the chunks of the
         files written take the place of those files' and the removed files' chunks, so a
         reader finds a file's old chunks or its new ones, never neither, and the same write
-        records those files and what built the index. The vector of each chunk is in its row
-        of `vectors`.
+        records those files and what built the index. A chunk the write keeps, by its id,
+        keeps the vectors every model gave it; those of the chunks it drops go with them.
         A write stopped midway leaves its files' old records, so the next run writes them
-        again; the run's last write also does what the store has to at a run's end.
-
-        Vectors of another width than those the index holds (a model replaced under a name
-        nothing pins) start the index again from this write: the files it does not hold are left
-        unrecorded, so the next run indexes them."""
+        again; the run's last write also does what the store has to at a run's end."""
 
     @abstractmethod
-    def search_candidates(
-        self, query_vector: Vector, query: SearchQuery, per_channel: int
+    def chunks_without_vectors(self, model: VectorIdentity) -> list[Chunk]:
+        """Every chunk the index holds that has no vector of the model, in the order they
+        were written."""
+
+    @abstractmethod
+    def add_vectors(
+        self, model: VectorIdentity, chunk_ids: list[str], vectors: VectorMatrix
+    ) -> None:
+        """Keep the model's vector of each chunk, the row of `vectors` at its id's position,
+        as a unit, as `write` is; an id the index no longer holds is skipped, as a write of
+        words may have dropped it meanwhile. Vectors of another width than the model's stored
+        ones (a model replaced under a name nothing pins) take the place of every vector of
+        that model, the words and other models' vectors untouched."""
+
+    @abstractmethod
+    def remove_vectors(self, model: VectorIdentity) -> None:
+        """Drop every vector of the model, so its next search by meaning embeds the chunks
+        again."""
+
+    @abstractmethod
+    def search_words(self, query: SearchQuery, limit: int) -> list[Chunk]:
+        """The `limit` chunks of the query's scope whose words best match its text, best
+        first; none for a text of no word."""
+
+    @abstractmethod
+    def chunks_named(self, folded_name: str, scope: SearchScope) -> list[Chunk]:
+        """The chunks of the scope whose name, case-folded, is this one, in the order of
+        their paths and lines."""
+
+    @abstractmethod
+    def search(
+        self, model: VectorIdentity, query_vector: Vector, query: SearchQuery, per_channel: int
     ) -> SearchCandidates:
-        """The `per_channel` chunks of the query's scope nearest its vector and the
-        `per_channel` whose words best match its text, each with the cosine similarity of
-        its vector to the query's, both read from one state of the index."""
+        """The `per_channel` chunks of the query's scope whose vectors of the model lie
+        nearest its vector and the `per_channel` whose words best match its text, each with
+        the cosine similarity of its vector to the query's where it has one, both read from
+        one state of the index."""
 
 
 class Chunker(ABC):

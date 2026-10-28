@@ -1,14 +1,13 @@
 """What the indexing tests share: projects of files of small functions, an edit of a file, a
-first index of a project, and the identity the fakes and chunkers build an index of."""
+first index of a project, and the identity the chunkers build an index of."""
 
 import os
 from pathlib import Path
 
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.domain.models import IndexIdentity
-from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
+from semantic_code_mcp.services.indexing import WRITE_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
-from tests.fakes import FAKE_EMBEDDER_VERSION, FAKE_MODEL_NAME
 
 NO_PROGRESS = ProgressReporter(None)
 # An mtime well after any file the test just wrote
@@ -17,17 +16,12 @@ LATER_MTIME_SECONDS = 4_000_000_000
 ADDED_FUNCTION = "\n\ndef added():\n    return 1\n"
 # Files whose functions fill one write with the first two and a second with the third
 FILES_OF_FUNCTIONS = 3
-FUNCTIONS_PER_FILE = EMBEDDING_SLICE_SIZE * 3 // 4
+FUNCTIONS_PER_FILE = WRITE_SLICE_SIZE * 3 // 4
 # The names of those files, and the first of them
 MODULE_NAME_FORMAT = "module_{file_number}.py"
 FIRST_MODULE = MODULE_NAME_FORMAT.format(file_number=0)
-# What the fakes and the chunkers in these tests build an index from
-IDENTITY = IndexIdentity(
-    model_name=FAKE_MODEL_NAME,
-    model_revision=None,
-    embedder_version=FAKE_EMBEDDER_VERSION,
-    chunker_version=CHUNKER_VERSION,
-)
+# What the chunkers in these tests build an index from
+IDENTITY = IndexIdentity(chunker_version=CHUNKER_VERSION)
 
 
 def touch_later(path: Path) -> None:

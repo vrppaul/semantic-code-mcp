@@ -182,13 +182,53 @@ async def test_index_codebase_reports_what_it_indexed(project: Path, client: Cli
     assert (report.files_indexed, report.chunks_indexed) == (2, 2)
 
 
-async def test_index_status_counts_the_indexed_project(project: Path, client: Client):
+async def test_index_status_counts_the_indexed_project_whose_index_embeds_nothing(
+    project: Path, client: Client
+):
     async with client:
         await client.call_tool("index_codebase", {"project_path": str(project)})
         result = await client.call_tool("index_status", {"project_path": str(project)})
 
     status = IndexStatusResponse.model_validate(structured(result))
-    assert (status.is_indexed, status.files_count, status.chunks_count) == (True, 2, 2)
+    assert (
+        status.is_indexed,
+        status.files_count,
+        status.chunks_count,
+        status.embedded_chunks_count,
+    ) == (True, 2, 2, 0)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "embedded"),
+    [
+        pytest.param({}, 0, id="by words, the default"),
+        pytest.param({"by_meaning": True}, 2, id="by meaning"),
+    ],
+)
+async def test_a_search_by_meaning_embeds_the_project_first_and_one_by_words_does_not(
+    project: Path, client: Client, arguments: dict[str, object], embedded: int
+):
+    async with client:
+        await client.call_tool(
+            "search_code", {"query": "greeting", "project_path": str(project), **arguments}
+        )
+        result = await client.call_tool("index_status", {"project_path": str(project)})
+
+    assert IndexStatusResponse.model_validate(structured(result)).embedded_chunks_count == embedded
+
+
+async def test_a_search_that_does_not_say_searches_by_meaning_where_the_server_s_setting_does(
+    project: Path, tmp_path: Path, embedder: OnnxEmbedder
+):
+    """For a user who wants meaning always."""
+    settings = Settings(cache_dir=tmp_path / "cache", by_meaning=True)
+    client = Client(create_app(settings, embedder=embedder), mode="legacy")
+
+    async with client:
+        await client.call_tool("search_code", {"query": "greeting", "project_path": str(project)})
+        result = await client.call_tool("index_status", {"project_path": str(project)})
+
+    assert IndexStatusResponse.model_validate(structured(result)).embedded_chunks_count == 2
 
 
 async def test_search_sees_a_function_added_after_indexing(project: Path, client: Client):

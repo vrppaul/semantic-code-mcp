@@ -52,6 +52,12 @@ PATH_GLOB_DESCRIPTION = (
     " with the reason."
 )
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
+BY_MEANING_DESCRIPTION = (
+    "Search by meaning too, the model's vectors fused with the words: for behaviour described"
+    " without the words its code holds, after a search by words missed. The first such search"
+    " of a project embeds every chunk, minutes on a large repository; later ones embed what"
+    " changed. Left out, the server's setting, SEMANTIC_CODE_MCP_BY_MEANING, false by default."
+)
 PROJECT_PATH_DESCRIPTION = (
     "Absolute path to the project, or to a directory inside its git repository. Left out,"
     " the client's workspace root: the directory Claude Code was started in, which must lie in"
@@ -75,24 +81,27 @@ async def search_code(  # noqa: PLR0913
     languages: Annotated[list[Language] | None, Field(description=LANGUAGES_DESCRIPTION)] = None,
     path_glob: Annotated[str | None, Field(description=PATH_GLOB_DESCRIPTION)] = None,
     exclude_glob: Annotated[str | None, Field(description=EXCLUDE_GLOB_DESCRIPTION)] = None,
+    by_meaning: Annotated[bool | None, Field(description=BY_MEANING_DESCRIPTION)] = None,
     include_debug: bool = False,
 ) -> SearchCodeResponse:
-    """Search for code semantically similar to the query.
+    """Find the functions, classes, methods and document sections of a project by the words
+    their code uses.
 
-    Finds code by meaning, not just text matching. Use this when you want to find
-    code related to a concept without knowing exact variable/function names; for an
-    exact identifier or string, Grep is faster and complete.
+    By default it matches the words of code: write the identifiers and terms the code
+    would use, and on a miss search again with others. A query that is a name, or a
+    qualified one, brings the chunks of that name first:
+    - "retry backoff delay attempts"
+    - "parse_args config options"
+    - "Stack.push"
 
-    Describe what the code does, as its docstring would, in three to ten words:
-    - "retry a failed request after a growing delay"
-    - "parse command-line options into a config"
-    - "release the lock when a write fails"
+    Set `by_meaning` for behaviour described without the code's words, after a search by
+    words missed. For every place a name is used, Grep: this returns only the best matches.
 
     Indexes Python, Rust and Markdown files. Automatically indexes the project if not
     already indexed, and re-indexes any files that have changed since the last search.
 
     Args:
-        query: Natural language description of what you're looking for.
+        query: The words to find, as code would write them, or a name.
         project_path: Absolute path to the project, or to a directory inside its git
             repository, which keeps the search to that directory; left out, the client's
             workspace root, which must lie in a git repository.
@@ -101,14 +110,14 @@ async def search_code(  # noqa: PLR0913
         languages: Only chunks of files in these languages.
         path_glob: Only files this glob names, read from the directory searched.
         exclude_glob: No file this glob names, read as path_glob is.
+        by_meaning: Search by meaning too, fused with the words.
         include_debug: Also return timings and counts of the search.
 
     Returns:
         The root of the project whose index answered and the directory the search kept to;
-        then matching chunks, best first by meaning and words together, with the file's
-        absolute path, line range, name, kind (module, function, method, class, section),
-        the class, impl or heading it belongs to, content, and its similarity in meaning to
-        the query alone, which a hit its words found can show low.
+        then matching chunks, best first, with the file's absolute path, line range, name,
+        kind (module, function, method, class, section), the class, impl or heading it
+        belongs to, and content.
     """
     with failures_as_tool_errors():
         # Read before git is asked anything, so a glob refused costs nothing
@@ -116,6 +125,7 @@ async def search_code(  # noqa: PLR0913
         excluded = given_glob(exclude_glob)
         location = await located_project(ctx, project_path, roots)
         services = project_services(ctx, location.root)
+        registry = ctx.request_context.lifespan_context
         scope = SearchScope(
             kinds=tuple(chunk_kinds or ()),
             languages=tuple(languages or ()),
@@ -124,7 +134,12 @@ async def search_code(  # noqa: PLR0913
             directory=location.directory,
         )
         report = await services.search.search(
-            SearchQuery(text=query, limit=limit, scope=scope),
+            SearchQuery(
+                text=query,
+                limit=limit,
+                scope=scope,
+                by_meaning=registry.meaning_by_default if by_meaning is None else by_meaning,
+            ),
             location.root,
             progress=ProgressReporter(ctx.report_progress),
         )
