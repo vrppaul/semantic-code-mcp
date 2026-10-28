@@ -88,15 +88,19 @@ DEFAULT_EDITS = 20
 JSON_INDENT = 2
 # The commands that keep a baseline, which holds the default store's figures alone
 BASELINE_COMMANDS = frozenset({"quality", "speed"})
+# How a report that named no store names the one it ran in
+DEFAULT_STORE_NAME = "the server's default"
 EXIT_OK = 0
 EXIT_FAILED = 1
 
 
 class QualityReport(BaseModel):
-    """Search quality over every corpus measured."""
+    """Search quality over every corpus measured, in the store a run named."""
 
     model_config = ConfigDict(frozen=True)
 
+    # None for the server's default store at the commit measured
+    index_store: StoreKind | None
     corpora: tuple[CorpusQuality, ...]
 
 
@@ -109,11 +113,14 @@ class AgentsReport(BaseModel):
 
 
 class SpeedReport(BaseModel):
-    """Speeds over every corpus measured, and the machine they were measured on."""
+    """Speeds over every corpus measured, the machine they were measured on, and the store
+    a run named."""
 
     model_config = ConfigDict(frozen=True)
 
     machine: Machine
+    # None for the server's default store at the commit measured
+    index_store: StoreKind | None
     corpora: tuple[CorpusSpeed, ...]
 
 
@@ -203,11 +210,15 @@ def positive_integer(text: str) -> int:
 def run_quality(
     corpora: list[Corpus], *, index_store: StoreKind | None, save_baseline: bool, held_out: bool
 ) -> None:
-    report = QualityReport(corpora=tuple(asyncio.run(collect_quality(corpora, index_store))))
+    report = QualityReport(
+        index_store=index_store,
+        corpora=tuple(asyncio.run(collect_quality(corpora, index_store))),
+    )
     baseline = read_report(BASELINE_DIRECTORY / QUALITY_FILE, QualityReport)
     baseline_by_corpus: dict[str, CorpusQuality] = {}
     if baseline is not None:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
+        print(describe_stores(report.index_store, baseline.index_store))
     for entry in report.corpora:
         print(describe_quality(entry, baseline_by_corpus.get(entry.corpus), held_out=held_out))
     write_report(report, QUALITY_FILE, save_baseline=save_baseline)
@@ -218,6 +229,7 @@ def run_speed(
 ) -> None:
     report = SpeedReport(
         machine=current_machine(),
+        index_store=index_store,
         corpora=tuple(asyncio.run(collect_speed(corpora, index_store, edits))),
     )
     baseline = read_report(BASELINE_DIRECTORY / SPEED_FILE, SpeedReport)
@@ -225,9 +237,19 @@ def run_speed(
     baseline_by_corpus: dict[str, CorpusSpeed] = {}
     if baseline is not None and baseline.machine == report.machine:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
+        print(describe_stores(report.index_store, baseline.index_store))
     for entry in report.corpora:
         print(describe_speed(entry, baseline_by_corpus.get(entry.corpus)))
     write_report(report, SPEED_FILE, save_baseline=save_baseline)
+
+
+def describe_stores(measured: StoreKind | None, baseline: StoreKind | None) -> str:
+    """The line naming the store a run measured and the one its baseline did."""
+    return f"store: {store_name(measured)}; the baseline's: {store_name(baseline)}"
+
+
+def store_name(index_store: StoreKind | None) -> str:
+    return DEFAULT_STORE_NAME if index_store is None else index_store
 
 
 def chosen_corpora(names: list[str], files: list[Path]) -> list[Corpus]:

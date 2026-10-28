@@ -144,13 +144,19 @@ class ServerStarter:
 def server_environment(index_directory: Path, index_store: StoreKind | None) -> dict[str, str]:
     """The environment a server of the harness runs in: the caller's without its settings,
     the index directory, and the store a run names, where it names one."""
-    environment = {
-        name: value for name, value in os.environ.items() if not name.startswith(SETTINGS_PREFIX)
-    }
+    environment = environment_without_settings()
     environment[CACHE_DIR_VARIABLE] = str(index_directory)
     if index_store is not None:
         environment[INDEX_STORE_VARIABLE] = index_store
     return environment
+
+
+def environment_without_settings() -> dict[str, str]:
+    """The caller's environment without the server's settings (`SEMANTIC_CODE_MCP_*`), so a
+    server started in it takes its defaults."""
+    return {
+        name: value for name, value in os.environ.items() if not name.startswith(SETTINGS_PREFIX)
+    }
 
 
 def tool_payload(result: CallToolResult) -> object:

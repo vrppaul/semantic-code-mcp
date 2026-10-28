@@ -13,9 +13,11 @@ from evals.agents import (
     is_right_answer,
     is_right_file,
     read_transcript,
+    session_environment,
     summarize_arm,
 )
 from evals.corpus import Answer
+from evals.server import INDEX_STORE_VARIABLE
 
 WORKING_TREE = Path("/checkouts/click")
 KEYS = (
@@ -198,3 +200,15 @@ def test_an_arm_s_summary_counts_its_right_answers_searches_and_reads_and_averag
         summary.read_calls,
         summary.cost_usd,
     ) == (3, 2, 3, 3.0, 60000, 1, 1, 0.6)
+
+
+def test_a_session_s_servers_never_take_the_caller_s_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """As the harness's own server, which indexes before the sessions, never takes them: the
+    two would keep their indexes in different stores."""
+    monkeypatch.setenv(INDEX_STORE_VARIABLE, "lancedb")
+
+    environment = session_environment(tmp_path)
+
+    assert INDEX_STORE_VARIABLE not in environment

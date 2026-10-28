@@ -30,7 +30,12 @@ from statistics import mean
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from evals.corpus import Answer, Corpus, Query, QuestionKind
-from evals.server import CACHE_DIR_VARIABLE, SERVER_MODULE, ServerStarter
+from evals.server import (
+    CACHE_DIR_VARIABLE,
+    SERVER_MODULE,
+    ServerStarter,
+    environment_without_settings,
+)
 
 CLAUDE_COMMAND = "claude"
 # The model most sessions of Claude Code run on
@@ -416,6 +421,13 @@ def allowed_tools(arm: AgentArm) -> tuple[str, ...]:
             return (*OWN_TOOLS, SEARCH_TOOL, STATUS_TOOL)
 
 
+def session_environment(config_directory: Path) -> dict[str, str]:
+    """The environment a session runs in: the caller's without the server's settings, so the
+    servers its sessions start take the defaults the harness's own server takes, and the
+    agents' config directory."""
+    return {**environment_without_settings(), CONFIG_DIRECTORY_VARIABLE: str(config_directory)}
+
+
 def run_session(query: Query, setting: SessionSetting) -> TranscriptReading:
     """Ask one question of Claude Code headless in the corpus's checkout, as an arm has it."""
     command = [
@@ -436,7 +448,7 @@ def run_session(query: Query, setting: SessionSetting) -> TranscriptReading:
         "--disallowedTools",
         *FORBIDDEN_TOOLS,
     ]
-    environment = {**os.environ, CONFIG_DIRECTORY_VARIABLE: str(setting.config_directory)}
+    environment = session_environment(setting.config_directory)
     try:
         # Claude Code from the PATH, given the harness's own question and flags
         completed = subprocess.run(  # nosec B603, B607

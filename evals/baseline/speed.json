@@ -4,6 +4,7 @@
     "logical_cores": 16,
     "python": "3.14.3"
   },
+  "index_store": null,
   "corpora": [
     {
       "corpus": "click",
