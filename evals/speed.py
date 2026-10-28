@@ -194,8 +194,8 @@ async def measure_speed(
         await connection.search(working_tree, queries[0], RESULTS_PER_QUERY)
         first_search_seconds = time.perf_counter() - started
 
-    # Last: a cold index keeps every core busy for minutes while the model embeds, and the
-    # machine it leaves warm would slow what is measured after it
+    # Last: a cold index keeps a core busy for seconds, 15 at Sentry's size, and the machine
+    # it leaves warm would slow what is measured after it
     cold_first_answer_seconds = await timed_cold_first_answer_seconds(
         working_tree, queries[0], servers
     )

@@ -107,8 +107,8 @@ async def search_code(  # noqa: PLR0913
     Returns:
         The root of the project whose index answered and the directory the search kept to;
         then matching chunks, best first, with the file's absolute path, line range, name,
-        kind (module, function, method, class, section), the class, impl or heading it
-        belongs to, and content.
+        kind (module, function, method, class, section), the class, impl, module or heading
+        it belongs to, and content.
     """
     with failures_as_tool_errors():
         # Read before git is asked anything, so a glob refused costs nothing

@@ -139,7 +139,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
 | `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS` | `10` | How long git may take to list the files before discovery walks the file system instead |
-| `SEMANTIC_CODE_MCP_SEARCH_MODE` | `words` | How every search ranks: `words`, BM25 over the chunks' words, no model loaded; or `words_and_meaning`, the model's vectors searched too and fused with the words by rank. The first search of a project by meaning embeds every chunk inside the call, minutes on a large repository; later ones embed what changed. Meaning needs the extra `semantic-code-mcp[meaning]`: without it a server set to it stops as it starts, naming the extra |
+| `SEMANTIC_CODE_MCP_SEARCH_MODE` | `words` | How every search ranks: `words`, BM25 over the chunks' words, no model loaded; or `words_and_meaning`, the model's vectors searched too and fused with the words by rank. The first search of a project by meaning embeds every chunk inside the call, minutes at 20k chunks and about an hour at 90k; later ones embed what changed. Meaning needs the extra `semantic-code-mcp[meaning]`: without it a server set to it stops as it starts, naming the extra |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | In a search by meaning, how close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share. Below 0.25, lower `MIN_SIMILARITY_WHEN_WORDS_MATCH` with it, or the server refuses to start |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.25` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY`. A result named as the query comes back however far |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
@@ -217,7 +217,7 @@ Steps:
 uv add tree-sitter-mylang
 ```
 
-Add the language to `Language` in `src/semantic_code_mcp/domain/models.py`, then create `src/semantic_code_mcp/chunkers/mylang.py`:
+Add the language to `Language` in `src/semantic_code_mcp/domain/models.py`, and the separator its qualified names are written with (`Stack.push`, `outer::Stack`) to `PARENT_SEPARATORS` beside it; then create `src/semantic_code_mcp/chunkers/mylang.py`:
 
 ```python
 from enum import StrEnum, auto
@@ -244,8 +244,6 @@ class MyLangChunker(BaseTreeSitterChunker):
     language = Language.mylang
     grammar = tree_sitter.Language(tsmylang.language())
     extensions = (".ml",)
-    # Joins an owner's name to what is defined in it: `Stack.push`
-    parent_separator = "."
 
     @override
     def _extract_chunks(self, root: Node, collector: ChunkCollector) -> None:

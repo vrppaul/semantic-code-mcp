@@ -40,7 +40,7 @@ and `markdown`.
   for `project_path`.
 - The first call indexes the whole project's words, seconds even on a large one; on a
   server its user set to search by meaning too, the first search also embeds every chunk,
-  minutes on a large one, with progress. Wait for it; do not call again while it runs.
+  minutes on a large one and about an hour on one of 90k chunks, with progress. Wait for it; do not call again while it runs.
 - If the tools are missing, tell the user the server is not installed and point them to
   semantic-code-mcp's README (github.com/vrppaul/semantic-code-mcp); do not install it
   yourself.

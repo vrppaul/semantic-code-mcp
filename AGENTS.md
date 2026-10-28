@@ -30,6 +30,7 @@ Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers, the extr
 - **Tests hold behaviour.** A behaviour someone can name gets a test first, seen failing, at the cheapest level: `.claude/rules/testing.md`.
 - **Review before presenting.** Read every changed line: the right layer? redundant work? every line needed?
 - **Speed and search quality are measured**, never judged by feel; a change to either says its numbers.
+- **Speed has targets**: `evals/targets.py` holds them and `evals speed` names each one a run crosses; a change that crosses one says why, with its figures.
 - **Ask first** before adding a dependency, changing the storage schema, a domain model or an MCP tool's signature.
 - Never commit secrets or credentials.
 - A commit follows Conventional Commits with a required scope, `type(scope): description`.

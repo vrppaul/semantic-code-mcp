@@ -37,6 +37,7 @@ import sys
 import tempfile
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from enum import StrEnum, auto
 from pathlib import Path
 
 from mcp.shared.exceptions import MCPError
@@ -96,6 +97,7 @@ from evals.speed import (
     current_machine,
     measure_speed,
 )
+from evals.targets import TargetCrossed, crossed_targets
 from semantic_code_mcp.domain.models import SearchMode, StoreKind
 from semantic_code_mcp.logging import configure_logging
 
@@ -123,12 +125,19 @@ SERVER_LOG_FILE = "server.log"
 # edit's; a unit test holds the two together, as evals import no store
 DEFAULT_EDITS = 20
 JSON_INDENT = 2
+
+
+class EvalsCommand(StrEnum):
+    """What a run of the harness measures."""
+
+    quality = auto()
+    speed = auto()
+    agents = auto()
+    rescore = auto()
+
+
 # The commands that keep a baseline, which holds the default store's figures alone
-BASELINE_COMMANDS = frozenset({"quality", "speed"})
-# The command that asks agents, which asks only the corpora it names
-AGENTS_COMMAND = "agents"
-# The command that times the server, which may leave meaning out
-SPEED_COMMAND = "speed"
+BASELINE_COMMANDS = frozenset({EvalsCommand.quality, EvalsCommand.speed})
 # How a report that named no store names the one it ran in
 DEFAULT_STORE_NAME = "the server's default"
 # How a report that named no search mode names the one its servers searched in
@@ -170,21 +179,21 @@ def main() -> int:
     BASELINE_DIRECTORY.mkdir(exist_ok=True)
     try:
         match arguments.command:
-            case "quality":
+            case EvalsCommand.quality:
                 run_quality(
                     load_corpora(arguments.corpus),
                     ServerOptions(index_store=arguments.store, search_mode=arguments.search_mode),
                     save_baseline=arguments.save_baseline,
                     held_out=arguments.held_out,
                 )
-            case "speed":
+            case EvalsCommand.speed:
                 run_speed(
                     chosen_corpora(arguments.corpus, arguments.corpus_file),
                     index_store=arguments.store,
                     run=SpeedRun(edits=arguments.edits, by_meaning=not arguments.words_only),
                     save_baseline=arguments.save_baseline,
                 )
-            case "agents":
+            case EvalsCommand.agents:
                 run_agents(
                     AgentsRun(
                         name=datetime.now(tz=UTC).strftime(RUN_NAME_FORMAT),
@@ -194,7 +203,7 @@ def main() -> int:
                         model=arguments.model,
                     )
                 )
-            case "rescore":
+            case EvalsCommand.rescore:
                 rescore_agents(arguments.run)
     except (
         ToolCallFailedError,
@@ -217,8 +226,12 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     # A command that names no search mode searches as the server's default does
     parser.set_defaults(search_mode=None)
     commands = parser.add_subparsers(dest="command", required=True)
-    quality = commands.add_parser("quality", help="search quality: where the answers land")
-    speed = commands.add_parser(SPEED_COMMAND, help="indexing, search, memory and index growth")
+    quality = commands.add_parser(
+        EvalsCommand.quality, help="search quality: where the answers land"
+    )
+    speed = commands.add_parser(
+        EvalsCommand.speed, help="indexing, search, memory and index growth"
+    )
     for command in (quality, speed):
         command.add_argument(
             "--corpus", action="append", default=[], choices=available_corpus_names()
@@ -239,7 +252,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     # every chunk on its first search, an hour at Sentry's size
     speed.add_argument("--words-only", action="store_true")
     agents = commands.add_parser(
-        AGENTS_COMMAND, help="search judged by agents: Claude Code headless"
+        EvalsCommand.agents, help="search judged by agents: Claude Code headless"
     )
     agents.add_argument("--corpus", action="append", default=[], choices=available_corpus_names())
     # A corpus kept outside the repository, as a private one's questions are
@@ -248,11 +261,12 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     agents.add_argument("--repeats", type=positive_integer, default=1)
     agents.add_argument("--model", default=DEFAULT_MODEL)
     rescore = commands.add_parser(
-        "rescore", help="a kept agents run scored again by its corpora's keys as they are now"
+        EvalsCommand.rescore,
+        help="a kept agents run scored again by its corpora's keys as they are now",
     )
     rescore.add_argument("run", help="the run's name, as `agents` printed it")
     arguments = parser.parse_args(argv)
-    if arguments.command == AGENTS_COMMAND and not (arguments.corpus or arguments.corpus_file):
+    if arguments.command == EvalsCommand.agents and not (arguments.corpus or arguments.corpus_file):
         # The pinned corpora are small enough to grep: about 130 sessions that show nothing
         parser.error("agents asks only the corpora it names: give --corpus or --corpus-file")
     keeps_a_baseline = arguments.command in BASELINE_COMMANDS
@@ -260,7 +274,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         parser.error("--save-baseline keeps the default store's figures: leave --store out")
     if keeps_a_baseline and arguments.save_baseline and arguments.search_mode is not None:
         parser.error("--save-baseline keeps the default search's figures: leave --search-mode out")
-    if arguments.command == SPEED_COMMAND and arguments.save_baseline and arguments.words_only:
+    if arguments.command == EvalsCommand.speed and arguments.save_baseline and arguments.words_only:
         parser.error("--save-baseline keeps the speeds by meaning too: leave --words-only out")
     return arguments
 
@@ -315,7 +329,18 @@ def run_speed(
         print(describe_stores(report.index_store, baseline.index_store))
     for entry in report.corpora:
         print(describe_speed(entry, baseline_by_corpus.get(entry.corpus)))
+        for crossing in crossed_targets(entry):
+            print(describe_crossing(crossing))
     write_report(report, SPEED_FILE, save_baseline=save_baseline)
+
+
+def describe_crossing(crossing: TargetCrossed) -> str:
+    """A line of a target a corpus's speeds crossed, which its change must explain."""
+    target = crossing.target
+    return (
+        f"  crosses a target: {target.figure} {crossing.measured}, "
+        f"at most {target.most} for {target.size.name}"
+    )
 
 
 def describe_stores(measured: StoreKind | None, baseline: StoreKind | None) -> str:
@@ -377,7 +402,7 @@ async def collect_agents(run: AgentsRun, directory: RunDirectory) -> list[Corpus
     for corpus_file in run.corpus_files:
         corpus = corpus_checkout(corpus_file)
         with (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log:
-            server_log.write(log_header(AGENTS_COMMAND, corpus.corpus))
+            server_log.write(log_header(EvalsCommand.agents, corpus.corpus))
             # The agents' own servers take the default store, so this one does too
             servers = ServerStarter(server_log, DEFAULT_OPTIONS)
             sessions = await measure_agents(corpus, run, directory, servers, print_session)
@@ -489,7 +514,7 @@ async def collect_quality(corpora: list[Corpus], options: ServerOptions) -> list
             tempfile.TemporaryDirectory() as index_directory,
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
-            server_log.write(log_header("quality", corpus))
+            server_log.write(log_header(EvalsCommand.quality, corpus))
             servers = ServerStarter(server_log, options)
             async with servers.connect(Path(index_directory)) as connection:
                 measured.append(await measure_quality(corpus, working_tree, off_topic, connection))
@@ -506,7 +531,7 @@ async def collect_speed(
             tempfile.TemporaryDirectory() as index_directory,
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
-            server_log.write(log_header("speed", corpus))
+            server_log.write(log_header(EvalsCommand.speed, corpus))
             servers = ServerStarter(server_log, options)
             measured.append(
                 await measure_speed(corpus, working_tree, Path(index_directory), run, servers)
@@ -514,7 +539,7 @@ async def collect_speed(
     return measured
 
 
-def log_header(command: str, corpus: Corpus) -> str:
+def log_header(command: EvalsCommand, corpus: Corpus) -> str:
     """The line that opens one corpus's server log in the shared log file."""
     return f"\n===== {command} {corpus.corpus.name} {datetime.now(tz=UTC).isoformat()} =====\n"
 
