@@ -1,6 +1,6 @@
 # 006: Rebuild on mcp 2.x — layers, storage, search, gates
 
-**Status**: accepted
+**Status**: accepted; D4 (storage), D7 (embedding) and D9 (search), and stage 7's speed targets, revised by 009 (SQLite the default store, LanceDB an extra; a search by words by default, meaning a server's setting; the targets as data in `evals/targets.py`); the waits measured after it, and their optimizations, in 010
 **Date**: 2026-10-25
 **Supersedes**: 002 (agent instruction files); in part 001 (tool list, storage layout) and 004 (base chunker helpers; the per-language class layout stays)
 
@@ -89,6 +89,8 @@ Response models live in `server/`, built by presenter functions: `SearchCodeResp
 
 ### D4. Storage
 
+Revised by 009 (D8, D11): SQLite is the default store, LanceDB an optional extra, both behind ADR 007's contract.
+
 One LanceDB database per project index, with three parts:
 
 - **`chunks` table**: `chunk_id`, `vector` (dimension from the embedder, not a constant), `path`, `language`, `kind`, `name`, `parent`, `line_start`, `line_end`, `content`, `search_text`. The full-text index covers `search_text` (D9).
@@ -148,6 +150,8 @@ Keep one class per language on a shared base (ADR 004). Fix the base first, beca
 
 ### D7. Embedding
 
+Revised by 009 (D2): the model serves a search by meaning alone, a server's setting off by default, and its libraries are the extra `semantic-code-mcp[meaning]`.
+
 - **Interface:** `Embedder` ABC with `model_name`, `dimension`, `embed_query(text) -> vector` and `embed_documents(texts, on_progress) -> matrix`. Queries and documents are separate, because candidate models need different prefixes. The prefixes live in a data table of model profiles, not in code.
 - **Loading:** the sentence-transformers adapter loads the model inside `asyncio.to_thread` on first use and reports progress ("Loading embedding model"). Only tools that embed trigger it. `index_status` never loads the model (R12).
 - **Progress:** `embed_documents` works in slices and reports progress after each one, instead of one multi-minute call behind a single "70%" (S1d).
@@ -170,6 +174,8 @@ Keep one class per language on a shared base (ADR 004). Fix the base first, beca
 - Background re-indexing (answering from the old index while a new one builds) stays in TODO. Locks and the files table make it possible later.
 
 ### D9. Search
+
+Revised by 009 (D1, D2): a search ranks by words by default, the chunks named as the query first; the fused ranking below is what a server set to search by meaning gives.
 
 - **Candidates:** the vector top `limit × CANDIDATE_FACTOR` and the full-text top `limit × CANDIDATE_FACTOR`, both with the same `where` prefilter built from `SearchQuery` (kinds, languages, path globs). Filtering before the cut keeps a filtered result full (Q5, GH3).
 - **Fusion:** Reciprocal Rank Fusion, `Σ 1/(RRF_K + rank)`, written by us (about 10 lines, covered by property tests), keyed by `chunk_id`. It replaces `0.5·(1−d/2) + 0.5·min(1, bm25/10)`, whose constant was tuned against the tantivy engine, while lancedb 0.27 uses native full-text search (Q3). Q4 shows that the keyword channel helps, so we keep it.

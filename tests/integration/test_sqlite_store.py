@@ -11,7 +11,12 @@ from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.models import Chunk, IndexUpdate
 from semantic_code_mcp.storage.search_text import search_text
-from semantic_code_mcp.storage.sqlite import DATABASE_FILE, SqliteIndexStore, SqliteStoreError
+from semantic_code_mcp.storage.sqlite import (
+    DAMAGED_SUFFIX,
+    DATABASE_FILE,
+    SqliteIndexStore,
+    SqliteStoreError,
+)
 from tests.stores import (
     IDENTITY,
     MODEL,
@@ -131,6 +136,23 @@ def test_a_write_that_fails_midway_leaves_the_index_as_it_was(tmp_path: Path):
     ) == ([record_of("kept.py")], ["kept"], 1)
 
 
+def test_a_word_a_question_repeats_counts_once(tmp_path: Path):
+    """Each word of a question is one more term FTS5 scores every chunk by: a word repeated
+    would weigh more, and cost as much again."""
+    store = SqliteIndexStore(index_directory_of(SqliteIndexStore, tmp_path / "index", IDENTITY))
+    chunks = [
+        function_chunk("retrying", "retrying.py", "def retrying(): retry retry"),
+        function_chunk("backing_off", "backing_off.py", "def backing_off(): " + "backoff " * 6),
+        function_chunk("both", "both.py", "def both(): retry backoff once"),
+    ]
+    store.write(update_of(chunks, removed_paths=[]))
+
+    once = [chunk.name for chunk in matching(store, "retry backoff")]
+    repeated = [chunk.name for chunk in matching(store, "retry Retry retry RETRY retry backoff")]
+
+    assert repeated == once
+
+
 def session_store(project_directory: Path) -> SqliteIndexStore:
     """A store of the index, as a session's process opens it, with a directory of its own."""
     return SqliteIndexStore(index_directory_of(SqliteIndexStore, project_directory, IDENTITY))
@@ -185,6 +207,55 @@ def test_a_first_build_stopped_midway_leaves_no_index_and_the_next_builds_whole(
     next_build.release_run()
 
     assert (left, [chunk.name for chunk in matching(next_build, "def")]) == (0, ["last"])
+
+
+# A database a torn write leaves, or a sync tool, or a hand: no database, and no tables
+DAMAGES = [
+    pytest.param(b"\x8f" * 65536, id="not a database"),
+    pytest.param(b"", id="truncated to nothing"),
+]
+
+
+def damaged_index(project_directory: Path, damage: bytes) -> Path:
+    """An index built, then its database damaged; the database's path."""
+    built = session_store(project_directory)
+    built.write(update_of([function_chunk("first", "first.py", "def first(): pass")], []))
+    database = builder_database(project_directory)
+    database.write_bytes(damage)
+    return database
+
+
+def set_aside_of(database: Path) -> list[Path]:
+    return list(database.parent.glob(f"{DATABASE_FILE}{DAMAGED_SUFFIX}*"))
+
+
+@pytest.mark.parametrize("damage", DAMAGES)
+def test_a_read_of_a_damaged_database_finds_no_index_and_sets_the_file_aside(
+    tmp_path: Path, damage: bytes
+):
+    """Otherwise every call would fail on it for good, as nothing would build it again."""
+    database = damaged_index(tmp_path / "index", damage)
+
+    chunks = session_store(tmp_path / "index").counts(MODEL).chunks
+
+    assert (chunks, len(set_aside_of(database)), database.exists()) == (0, 1, False)
+
+
+@pytest.mark.parametrize("damage", DAMAGES)
+def test_a_run_that_meets_a_damaged_database_first_builds_the_index_whole(
+    tmp_path: Path, damage: bytes
+):
+    database = damaged_index(tmp_path / "index", damage)
+    store = session_store(tmp_path / "index")
+
+    store.try_hold_for_run()
+    store.write(update_of([function_chunk("rebuilt", "rebuilt.py", "def rebuilt(): pass")], []))
+    store.release_run()
+
+    assert ([chunk.name for chunk in matching(store, "def")], len(set_aside_of(database))) == (
+        ["rebuilt"],
+        1,
+    )
 
 
 def builder_database(project_directory: Path) -> Path:

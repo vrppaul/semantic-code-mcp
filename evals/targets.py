@@ -26,6 +26,7 @@ class SpeedFigure(StrEnum):
     cold_first_answer_seconds = auto()
     warm_search_p95_milliseconds = auto()
     narrowed_search_p50_milliseconds = auto()
+    long_question_p50_milliseconds = auto()
     status_p50_milliseconds = auto()
     search_after_edit_p50_milliseconds = auto()
     search_after_edit_slowest_milliseconds = auto()
@@ -98,6 +99,12 @@ TARGETS = (
     SpeedTarget(
         figure=SpeedFigure.narrowed_search_p50_milliseconds, size=HUNDRED_THOUSAND, most=500.0
     ),
+    # One question of 40 words, as an agent writes when it pastes a sentence: each word one
+    # more term the full-text index scores every chunk by
+    SpeedTarget(figure=SpeedFigure.long_question_p50_milliseconds, size=PINNED, most=150.0),
+    SpeedTarget(
+        figure=SpeedFigure.long_question_p50_milliseconds, size=HUNDRED_THOUSAND, most=700.0
+    ),
     # `index_status`: the stale check each search makes first
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=PINNED, most=50.0),
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=HUNDRED_THOUSAND, most=400.0),
@@ -150,6 +157,8 @@ def figure_of(speed: CorpusSpeed, figure: SpeedFigure) -> float | None:  # noqa:
             return speed.warm_search_p95_milliseconds
         case SpeedFigure.narrowed_search_p50_milliseconds:
             return speed.narrowed_search_p50_milliseconds
+        case SpeedFigure.long_question_p50_milliseconds:
+            return speed.long_question_p50_milliseconds
         case SpeedFigure.status_p50_milliseconds:
             return speed.status_p50_milliseconds
         case SpeedFigure.search_after_edit_p50_milliseconds:

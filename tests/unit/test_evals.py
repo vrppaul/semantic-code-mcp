@@ -31,7 +31,7 @@ from evals.server import (
     ServerStarter,
     server_environment,
 )
-from evals.speed import Edit, edit_text, edits_in_turn
+from evals.speed import LONG_QUESTION_WORDS, Edit, edit_text, edits_in_turn, long_question
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language, SearchMode, StoreKind
@@ -459,3 +459,16 @@ def test_an_agents_run_asks_only_the_corpora_it_names():
     sessions showing nothing."""
     with pytest.raises(SystemExit):
         parse_arguments(["agents", "--arm", "own_tools"])
+
+
+def test_a_long_question_is_the_first_words_of_the_corpus_s_questions_run_together():
+    """As an agent writes when it pastes a sentence or a list of terms: each word is one
+    more term the full-text index scores every chunk by."""
+    questions = [
+        " ".join(f"word{number}" for number in range(start, start + 10))
+        for start in (0, 10, 20, 30, 40)
+    ]
+
+    asked = long_question(questions)
+
+    assert asked.split() == [f"word{number}" for number in range(LONG_QUESTION_WORDS)]

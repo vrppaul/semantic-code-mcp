@@ -46,6 +46,7 @@ import threading
 import uuid
 from collections.abc import Generator, Sequence
 from contextlib import closing, contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar, override
 
@@ -91,6 +92,15 @@ log = structlog.get_logger()
 DATABASE_FILE = "index.sqlite"
 # A new database is made under this name beside its own, then renamed into place whole
 UNFINISHED_SUFFIX = ".unfinished"
+# Where a damaged database is set aside, with its write-ahead log and its index of it, by the
+# moment it was found, so the next run builds the index whole while the file stays to read
+DAMAGED_SUFFIX = ".damaged-"
+DAMAGED_MOMENT_FORMAT = "%Y%m%dT%H%M%S%fZ"
+COMPANION_SUFFIXES = ("-wal", "-shm")
+# What SQLite names the error of a file that is no database, or of one whose pages broke
+DAMAGED_DATABASE_ERRORS = frozenset({"SQLITE_NOTADB", "SQLITE_CORRUPT"})
+# Whether a database holds the index's tables, which a file truncated to nothing lacks
+INDEX_TABLES_PRESENT = "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'files'"
 # FTS5's tokenizer: Porter's stemmer over unicode61's words, which split at what is no letter
 # or digit, as `search_text` expects of identifiers' parts; stop words are kept
 FULL_TEXT_TOKENIZER = "porter unicode61"
@@ -311,13 +321,13 @@ class RowSimilarities(BaseModel):
     row_ids: NDArray[numpy.int64]
     similarities: NDArray[numpy.float32]
 
-    def of(self, row_id: int | None) -> float | None:
+    def similarity_of_row(self, row_id: int | None) -> float | None:
         """The similarity of the vector of this row id; None for a chunk without one."""
         if row_id is None:
             return None
         return float(self.similarities[numpy.searchsorted(self.row_ids, row_id)])
 
-    def among(self, row_ids: NDArray[numpy.int64]) -> RowSimilarities:
+    def restricted_to(self, row_ids: NDArray[numpy.int64]) -> RowSimilarities:
         """Those of the vectors of these row ids alone."""
         kept = numpy.isin(self.row_ids, row_ids)
         return RowSimilarities(row_ids=self.row_ids[kept], similarities=self.similarities[kept])
@@ -386,8 +396,9 @@ class SqliteIndexStore(DirectoryStore):
     @override
     def try_hold_for_run(self) -> bool:
         held = super().try_hold_for_run()
-        # A run that finds no database builds it whole, out of every reader's sight
-        self._building_whole = held and not self._database().is_file()
+        # A run that finds no database it can read builds it whole, out of every reader's
+        # sight
+        self._building_whole = held and not self._readable_database()
         self._whole_build_made = False
         return held
 
@@ -426,13 +437,8 @@ class SqliteIndexStore(DirectoryStore):
             try:
                 if self._building_whole:
                     self._write_whole_build(update)
-                    return
-                self._make_database()
-                with closing(self._connect()) as connection, connection:
-                    # The connection commits the transaction, or rolls it back on any error
-                    connection.execute(BEGIN_WRITE)
-                    replace_chunks(connection, update)
-                    replace_records(connection, update)
+                else:
+                    self._write_in_place(update)
             except sqlite3.Error as error:
                 message = f"SQLite could not write the index in {self._directory.path}: {error}"
                 raise SqliteStoreError(message) from error
@@ -581,6 +587,16 @@ class SqliteIndexStore(DirectoryStore):
                 message = f"SQLite could not write the index in {self._directory.path}: {error}"
                 raise SqliteStoreError(message) from error
 
+    def _write_in_place(self, update: IndexUpdate) -> None:
+        """One write of a run into the database readers read, in one transaction. Called under
+        the write lock."""
+        self._make_database()
+        with closing(self._connect()) as connection, connection:
+            # The connection commits the transaction, or rolls it back on any error
+            connection.execute(BEGIN_WRITE)
+            replace_chunks(connection, update)
+            replace_records(connection, update)
+
     def _write_whole_build(self, update: IndexUpdate) -> None:
         """One write of a whole build, into its own database, made by its first write; the
         last switches it to WAL and renames it into place. Called under the write lock."""
@@ -624,9 +640,10 @@ class SqliteIndexStore(DirectoryStore):
     @contextmanager
     def _snapshot(self) -> Generator[sqlite3.Connection | None]:
         """A connection reading one state of the index inside a transaction of its own; None
-        while the database is not made yet. The index is marked as used."""
+        while the database is not made yet, or was damaged and is set aside. The index is
+        marked as used."""
         self._directory.note_use()
-        if not self._database().is_file():
+        if not self._readable_database():
             yield None
             return
         try:
@@ -637,8 +654,59 @@ class SqliteIndexStore(DirectoryStore):
                 finally:
                     connection.rollback()
         except sqlite3.Error as error:
-            message = f"SQLite could not read the index in {self._directory.path}: {error}"
-            raise SqliteStoreError(message) from error
+            raise self._read_error(error) from error
+
+    def _readable_database(self) -> bool:
+        """Whether a database is there to read; one damaged is set aside, so the next run
+        builds the index whole instead of every call failing on it for good."""
+        if not self._database().is_file():
+            return False
+        if not self._damaged():
+            return True
+        self._set_aside_damaged()
+        return False
+
+    def _damaged(self) -> bool:
+        """Whether the database is no index: no database at all, pages broken, or without the
+        index's tables, as a file truncated to nothing is."""
+        try:
+            with closing(self._connect()) as connection:
+                return not connection.execute(INDEX_TABLES_PRESENT).fetchone()[0]
+        except sqlite3.DatabaseError as error:
+            if error.sqlite_errorname in DAMAGED_DATABASE_ERRORS:
+                return True
+            raise
+
+    def _set_aside_damaged(self) -> None:
+        """Move a damaged database aside, its write-ahead log and the log's index with it, as
+        a log left beside the next database would be read into it; under the write lock and
+        only where it is damaged still, as another session may have built the index whole
+        in its place meanwhile."""
+        with self._directory.writing(records_manifest=False):
+            database = self._database()
+            if not database.is_file() or not self._damaged():
+                return
+            moment = datetime.now(tz=UTC).strftime(DAMAGED_MOMENT_FORMAT)
+            aside = database.with_name(DATABASE_FILE + DAMAGED_SUFFIX + moment)
+            for suffix in COMPANION_SUFFIXES:
+                companion = database.with_name(DATABASE_FILE + suffix)
+                if companion.is_file():
+                    companion.replace(aside.with_name(aside.name + suffix))
+            database.replace(aside)
+            log.warning("damaged_index_set_aside", database=str(database), set_aside=str(aside))
+
+    def _read_error(self, error: sqlite3.Error) -> SqliteStoreError:
+        """The error of a read SQLite failed; a database it finds damaged past the check of
+        its first page is set aside, so the next call builds the index again."""
+        if error.sqlite_errorname in DAMAGED_DATABASE_ERRORS:
+            self._set_aside_damaged()
+            message = (
+                f"the index in {self._directory.path} was damaged ({error}) and is set aside:"
+                " the next call builds it again"
+            )
+            return SqliteStoreError(message)
+        message = f"SQLite could not read the index in {self._directory.path}: {error}"
+        return SqliteStoreError(message)
 
     def _database(self) -> Path:
         return self._directory.path / DATABASE_FILE
@@ -801,7 +869,7 @@ def nearest_candidates(
     in_scope = (
         similarities
         if condition.keeps_every_chunk
-        else similarities.among(vector_row_ids_in(connection, model_key, condition))
+        else similarities.restricted_to(vector_row_ids_in(connection, model_key, condition))
     )
     vector_row_ids = in_scope.nearest(limit)
     rows_by_vector = {
@@ -813,7 +881,7 @@ def nearest_candidates(
     return [
         Candidate(
             chunk=chunk_of(rows_by_vector[vector_row_id]),
-            similarity=similarities.of(vector_row_id),
+            similarity=similarities.similarity_of_row(vector_row_id),
         )
         for vector_row_id in vector_row_ids
     ]
@@ -849,7 +917,7 @@ def matched_candidates(
     return [
         Candidate(
             chunk=chunk_of(rows_by_id[row_id]),
-            similarity=similarities.of(rows_by_id[row_id]["vector_row_id"]),
+            similarity=similarities.similarity_of_row(rows_by_id[row_id]["vector_row_id"]),
         )
         for row_id in row_ids
     ]
@@ -860,7 +928,9 @@ def best_matches(
 ) -> list[int]:
     """The row ids of the scope's chunks whose words best match the question's, best first;
     none for a question of no word."""
-    tokens = QUERY_TOKEN.findall(question)
+    # Each word once, its case aside: a word repeated would be one more term FTS5 scores
+    # every chunk by, weighing it more and costing as much again
+    tokens = list(dict.fromkeys(token.casefold() for token in QUERY_TOKEN.findall(question)))
     if not tokens:
         return []
     expression = EITHER_WORD.join(QUOTE + token + QUOTE for token in tokens)

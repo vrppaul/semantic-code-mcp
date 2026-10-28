@@ -3,10 +3,11 @@
 Measured per corpus, in server processes of its own, every search by words, the default, but
 the model's: a full index from scratch, warm search latency, plain and narrowed to functions
 and methods outside every tests directory (a narrowing every corpus takes, which both
-filters read), an `index_status` call (each search makes one first), how much the index
-grows with each edit of a file other than the last (the copies upkeep keeps for a few
-seconds included) and how long the search after it takes, at the median and at the slowest
-(it re-indexes the edited file first; one in twenty compacts a LanceDB index), the server's
+filters read), and of one long question, an `index_status` call (each search makes one
+first), how much the index grows with each edit of a file other than the last (the copies
+upkeep keeps for a few seconds included) and how long the search after it takes, at the
+median and at the slowest (it re-indexes the edited file first; one in twenty compacts a
+LanceDB index), the server's
 peak memory and what it still holds once its work is done, as a session's idle server keeps
 it, with no model loaded; in a server of its own set to search by meaning too, the model
 load, a search of a one-file project, then the corpus's first search, which embeds every
@@ -58,6 +59,11 @@ SERVER_COMMAND_MARK = b"semantic_code_mcp"
 WARM_UP_FILE_NAME = "warm_up.py"
 WARM_UP_SOURCE = "def warm_up():\n    return None\n"
 WARM_UP_QUERY = "warm up"
+# A question as long as an agent writes when it pastes a sentence or a list of terms: this
+# many words of the corpus's questions run together, each one more term the full-text index
+# scores every chunk by; timed this many times
+LONG_QUESTION_WORDS = 40
+LONG_QUESTION_SEARCHES = 5
 # Status calls timed on the indexed corpus; each search makes the same check first
 STATUS_CALLS = 10
 # A narrowing every corpus can take, which both filters read: two kinds, and a glob
@@ -117,6 +123,7 @@ class CorpusSpeed(BaseModel):
     warm_search_p50_milliseconds: float
     warm_search_p95_milliseconds: float
     narrowed_search_p50_milliseconds: float
+    long_question_p50_milliseconds: float
     status_p50_milliseconds: float
     index_growth_megabytes_per_edit: float
     search_after_edit_p50_milliseconds: float
@@ -173,6 +180,10 @@ async def measure_speed(
             await timed_search_seconds(connection, working_tree, query, NARROWING)
             for query in queries
         ]
+        long_question_seconds = [
+            await timed_search_seconds(connection, working_tree, long_question(queries), None)
+            for _ in range(LONG_QUESTION_SEARCHES)
+        ]
         status_seconds = [
             await timed_status_seconds(connection, working_tree) for _ in range(STATUS_CALLS)
         ]
@@ -211,6 +222,7 @@ async def measure_speed(
         warm_search_p50_milliseconds=percentile_milliseconds(latencies, MEDIAN_CUT),
         warm_search_p95_milliseconds=percentile_milliseconds(latencies, NINETY_FIFTH_CUT),
         narrowed_search_p50_milliseconds=percentile_milliseconds(narrowed_latencies, MEDIAN_CUT),
+        long_question_p50_milliseconds=median_milliseconds(long_question_seconds),
         status_p50_milliseconds=median_milliseconds(status_seconds),
         index_growth_megabytes_per_edit=rounded(
             edits_cost.growth_bytes / BYTES_PER_MEGABYTE / run.edits
@@ -360,6 +372,11 @@ def edits_in_turn(queries: Sequence[Query], count: int) -> list[Edit]:
 def edit_text(path: Path, number: int) -> str:
     """What the numbered edit of a file appends: a definition in the file's language."""
     return EDIT_BY_EXTENSION[path.suffix].format(number=number)
+
+
+def long_question(questions: Sequence[str]) -> str:
+    """The first LONG_QUESTION_WORDS words of the questions, run together into one."""
+    return " ".join(" ".join(questions).split()[:LONG_QUESTION_WORDS])
 
 
 def median_milliseconds(seconds: Sequence[float]) -> float:

@@ -74,6 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - After an edit, a search by meaning embeds only the chunks whose text it changed; after a forced re-index, every chunk again only for a model whose weights nothing pins, as the default's pinned revision vouches for its vectors
 - A write no longer rebuilds the full-text index; every index run that wrote ends by folding its new rows into the full-text index and pruning old versions, and at a session's first such run, once in twenty after, and whenever the rows edits replaced pass 5% of the index, by compacting the index and rebuilding the full-text index whole. An edit no longer rewrites the whole index, as LanceDB's own upkeep did for each edit of a file other than the last: at 100k chunks an upkeep takes 69-77 ms against 669-672, a search 40 ms against 54, and the index peaks at 0.85 GB against 3.5
 - `index_status` of a project never indexed no longer creates its index directory
+- A damaged index database, a file that is no database, broken or emptied, is set aside beside the index with its write-ahead log, and the next run builds the index again, where every call used to fail on it
+- A search's words are each read once, their case aside: a word repeated weighed more and took as long again
 - No `.env` file is read: the server runs in the user's project, whose `.env` is not its to read
 - Profiles (`SEMANTIC_CODE_MCP_PROFILE`) are written under the cache directory, not `./profiles` in the user's project
 - A release runs the whole CI suite on the tagged commit before publishing to PyPI

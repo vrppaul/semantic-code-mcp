@@ -27,6 +27,7 @@ def speeds(
         warm_search_p50_milliseconds=17.0,
         warm_search_p95_milliseconds=27.0,
         narrowed_search_p50_milliseconds=17.0,
+        long_question_p50_milliseconds=40.0,
         status_p50_milliseconds=status_milliseconds,
         index_growth_megabytes_per_edit=0.02,
         search_after_edit_p50_milliseconds=search_after_edit_milliseconds,
