@@ -32,6 +32,7 @@ from semantic_code_mcp.domain.models import (
     Chunk,
     IndexDelta,
     IndexedFiles,
+    IndexFreshness,
     IndexReport,
     IndexStatus,
     IndexUpdate,
@@ -141,21 +142,37 @@ class IndexingService:
         """How far the project's index is from its files, worked out off the event loop."""
         return await asyncio.to_thread(self._status, project_root)
 
+    async def freshness(self, project_root: Path) -> IndexFreshness:
+        """What a search checks before it searches, worked out off the event loop: never
+        whether a run holds the index, as that tries the run's lock, which a run's own try
+        meeting would take for another session's build."""
+        return await asyncio.to_thread(self._freshness, project_root)
+
+    def _freshness(self, project_root: Path) -> IndexFreshness:
+        return IndexFreshness(
+            files_count=self._store.counts(self._model).files,
+            stale_files_count=self._stale_files_count(project_root),
+        )
+
     def _status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files: how much it holds, how many of its
-        chunks have the model's vectors, and how many files changed since (new, modified or
-        deleted)."""
-        delta = self._plan(self._discovery.discover(project_root), force=False)
+        chunks have the model's vectors, how many files changed since, and whether a run
+        holds it now."""
         counts = self._store.counts(self._model)
         return IndexStatus(
             files_count=counts.files,
             chunks_count=counts.chunks,
             model=self._model,
             chunks_with_vectors_count=counts.chunks_with_vectors,
-            stale_files_count=len(delta.to_index) + len(delta.to_delete),
+            stale_files_count=self._stale_files_count(project_root),
             manifest=self._store.manifest(),
             being_built=self._store.run_held(),
         )
+
+    def _stale_files_count(self, project_root: Path) -> int:
+        """How many files changed since the index was written: new, modified or deleted."""
+        delta = self._plan(self._discovery.discover(project_root), force=False)
+        return len(delta.to_index) + len(delta.to_delete)
 
     async def _index(
         self, project_root: Path, *, force: bool, progress: ProgressReporter

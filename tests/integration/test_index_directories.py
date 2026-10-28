@@ -269,8 +269,16 @@ def test_a_status_sees_a_run_hold_the_index_from_its_own_session_and_another_s(
 
     held = (session.run_held(), another_session.run_held())
     session.release_run()
+    after = another_session.run_held()
 
-    assert (before, held, another_session.run_held()) == (False, (True, True), False)
+    next_run = directory_of(tmp_path, IDENTITY, LAYOUT)
+
+    assert (before, held, after, next_run.try_hold_for_run()) == (
+        False,
+        (True, True),
+        False,
+        True,
+    )
 
 
 def test_asking_whether_a_run_holds_an_index_never_made_makes_nothing(tmp_path: Path):

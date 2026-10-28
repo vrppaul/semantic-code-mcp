@@ -93,7 +93,8 @@ class IndexStore(ABC):
     @abstractmethod
     def run_held(self) -> bool:
         """Whether a run holds the index now, this session's or another's; never waits, and
-        leaves every run's hold as it was."""
+        leaves every run's hold as it was, though a run's try in the same moment is turned
+        away for a retry: `index_status` asks it, never a search."""
 
     @abstractmethod
     def indexed_files(self) -> IndexedFiles:

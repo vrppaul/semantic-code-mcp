@@ -328,6 +328,21 @@ class IndexCounts(BaseModel):
     chunks_with_vectors: int
 
 
+class IndexFreshness(BaseModel):
+    """What a search checks of a project's index before it searches: whether there is one,
+    and how many files changed since it was written."""
+
+    model_config = ConfigDict(frozen=True)
+
+    files_count: int
+    # Files the index no longer matches: new, modified or deleted since it was written
+    stale_files_count: int
+
+    @property
+    def is_indexed(self) -> bool:
+        return self.files_count > 0
+
+
 class IndexStatus(BaseModel):
     """How far a project's index is from its files."""
 
@@ -341,8 +356,8 @@ class IndexStatus(BaseModel):
     # Files the index no longer matches: new, modified or deleted since it was written
     stale_files_count: int
     manifest: IndexManifest | None
-    # Whether a run is building the index as the status is read, so its counts are what the
-    # run has written so far, and none during a first build
+    # Whether a run, this session's or another's, holds the index as the status is read, so
+    # its counts may be what the run has written so far
     being_built: bool
 
     @property

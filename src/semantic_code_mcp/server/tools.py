@@ -181,8 +181,8 @@ async def index_status(
     Python, Rust and Markdown files and their chunks are indexed, how many chunks have the
     model's vectors, how many files changed since, what built the index (each chunker
     version keeps an index of its own, and each model's vectors are kept apart in it), and
-    whether a run, this session's or another's, is building it now, so its counts are what
-    the run has written so far.
+    whether a run, this session's or another's, holds it now, so its counts may be what the
+    run has written so far.
 
     Note: search_code automatically re-indexes stale files before searching,
     so there is no need to check or act on staleness manually.

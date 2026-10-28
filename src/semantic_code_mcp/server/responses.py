@@ -21,8 +21,8 @@ EMBEDDED_CHUNKS_DESCRIPTION = (
 )
 # What an agent reads of an index another session, or this one, is building as it asks
 BEING_BUILT_DESCRIPTION = (
-    "A run is building the index now, this session's or another's: until it ends, the counts"
-    " are what it has written so far, none during a first build; a search waits for it."
+    "A run holds the index now, this session's or another's, and may be writing it: until it"
+    " ends, the counts may be what it has written so far; a search waits for it."
 )
 SEARCHED_DIRECTORY_DESCRIPTION = (
     "The directory the search kept to: project_root, or a directory under it; the search did"

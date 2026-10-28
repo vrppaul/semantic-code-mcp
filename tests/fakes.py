@@ -108,6 +108,10 @@ class FakeEmbedder(Embedder):
         return numpy.stack([vector_of(text, self._dimension) for text in texts])
 
 
+class RunHeldAskedError(RuntimeError):
+    """A search asked the fake store whether a run holds the index, which only a status may."""
+
+
 class FakeIndexStore(IndexStore):
     """A store that answers every search with the candidates it was given, by words with the
     chunks of its keyword candidates and by name with any candidate of that name, and keeps
@@ -138,8 +142,10 @@ class FakeIndexStore(IndexStore):
 
     @override
     def run_held(self) -> bool:
-        # Its runs are its own service's, which no status of another session reads
-        return False
+        # Only `index_status` asks it, whose tests run on the real stores: a search never
+        # does, as a status's brief hold of the run lock could turn a run's try away
+        message = "a search asked whether a run holds the index"
+        raise RunHeldAskedError(message)
 
     @override
     def indexed_files(self) -> IndexedFiles:

@@ -119,11 +119,13 @@ class IndexDirectory:
         self._lock_timeout_seconds = lock_timeout_seconds
         # Taken and freed by the thread of a run's event loop, never waited for; held by one
         # run of this directory's session at a time, as a file lock lets its holder take it
-        # again
+        # again. A status also takes it for a moment, on a worker thread, to see whether a
+        # run holds it: a run's try that meets that moment waits a retry, so only
+        # `index_status` asks, never a search
         self._run_lock = FileLock(
             self._path.with_name(self._path.name + RUN_LOCK_SUFFIX), timeout=NO_WAIT_SECONDS
         )
-        self._run_held = False
+        self._holds_run = False
 
     @property
     def path(self) -> Path:
@@ -148,26 +150,27 @@ class IndexDirectory:
         """Take the run's lock if no other run, of this session or another, holds it, the
         project's directory made for the lock file that lies in it; whether it was taken. A
         file lock: its holder's process ending frees it."""
-        if self._run_held:
+        if self._holds_run:
             return False
         self._project_directory.mkdir(parents=True, exist_ok=True)
         try:
             self._run_lock.acquire()
         except Timeout:
             return False
-        self._run_held = True
+        self._holds_run = True
         return True
 
     def release_run(self) -> None:
         """Free the run's lock."""
-        self._run_held = False
+        self._holds_run = False
         self._run_lock.release()
 
     def run_held(self) -> bool:
         """Whether a run holds the index, this session's or another's, as a status reports
-        it: tried without waiting and freed at once, and nothing made where no run ever took
-        the lock."""
-        if self._run_held:
+        it: tried without waiting and freed at once, nothing made where no run ever took the
+        lock. A run's try that meets that moment, in this process or another, is turned away
+        and tries again a retry later."""
+        if self._holds_run:
             return True
         if not Path(self._run_lock.lock_file).is_file():
             return False

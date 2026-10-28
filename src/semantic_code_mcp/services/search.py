@@ -27,8 +27,8 @@ from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
 from semantic_code_mcp.domain.models import (
     PARENT_SEPARATORS,
     Chunk,
+    IndexFreshness,
     IndexReport,
-    IndexStatus,
     SearchHit,
     SearchMode,
     SearchQuery,
@@ -126,11 +126,11 @@ class SearchService:
     ) -> SearchReport:
         """Index stale files, then return the best hits for a query within its scope."""
         await progress.report(SearchPhase.checking_index.value, "Checking index...")
-        status = await self._indexing.status(project_root)
+        freshness = await self._indexing.freshness(project_root)
 
         index_report: IndexReport | None = None
-        if status.stale_files_count:
-            await progress.report(SearchPhase.indexing.value, indexing_message(status))
+        if freshness.stale_files_count:
+            await progress.report(SearchPhase.indexing.value, indexing_message(freshness))
             index_report = await self._indexing.index(
                 project_root,
                 force=False,
@@ -224,11 +224,11 @@ class SearchService:
         )
 
 
-def indexing_message(status: IndexStatus) -> str:
+def indexing_message(freshness: IndexFreshness) -> str:
     """What a search tells the client it is doing before it indexes."""
-    if not status.is_indexed:
+    if not freshness.is_indexed:
         return "Index not found, indexing..."
-    return f"Re-indexing {status.stale_files_count} stale files..."
+    return f"Re-indexing {freshness.stale_files_count} stale files..."
 
 
 def is_relevant(hit: SearchHit, floors: SimilarityFloors, asked_name: str) -> bool:
