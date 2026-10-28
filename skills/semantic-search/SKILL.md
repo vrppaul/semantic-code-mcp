@@ -101,8 +101,8 @@ searched (`files_indexed`, `chunks_indexed`).
 - Each search first re-indexes the files changed since the last; you never need to index
   before searching.
 - Call `index_codebase` with `force=true` only when results point at code that is gone:
-  it reads every file again, and the next search by meaning embeds every chunk again,
-  while renames and deletions need nothing. It answers `project_root`, `files_indexed`, `chunks_indexed`,
+  it reads every file again, and for a model whose weights nothing pins the next search by
+  meaning embeds every chunk again, while renames and deletions need nothing. It answers `project_root`, `files_indexed`, `chunks_indexed`,
   `files_deleted` and `duration_seconds`.
 - Call `index_status` to see which root a directory belongs to and what built its index,
   not before every search. It answers `project_root`, `is_indexed`, `last_updated`,

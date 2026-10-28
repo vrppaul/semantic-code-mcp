@@ -14,7 +14,9 @@ from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.interfaces import VectorMatrix
 from semantic_code_mcp.domain.models import VectorIdentity
+from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
+from semantic_code_mcp.services.projects import vector_identity
 from semantic_code_mcp.services.vectors import EMBEDDING_SLICE_SIZE
 from tests.fakes import (
     EMBEDDING_DIMENSION,
@@ -25,7 +27,7 @@ from tests.fakes import (
     FakeIndexStore,
     vector_of,
 )
-from tests.helpers import indexing_service, vector_service
+from tests.helpers import discovery_for, indexing_service, vector_service
 from tests.indexing import ADDED_FUNCTION, IDENTITY, NO_PROGRESS, touch_later
 from tests.stores import NO_CANDIDATES, StoreClass, open_store
 
@@ -33,6 +35,8 @@ from tests.stores import NO_CANDIDATES, StoreClass, open_store
 TWO_AND_A_PART_SLICES = 2 * EMBEDDING_SLICE_SIZE + 10
 # A vector width other than the fake model's
 WIDE = 16
+# A revision a model's weights are pinned at
+PINNED_REVISION = "pinned-revision"
 
 
 class StoreCancelledAfterItsVectors(DelegatingStore):
@@ -158,7 +162,7 @@ async def test_an_edited_file_embeds_only_its_chunks_whose_text_changed(
     assert embedder.embedded_texts == [ADDED_FUNCTION.strip()]
 
 
-async def test_a_forced_run_leaves_every_chunk_to_embed_again(
+async def test_a_forced_run_leaves_every_chunk_of_an_unpinned_model_to_embed_again(
     test_settings: Settings, sample_project: Path, tmp_path: Path, store_class: StoreClass
 ):
     """A model replaced under a name nothing pins gives other vectors that nothing else
@@ -173,6 +177,29 @@ async def test_a_forced_run_leaves_every_chunk_to_embed_again(
     await vector_service(store, embedder).embed_missing(progress=NO_PROGRESS)
 
     assert len(embedder.embedded_texts) == 6
+
+
+async def test_a_forced_run_keeps_the_vectors_of_a_model_whose_weights_are_pinned(
+    test_settings: Settings, sample_project: Path, tmp_path: Path, store_class: StoreClass
+):
+    """A pinned revision vouches for the vectors, which on a large repository took an hour
+    to embed."""
+    store = open_store(store_class, tmp_path / "index", IDENTITY)
+    pinned = FakeEmbedder(revision=PINNED_REVISION)
+    indexing = IndexingService(
+        discovery=discovery_for(test_settings, build_chunker()),
+        chunker=build_chunker(),
+        store=store,
+        model=vector_identity(pinned),
+    )
+    await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
+    await vector_service(store, pinned).embed_missing(progress=NO_PROGRESS)
+    await indexing.index(sample_project, force=True, progress=NO_PROGRESS)
+    embedder = FakeEmbedder(revision=PINNED_REVISION)
+
+    await vector_service(store, embedder).embed_missing(progress=NO_PROGRESS)
+
+    assert embedder.embedded_texts == []
 
 
 async def test_after_a_model_of_another_width_took_its_name_every_chunk_is_embedded_anew(

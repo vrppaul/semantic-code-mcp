@@ -160,10 +160,10 @@ async def index_codebase(
     meaning embeds them. `search_code` indexes on its own; call this only to re-index
     everything.
 
-    With `force: true`, it re-indexes everything even if files haven't changed, and drops
-    the model's vectors, so the next search by meaning embeds every chunk again, minutes
-    on a large repository. Otherwise, only new and modified files are indexed
-    (incremental).
+    With `force: true`, it re-indexes everything even if files haven't changed; a model
+    whose weights nothing pins, as a local path, has its vectors dropped too, so the next
+    search by meaning embeds every chunk again. Otherwise, only new and modified files are
+    indexed (incremental).
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository

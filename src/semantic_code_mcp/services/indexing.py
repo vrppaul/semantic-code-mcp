@@ -11,9 +11,9 @@ whole files at a time, each slice's chunks taking the place of what the index he
 files, so a reader always finds every file's old chunks or its new ones, and a run stopped
 midway keeps the slices it wrote. A run embeds nothing: a chunk whose text the index holds
 already keeps the vectors it has, by its id, and the rest are embedded by the first search
-by meaning (`vectors.py`); a forced run drops the model's vectors, so that search embeds
-every chunk again. The index is the one of this server's chunker version; the store keeps
-those of others apart.
+by meaning (`vectors.py`); a forced run drops the vectors of a model nothing pins, so that
+search embeds every chunk again. The index is the one of this server's chunker version; the
+store keeps those of others apart.
 """
 
 import asyncio
@@ -168,8 +168,9 @@ class IndexingService:
         delta = await asyncio.to_thread(self._plan, files, force=force)
         log.debug("index_planned", to_index=len(delta.to_index), to_delete=len(delta.to_delete))
 
-        if force:
-            # A model replaced under a name nothing pins gives other vectors nothing else sees
+        if force and self._model.model_revision is None:
+            # A model replaced under a name nothing pins gives other vectors nothing else
+            # sees; a pinned revision vouches for its vectors, an hour's embedding at 88k chunks
             await asyncio.to_thread(self._store.remove_vectors, self._model)
         chunks_indexed = 0
         if delta.has_work:
