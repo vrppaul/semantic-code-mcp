@@ -57,7 +57,7 @@ The tool offered `by_meaning` until step 8 (ADR 008, pilot 9): MiniLM's meaning 
 - A hit with a vector is held to the similarity floors as before; one without came by words and stays by their rules.
 - `similarity` leaves the hit: a hit by words has none, and a number on two scales misleads; the order is the ranking.
 - The tool's description says it matches the words of code: write the identifiers and terms code would use, and search again with others on a miss. Pilot 8's agents wrote queries in code's words unprompted, and pilot 9's did so for questions that held none.
-- The model's libraries stay in the base install; its weights come with a server's first search by meaning.
+- The model's libraries (onnxruntime, tokenizers, huggingface_hub) are the extra `semantic-code-mcp[meaning]` (the owner's word, 2026-10-28), as LanceDB's are: about 90 of the base install's 190 MB served a path off by default. The embedder imports its ONNX module only when a model loads, so a server by words imports none of them, and a server set to search by meaning without the extra stops as it starts, naming it. Measured: the base install 95 MB, with the extra 190, with LanceDB's 523; a server's imports by words 490-560 ms and 93 MB at their peak against 570-740 ms and 117-119 MB with the model's libraries (ADR 010, O5). The model's weights come with a server's first search by meaning.
 
 ### D3. The word index whole, meaning in parts
 
@@ -174,6 +174,6 @@ Each of steps 3 to 10 is a chunk of work with one independent review over its ra
 - By default the harness's questions rank worse: code by 0.14 chunk MRR in every corpus, documentation by 0.09 to 0.19, questions with none of the answer's words by 0.15 to 0.40, held-out code on click from 0.80 to 0.53 and on this repository from 0.87 to 0.62, bare names on click from 0.83 to 0.68 until the exact-name rule. Agents made up for it in pilot 8 by searching again, and a setting brings meaning back, which gained them nothing in pilot 9.
 - The model is in a server only after a search by meaning there, which only its setting asks for; with step 9, the child that embeds would live as long as its session.
 - Every user's index is built again once, in a new directory; without meaning that takes seconds.
-- LanceDB's upkeep, its pin at 0.30.2 and pylance move into an optional store; the default store has neither, and the install is 190 MB against 616 with the extra (measured 2026-10-28).
+- LanceDB's upkeep, its pin at 0.30.2 and pylance move into an optional store; the default store has neither, and the install is 95 MB, 190 with the model's extra and 523 with LanceDB's (measured 2026-10-28).
 - `search_code`'s hits lose `similarity`; its input took `by_meaning` and lost it again after step 8, meaning left to the server's setting; the descriptions, README, the skill and the server's instructions say the search matches words. The product keeps its name.
 - Stage 7's work on the model's speed now serves meaning alone; TODO's "LanceDB index tuning" serves the LanceDB store alone.

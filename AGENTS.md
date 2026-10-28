@@ -18,7 +18,7 @@ uv run python -m evals agents         # agents' sessions with and without search
 
 ## Stack
 
-Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers (all-MiniLM-L6-v2's ONNX export, 384 dimensions) · SQLite and FTS5 (LanceDB an extra) · tree-sitter (Python, Rust, Markdown) · structlog · pydantic and pydantic-settings.
+Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers, the extra `meaning` (all-MiniLM-L6-v2's ONNX) · SQLite and FTS5 (LanceDB an extra) · tree-sitter (Python, Rust, Markdown) · structlog · pydantic and pydantic-settings.
 
 ## How we work
 

@@ -55,7 +55,7 @@ from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.app import create_app
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.embedding import OnnxEmbedder
+from semantic_code_mcp.embedding.embedder import OnnxEmbedder
 
 SKILL = Path("skills/semantic-search/SKILL.md")
 # The skill's length at most, in lines (ADR 006, D16)

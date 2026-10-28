@@ -4,7 +4,7 @@ import structlog
 
 from semantic_code_mcp.app import create_app
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.embedding import OnnxEmbedder
+from semantic_code_mcp.embedding.embedder import OnnxEmbedder
 from semantic_code_mcp.logging import configure_logging
 
 log = structlog.get_logger()

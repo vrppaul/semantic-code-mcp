@@ -18,13 +18,13 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
 2. **Storage** — the chunks and a full-text index of their words in one SQLite database per index (LanceDB, an optional extra, in its place)
 3. **Search** — by words (BM25), the chunks named as the query first
-4. **Meaning, by a setting** — with `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning` the server embeds each chunk once with onnxruntime and the model's ONNX export (all-MiniLM-L6-v2, 384d, no torch), keeps each model's vectors beside the chunks, and fuses every search by meaning with one by words by rank
+4. **Meaning, by a setting** — with the extra `semantic-code-mcp[meaning]` and `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning` the server embeds each chunk once with onnxruntime and the model's ONNX export (all-MiniLM-L6-v2, 384d, no torch), keeps each model's vectors beside the chunks, and fuses every search by meaning with one by words by rank
 
 Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each chunker version and storage layout keeps an index of its own, so a new version builds a new index once, and switching back finds the old one; each model's vectors are kept apart inside it, so another model embeds again without chunking again; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads on the first search of a server set to search by meaning, never for a search by words.
 
 ## Installation
 
-One command on every platform, about 190 MB installed; a server set to search by meaning fetches the model's ONNX file (90 MB) from the Hugging Face hub once, on its first search:
+One command on every platform, about 95 MB installed. A search by meaning needs the model's libraries, the extra `semantic-code-mcp[meaning]` (190 MB in all: `uvx --from 'semantic-code-mcp[meaning]' semantic-code-mcp`), and `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning`; such a server fetches the model's ONNX file (90 MB) from the Hugging Face hub once, on its first search:
 
 ```bash
 uvx semantic-code-mcp
@@ -139,7 +139,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | `SEMANTIC_CODE_MCP_PROFILE` | `false` | Enable pyinstrument profiling (a development checkout only: pyinstrument is a dev dependency) |
 | `SEMANTIC_CODE_MCP_USE_GITIGNORE` | `true` | Let `.gitignore` decide what is indexed. Set `false` for a repo whose `.gitignore` hides source on purpose (an allowlist such as `/*`); the server then walks the file system and applies the ignore patterns only |
 | `SEMANTIC_CODE_MCP_GIT_TIMEOUT_SECONDS` | `10` | How long git may take to list the files before discovery walks the file system instead |
-| `SEMANTIC_CODE_MCP_SEARCH_MODE` | `words` | How every search ranks: `words`, BM25 over the chunks' words, no model loaded; or `words_and_meaning`, the model's vectors searched too and fused with the words by rank. The first search of a project by meaning embeds every chunk inside the call, minutes on a large repository; later ones embed what changed |
+| `SEMANTIC_CODE_MCP_SEARCH_MODE` | `words` | How every search ranks: `words`, BM25 over the chunks' words, no model loaded; or `words_and_meaning`, the model's vectors searched too and fused with the words by rank. The first search of a project by meaning embeds every chunk inside the call, minutes on a large repository; later ones embed what changed. Meaning needs the extra `semantic-code-mcp[meaning]`: without it a server set to it stops as it starts, naming the extra |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY` | `0.35` | In a search by meaning, how close in meaning to the query, a cosine similarity, a result no keyword matched must be to come back; set for the default model, whose scale another model does not share. Below 0.25, lower `MIN_SIMILARITY_WHEN_WORDS_MATCH` with it, or the server refuses to start |
 | `SEMANTIC_CODE_MCP_MIN_SIMILARITY_WHEN_WORDS_MATCH` | `0.25` | The same, for a result whose words match the query's; at most `MIN_SIMILARITY`. A result named as the query comes back however far |
 | `SEMANTIC_CODE_MCP_IGNORE_PATTERNS` | caches, virtualenvs, `node_modules`, top-level `build/`, `dist/`, `target/` | JSON list of patterns skipped in every mode. A pattern without `/` matches a name at any depth (`node_modules`); one with `/` matches from the project root (`docs/**`) |
@@ -273,7 +273,7 @@ def build_chunker() -> CompositeChunker:
 - `src/semantic_code_mcp/services/` — indexing, search, the registry of projects
 - `src/semantic_code_mcp/discovery.py` — which files get indexed (git or a file-system walk, ignore patterns)
 - `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
-- `src/semantic_code_mcp/embedding.py`, `src/semantic_code_mcp/storage/` — embeddings, and the stores (SQLite, LanceDB) behind one contract
+- `src/semantic_code_mcp/embedding/`, `src/semantic_code_mcp/storage/` — the embedder and the model it loads from the `meaning` extra, and the stores (SQLite, LanceDB) behind one contract
 - `src/semantic_code_mcp/domain/` — models and interfaces
 - `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`)
 - `docs/decisions/` — architecture decision records

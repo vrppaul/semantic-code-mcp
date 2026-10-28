@@ -14,10 +14,13 @@ from huggingface_hub import hf_hub_download
 from onnx import TensorProto, helper
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.embedding import (
+from semantic_code_mcp.embedding.embedder import (
     ALL_MINILM_L6_V2_REVISION,
-    ATTENTION_MASK,
     EMBEDDER_VERSION,
+    OnnxEmbedder,
+)
+from semantic_code_mcp.embedding.onnx_model import (
+    ATTENTION_MASK,
     INPUT_IDS,
     MODULES_FILE,
     ONNX_MODEL_FILE,
@@ -28,7 +31,6 @@ from semantic_code_mcp.embedding import (
     TOKENIZER_FILE,
     TRANSFORMER_CONFIG_FILE,
     ModelFiles,
-    OnnxEmbedder,
     UnusableModelError,
 )
 from tests.conftest import MODEL_NAME

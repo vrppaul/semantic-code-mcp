@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
+from typing import assert_never
 
 from mcp.server.mcpserver import MCPServer
 
@@ -15,7 +16,8 @@ from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
-from semantic_code_mcp.domain.models import IndexIdentity, StoreKind
+from semantic_code_mcp.domain.models import IndexIdentity, SearchMode, StoreKind
+from semantic_code_mcp.embedding.embedder import model_loader
 from semantic_code_mcp.server.instructions import SERVER_INSTRUCTIONS
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
@@ -86,6 +88,7 @@ async def project_registry_lifespan(
 
 def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
     """The registry of projects, over the parts the server is built from."""
+    require_libraries_of(settings.search_mode)
     chunker = build_chunker()
     return ProjectRegistry(
         settings=settings,
@@ -105,6 +108,18 @@ def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
 def build_chunker() -> CompositeChunker:
     """Every language the server indexes. Add a language here."""
     return CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
+
+
+def require_libraries_of(search_mode: SearchMode) -> None:
+    """The libraries a search mode needs, looked for now, so a server set to search by
+    meaning without the extra that installs them stops as it starts."""
+    match search_mode:
+        case SearchMode.words:
+            return
+        case SearchMode.words_and_meaning:
+            model_loader()
+        case unhandled:
+            assert_never(unhandled)
 
 
 def store_opener(settings: Settings) -> StoreOpener:

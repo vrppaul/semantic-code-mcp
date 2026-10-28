@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.app import (
     LANCEDB_EXTRA,
@@ -17,8 +18,12 @@ from semantic_code_mcp.app import (
 )
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
-from semantic_code_mcp.domain.models import StoreKind
-from semantic_code_mcp.embedding import OnnxEmbedder
+from semantic_code_mcp.domain.models import SearchMode, StoreKind
+from semantic_code_mcp.embedding.embedder import (
+    MEANING_EXTRA,
+    MeaningUnavailableError,
+    OnnxEmbedder,
+)
 from semantic_code_mcp.services import indexing as indexing_module
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
@@ -96,29 +101,72 @@ async def test_the_index_is_kept_in_the_store_the_settings_pick(
     assert open_store(store_class, project_directory, IDENTITY).counts(FAKE_MODEL).chunks == 6
 
 
-def test_a_store_whose_libraries_are_missing_stops_the_server_naming_its_extra(
-    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
-):
-    """LanceDB comes with an optional extra; a server set to it without the extra says so
-    as it starts, rather than at its first search."""
-    monkeypatch.setitem(sys.modules, "lancedb", None)
-    monkeypatch.delitem(sys.modules, "semantic_code_mcp.storage.lancedb")
-    settings = Settings(cache_dir=test_settings.cache_dir, index_store=StoreKind.lancedb)
+class ExtraCase(BaseModel):
+    """A setting that needs an optional extra: a library the extra installs, the module of
+    the package that imports it, one of the package's own modules that module imports, and
+    what a server set so says without the extra."""
 
-    with pytest.raises(StoreUnavailableError, match=re.escape(LANCEDB_EXTRA)):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    setting: dict[str, StoreKind | SearchMode]
+    library: str
+    extra_module: str
+    package_module: str
+    refusal: type[RuntimeError]
+    extra: str
+
+
+EXTRA_CASES = [
+    pytest.param(
+        ExtraCase(
+            setting={"index_store": StoreKind.lancedb},
+            library="lancedb",
+            extra_module="semantic_code_mcp.storage.lancedb",
+            package_module="semantic_code_mcp.storage.globs",
+            refusal=StoreUnavailableError,
+            extra=LANCEDB_EXTRA,
+        ),
+        id="the LanceDB store",
+    ),
+    pytest.param(
+        ExtraCase(
+            setting={"search_mode": SearchMode.words_and_meaning},
+            library="onnxruntime",
+            extra_module="semantic_code_mcp.embedding.onnx_model",
+            package_module="semantic_code_mcp.domain.interfaces",
+            refusal=MeaningUnavailableError,
+            extra=MEANING_EXTRA,
+        ),
+        id="a search by meaning",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", EXTRA_CASES)
+def test_a_setting_whose_extra_is_missing_stops_the_server_naming_the_extra(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch, case: ExtraCase
+):
+    """LanceDB and the model's libraries come with optional extras; a server set to need
+    one without it says so as it starts, rather than at its first search."""
+    monkeypatch.setitem(sys.modules, case.library, None)
+    monkeypatch.delitem(sys.modules, case.extra_module, raising=False)
+    settings = Settings(cache_dir=test_settings.cache_dir, **case.setting)
+
+    with pytest.raises(case.refusal, match=re.escape(case.extra)):
         build_registry(settings, FakeEmbedder())
 
 
+@pytest.mark.parametrize("case", EXTRA_CASES)
 def test_a_module_of_the_package_missing_is_never_taken_for_the_missing_extra(
-    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch, case: ExtraCase
 ):
     """A broken install of the package itself says what is missing, not to install the
     extra, which would not help."""
-    monkeypatch.setitem(sys.modules, "semantic_code_mcp.storage.globs", None)
-    monkeypatch.delitem(sys.modules, "semantic_code_mcp.storage.lancedb")
-    settings = Settings(cache_dir=test_settings.cache_dir, index_store=StoreKind.lancedb)
+    monkeypatch.setitem(sys.modules, case.package_module, None)
+    monkeypatch.delitem(sys.modules, case.extra_module, raising=False)
+    settings = Settings(cache_dir=test_settings.cache_dir, **case.setting)
 
-    with pytest.raises(ModuleNotFoundError, match=re.escape("semantic_code_mcp.storage.globs")):
+    with pytest.raises(ModuleNotFoundError, match=re.escape(case.package_module)):
         build_registry(settings, FakeEmbedder())
 
 

@@ -1,9 +1,9 @@
 """Refuse a package whose modules do not import without its extras' libraries.
 
 The dev group installs every extra, so the suite and every other gate run with LanceDB's
-libraries present, and none of them fails where a user installed the package alone. A
-module that imports an extra's library, or the module of a store an extra holds, at its top
-would stop every server started without that extra. This imports every module of the
+and the model's libraries present, and none of them fails where a user installed the
+package alone. A module that imports an extra's library, or a module an extra holds, at its
+top would stop every server started without that extra. This imports every module of the
 package but those an extra holds, in an environment of the package and its runtime
 dependencies alone, which uv makes apart from the project's own:
 
@@ -19,9 +19,11 @@ import sys
 
 import semantic_code_mcp
 
-# The modules an extra holds, each imported only when its store is chosen, as each needs
-# the extra's libraries
-EXTRA_MODULES = frozenset({"semantic_code_mcp.storage.lancedb"})
+# The modules an extra holds, each imported only when its store is chosen or its model
+# loads, as each needs the extra's libraries
+EXTRA_MODULES = frozenset(
+    {"semantic_code_mcp.storage.lancedb", "semantic_code_mcp.embedding.onnx_model"}
+)
 MODULE_NAME_SEPARATOR = "."
 EVERY_MODULE_IMPORTS = 0
 A_MODULE_FAILS = 1

@@ -9,14 +9,11 @@ license-files = ["LICENSE"]
 authors = [{ name = "Pavel Paranin" }]
 dependencies = [
     "filelock>=3.20.3,<4",
-    "huggingface-hub>=2.3.0,<3",
     "mcp>=2.3.0,<3",
     "numpy>=2.4.1,<3",
-    "onnxruntime>=1.31.1,<2",
     "pydantic>=2.12.5,<3",
     "pydantic-settings>=2.12.0,<3",
     "structlog>=26.1.0,<27",
-    "tokenizers>=0.23.3,<0.24",
     "tree-sitter>=0.25.2,<0.26",
     "tree-sitter-markdown>=0.5.1,<0.6",
     "tree-sitter-python>=0.25.0,<0.26",
@@ -36,6 +33,11 @@ lancedb = [
     "lancedb==0.30.2",
     "pyarrow>=23.0.0,<24",
     "pylance>=4.0.2,<4.1",
+]
+meaning = [
+    "huggingface-hub>=2.3.0,<3",
+    "onnxruntime>=1.31.1,<2",
+    "tokenizers>=0.23.3,<0.24",
 ]
 
 [build-system]
@@ -60,7 +62,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.14.14",
-    "semantic-code-mcp[lancedb]",
+    "semantic-code-mcp[lancedb,meaning]",
     "ty>=0.0.13",
     "typos>=1.51.1",
     "vulture>=2.16",
@@ -238,6 +240,28 @@ type = "independence"
 modules = ["semantic_code_mcp.storage.lancedb", "semantic_code_mcp.storage.sqlite"]
 
 [[tool.importlinter.contracts]]
+name = "The ONNX module is imported only where a model loads"
+type = "forbidden"
+# Its libraries come with an optional extra: the embedder imports it when it first loads a
+# model, and the composition root through the embedder as a server set to search by meaning
+# starts; nothing else imports it at all
+source_modules = [
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.storage",
+    "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+forbidden_modules = ["semantic_code_mcp.embedding.onnx_model"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 name = "LanceDB's store is imported only where it is chosen"
 type = "forbidden"
 # Its libraries come with an optional extra: the composition root imports its module only
@@ -299,9 +323,11 @@ forbidden_modules = ["lancedb", "lance", "pyarrow", "sqlite3", "filelock"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "The model's libraries stay in the embedder"
+name = "The model's libraries stay in the ONNX module"
 type = "forbidden"
-# Replacing the model's library touches one part
+# Replacing the model's library touches one module, and the extra that installs them
+# (`semantic-code-mcp[meaning]`) is needed only where a model loads: the embedder beside
+# it imports none, so a server by words starts without them
 source_modules = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.cli",
@@ -310,6 +336,7 @@ source_modules = [
     "semantic_code_mcp.services",
     "semantic_code_mcp.discovery",
     "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.embedding.embedder",
     "semantic_code_mcp.storage",
     "semantic_code_mcp.config",
     "semantic_code_mcp.logging",

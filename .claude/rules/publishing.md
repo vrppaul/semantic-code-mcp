@@ -36,7 +36,7 @@ paths:
 
 ## Install
 
-One command on every platform, with no torch and no extra index (about 190 MB; LanceDB's extra, `semantic-code-mcp[lancedb]`, 616 MB):
+One command on every platform, with no torch and no extra index (about 95 MB; with the model's extra, `semantic-code-mcp[meaning]`, 190 MB; with LanceDB's, `semantic-code-mcp[lancedb]`, 523 MB):
 
 ```bash
 uvx semantic-code-mcp

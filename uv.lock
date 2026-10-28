@@ -1285,14 +1285,11 @@ name = "semantic-code-mcp"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },
-    { name = "huggingface-hub" },
     { name = "mcp" },
     { name = "numpy" },
-    { name = "onnxruntime" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "structlog" },
-    { name = "tokenizers" },
     { name = "tree-sitter" },
     { name = "tree-sitter-markdown" },
     { name = "tree-sitter-python" },
@@ -1304,6 +1301,11 @@ lancedb = [
     { name = "lancedb" },
     { name = "pyarrow" },
     { name = "pylance" },
+]
+meaning = [
+    { name = "huggingface-hub" },
+    { name = "onnxruntime" },
+    { name = "tokenizers" },
 ]
 
 [package.dev-dependencies]
@@ -1317,7 +1319,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
-    { name = "semantic-code-mcp", extra = ["lancedb"] },
+    { name = "semantic-code-mcp", extra = ["lancedb", "meaning"] },
     { name = "ty" },
     { name = "typos" },
     { name = "vulture" },
@@ -1326,23 +1328,23 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "filelock", specifier = ">=3.20.3,<4" },
-    { name = "huggingface-hub", specifier = ">=2.3.0,<3" },
+    { name = "huggingface-hub", marker = "extra == 'meaning'", specifier = ">=2.3.0,<3" },
     { name = "lancedb", marker = "extra == 'lancedb'", specifier = "==0.30.2" },
     { name = "mcp", specifier = ">=2.3.0,<3" },
     { name = "numpy", specifier = ">=2.4.1,<3" },
-    { name = "onnxruntime", specifier = ">=1.31.1,<2" },
+    { name = "onnxruntime", marker = "extra == 'meaning'", specifier = ">=1.31.1,<2" },
     { name = "pyarrow", marker = "extra == 'lancedb'", specifier = ">=23.0.0,<24" },
     { name = "pydantic", specifier = ">=2.12.5,<3" },
     { name = "pydantic-settings", specifier = ">=2.12.0,<3" },
     { name = "pylance", marker = "extra == 'lancedb'", specifier = ">=4.0.2,<4.1" },
     { name = "structlog", specifier = ">=26.1.0,<27" },
-    { name = "tokenizers", specifier = ">=0.23.3,<0.24" },
+    { name = "tokenizers", marker = "extra == 'meaning'", specifier = ">=0.23.3,<0.24" },
     { name = "tree-sitter", specifier = ">=0.25.2,<0.26" },
     { name = "tree-sitter-markdown", specifier = ">=0.5.1,<0.6" },
     { name = "tree-sitter-python", specifier = ">=0.25.0,<0.26" },
     { name = "tree-sitter-rust", specifier = ">=0.24.0,<0.25" },
 ]
-provides-extras = ["lancedb"]
+provides-extras = ["lancedb", "meaning"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1355,7 +1357,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "ruff", specifier = ">=0.14.14" },
-    { name = "semantic-code-mcp", extras = ["lancedb"], editable = "." },
+    { name = "semantic-code-mcp", extras = ["lancedb", "meaning"], editable = "." },
     { name = "ty", specifier = ">=0.0.13" },
     { name = "typos", specifier = ">=1.51.1" },
     { name = "vulture", specifier = ">=2.16" },

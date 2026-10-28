@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from semantic_code_mcp.config import Settings
-from semantic_code_mcp.embedding import OnnxEmbedder
+from semantic_code_mcp.embedding.embedder import OnnxEmbedder
 from tests.stores import STORE_CLASSES, StoreClass
 
 MODEL_NAME = "all-MiniLM-L6-v2"
