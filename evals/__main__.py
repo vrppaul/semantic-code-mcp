@@ -1,6 +1,6 @@
 """Measure search quality, speed, or search as agents use it, on the pinned corpora.
 
-    uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--by-meaning]
+    uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--search-mode MODE]
         [--save-baseline] [--held-out]
     uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--store STORE]
         [--edits N] [--save-baseline]
@@ -13,7 +13,8 @@ saved baseline, writes the whole report as JSON to `evals/results/`, and with
 --save-baseline makes it the new baseline; a corpus kept outside the repository
 (`--corpus-file`, as a large or a private one is) is never saved to it, nor a run in a store
 other than the server's default (`--store`, as when two stores are compared in turns), nor a
-quality run by meaning (`--by-meaning`, which sets the servers' default to it). `agents` asks
+quality run in another search mode than the server's default (`--search-mode`, which sets
+the servers' setting to it, `words_and_meaning` searching by meaning too). `agents` asks
 Claude Code headless each question in each arm (`evals/agents.py`), spending the owner's
 subscription; it prints each session as it ends and each arm's sums, and keeps no baseline,
 as its sessions hold the questions of private corpora; its indexes are kept between runs.
@@ -63,7 +64,7 @@ from evals.quality import (
 )
 from evals.server import DEFAULT_OPTIONS, ServerOptions, ServerStarter, ToolCallFailedError
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
-from semantic_code_mcp.domain.models import StoreKind
+from semantic_code_mcp.domain.models import SearchMode, StoreKind
 from semantic_code_mcp.logging import configure_logging
 
 CHECKOUTS_ROOT = Path.home() / ".cache" / "semantic-code-mcp-evals"
@@ -91,22 +92,22 @@ JSON_INDENT = 2
 BASELINE_COMMANDS = frozenset({"quality", "speed"})
 # How a report that named no store names the one it ran in
 DEFAULT_STORE_NAME = "the server's default"
-# How a report names the way its searches searched
-BY_WORDS_NAME = "by words"
-BY_MEANING_NAME = "by meaning"
+# How a report that named no search mode names the one its servers searched in
+DEFAULT_SEARCH_NAME = "the server's default"
 EXIT_OK = 0
 EXIT_FAILED = 1
 
 
 class QualityReport(BaseModel):
-    """Search quality over every corpus measured, in the store a run named, by words or by
-    meaning."""
+    """Search quality over every corpus measured, in the store and the search mode a run
+    named."""
 
     model_config = ConfigDict(frozen=True)
 
     # None for the server's default store at the commit measured
     index_store: StoreKind | None
-    by_meaning: bool
+    # None for the server's default search at the commit measured
+    search_mode: SearchMode | None
     corpora: tuple[CorpusQuality, ...]
 
 
@@ -141,7 +142,7 @@ def main() -> int:
             case "quality":
                 run_quality(
                     load_corpora(arguments.corpus),
-                    ServerOptions(index_store=arguments.store, by_meaning=arguments.by_meaning),
+                    ServerOptions(index_store=arguments.store, search_mode=arguments.search_mode),
                     save_baseline=arguments.save_baseline,
                     held_out=arguments.held_out,
                 )
@@ -173,8 +174,8 @@ def main() -> int:
 
 def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m evals", description=__doc__)
-    # A command that cannot search by meaning searches by words
-    parser.set_defaults(by_meaning=False)
+    # A command that names no search mode searches as the server's default does
+    parser.set_defaults(search_mode=None)
     commands = parser.add_subparsers(dest="command", required=True)
     quality = commands.add_parser("quality", help="search quality: where the answers land")
     speed = commands.add_parser("speed", help="indexing, search, memory and index growth")
@@ -185,8 +186,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         # A store other than the server's default, never saved to the baseline
         command.add_argument("--store", type=StoreKind, choices=list(StoreKind))
     quality.add_argument("--save-baseline", action="store_true")
-    # Every search by meaning too, never saved to the baseline, which holds the default
-    quality.add_argument("--by-meaning", action="store_true")
+    # Another search mode than the server's default, never saved to the baseline
+    quality.add_argument("--search-mode", type=SearchMode, choices=list(SearchMode))
     # A corpus kept outside the repository, never saved to the baseline the repository keeps
     speed_corpora = speed.add_mutually_exclusive_group()
     speed_corpora.add_argument("--corpus-file", action="append", default=[], type=Path)
@@ -205,8 +206,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     keeps_a_baseline = arguments.command in BASELINE_COMMANDS
     if keeps_a_baseline and arguments.save_baseline and arguments.store is not None:
         parser.error("--save-baseline keeps the default store's figures: leave --store out")
-    if keeps_a_baseline and arguments.save_baseline and arguments.by_meaning:
-        parser.error("--save-baseline keeps the default search's figures: leave --by-meaning out")
+    if keeps_a_baseline and arguments.save_baseline and arguments.search_mode is not None:
+        parser.error("--save-baseline keeps the default search's figures: leave --search-mode out")
     return arguments
 
 
@@ -224,7 +225,7 @@ def run_quality(
 ) -> None:
     report = QualityReport(
         index_store=options.index_store,
-        by_meaning=options.by_meaning,
+        search_mode=options.search_mode,
         corpora=tuple(asyncio.run(collect_quality(corpora, options))),
     )
     baseline = read_report(BASELINE_DIRECTORY / QUALITY_FILE, QualityReport)
@@ -232,7 +233,7 @@ def run_quality(
     if baseline is not None:
         baseline_by_corpus = {entry.corpus: entry for entry in baseline.corpora}
         print(describe_stores(report.index_store, baseline.index_store))
-        print(describe_searches(by_meaning=report.by_meaning, baseline=baseline.by_meaning))
+        print(describe_searches(report.search_mode, baseline.search_mode))
     for entry in report.corpora:
         print(describe_quality(entry, baseline_by_corpus.get(entry.corpus), held_out=held_out))
     write_report(report, QUALITY_FILE, save_baseline=save_baseline)
@@ -247,7 +248,7 @@ def run_speed(
         corpora=tuple(
             asyncio.run(
                 collect_speed(
-                    corpora, ServerOptions(index_store=index_store, by_meaning=False), edits
+                    corpora, ServerOptions(index_store=index_store, search_mode=None), edits
                 )
             )
         ),
@@ -272,14 +273,13 @@ def store_name(index_store: StoreKind | None) -> str:
     return DEFAULT_STORE_NAME if index_store is None else index_store
 
 
-def describe_searches(*, by_meaning: bool, baseline: bool) -> str:
-    """The line naming how a run's searches and its baseline's searched."""
-    measured = search_name(by_meaning=by_meaning)
-    return f"search: {measured}; the baseline's: {search_name(by_meaning=baseline)}"
+def describe_searches(measured: SearchMode | None, baseline: SearchMode | None) -> str:
+    """The line naming the search mode a run measured and the one its baseline did."""
+    return f"search: {search_name(measured)}; the baseline's: {search_name(baseline)}"
 
 
-def search_name(*, by_meaning: bool) -> str:
-    return BY_MEANING_NAME if by_meaning else BY_WORDS_NAME
+def search_name(search_mode: SearchMode | None) -> str:
+    return DEFAULT_SEARCH_NAME if search_mode is None else search_mode
 
 
 def chosen_corpora(names: list[str], files: list[Path]) -> list[Corpus]:

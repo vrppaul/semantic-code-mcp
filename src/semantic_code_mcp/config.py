@@ -6,7 +6,12 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from semantic_code_mcp.domain.models import HIGHEST_SIMILARITY, LOWEST_SIMILARITY, StoreKind
+from semantic_code_mcp.domain.models import (
+    HIGHEST_SIMILARITY,
+    LOWEST_SIMILARITY,
+    SearchMode,
+    StoreKind,
+)
 
 # Never source. A name matches a path component at any depth; `name/**` matches only
 # at the project root, so a source package called `build` or `dist` deeper down is indexed.
@@ -49,9 +54,9 @@ class Settings(BaseSettings):
     local_index: bool = False
     # What keeps the indexes (ADR 009, D8); each store keeps indexes of its own
     index_store: StoreKind = StoreKind.sqlite
-    # Whether a search that does not say searches by meaning too, for a user who wants it
-    # always: by default it reads words alone and loads no model (ADR 009, D2)
-    by_meaning: bool = False
+    # How every search ranks: by words alone, loading no model, unless a user asks for
+    # meaning too (ADR 009, D2)
+    search_mode: SearchMode = SearchMode.words
 
     debug: bool = False
     # Profile every request with pyinstrument, a dev dependency

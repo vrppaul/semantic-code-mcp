@@ -52,12 +52,6 @@ PATH_GLOB_DESCRIPTION = (
     " with the reason."
 )
 EXCLUDE_GLOB_DESCRIPTION = "No file this glob names, read as path_glob is (`tests`, `*_test.py`)."
-BY_MEANING_DESCRIPTION = (
-    "Search by meaning too, the model's vectors fused with the words: for behaviour described"
-    " without the words its code holds, after a search by words missed. The first such search"
-    " of a project embeds every chunk, minutes on a large repository; later ones embed what"
-    " changed. Left out, the server's setting, SEMANTIC_CODE_MCP_BY_MEANING, false by default."
-)
 PROJECT_PATH_DESCRIPTION = (
     "Absolute path to the project, or to a directory inside its git repository. Left out,"
     " the client's workspace root: the directory Claude Code was started in, which must lie in"
@@ -81,21 +75,19 @@ async def search_code(  # noqa: PLR0913
     languages: Annotated[list[Language] | None, Field(description=LANGUAGES_DESCRIPTION)] = None,
     path_glob: Annotated[str | None, Field(description=PATH_GLOB_DESCRIPTION)] = None,
     exclude_glob: Annotated[str | None, Field(description=EXCLUDE_GLOB_DESCRIPTION)] = None,
-    by_meaning: Annotated[bool | None, Field(description=BY_MEANING_DESCRIPTION)] = None,
     include_debug: bool = False,
 ) -> SearchCodeResponse:
     """Find the functions, classes, methods and document sections of a project by the words
     their code uses.
 
-    By default it matches the words of code: write the identifiers and terms the code
-    would use, and on a miss search again with others. A query that is a name, or a
-    qualified one, brings the chunks of that name first:
+    It matches the words of code: write the identifiers and terms the code would use, and
+    on a miss search again with others. A query that is a name, or a qualified one, brings
+    the chunks of that name first:
     - "retry backoff delay attempts"
     - "parse_args config options"
     - "Stack.push"
 
-    Set `by_meaning` for behaviour described without the code's words, after a search by
-    words missed. For every place a name is used, Grep: this returns only the best matches.
+    For every place a name is used, Grep: this returns only the best matches.
 
     Indexes Python, Rust and Markdown files. Automatically indexes the project if not
     already indexed, and re-indexes any files that have changed since the last search.
@@ -110,7 +102,6 @@ async def search_code(  # noqa: PLR0913
         languages: Only chunks of files in these languages.
         path_glob: Only files this glob names, read from the directory searched.
         exclude_glob: No file this glob names, read as path_glob is.
-        by_meaning: Search by meaning too, fused with the words.
         include_debug: Also return timings and counts of the search.
 
     Returns:
@@ -138,7 +129,7 @@ async def search_code(  # noqa: PLR0913
                 text=query,
                 limit=limit,
                 scope=scope,
-                by_meaning=registry.meaning_by_default if by_meaning is None else by_meaning,
+                mode=registry.search_mode,
             ),
             location.root,
             progress=ProgressReporter(ctx.report_progress),
@@ -156,14 +147,14 @@ async def index_codebase(
     """Index a codebase's words for search.
 
     Splits Python, Rust and Markdown files into functions, classes, methods, module
-    docstrings and document sections, and stores them with their words; a search by
-    meaning embeds them. `search_code` indexes on its own; call this only to re-index
-    everything.
+    docstrings and document sections, and stores them with their words; a server set to
+    search by meaning too embeds them. `search_code` indexes on its own; call this only to
+    re-index everything.
 
     With `force: true`, it re-indexes everything even if files haven't changed; a model
-    whose weights nothing pins, as a local path, has its vectors dropped too, so the next
-    search by meaning embeds every chunk again. Otherwise, only new and modified files are
-    indexed (incremental).
+    whose weights nothing pins, as a local path, has its vectors dropped too, so a server
+    set to search by meaning embeds every chunk again. Otherwise, only new and modified
+    files are indexed (incremental).
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository

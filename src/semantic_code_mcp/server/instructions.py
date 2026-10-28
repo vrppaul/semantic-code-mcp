@@ -1,22 +1,20 @@
 """What the server tells a client about its tools when a session starts.
 
 A client shows these instructions beside the tools whether or not the agent loaded the
-skill, so they hold what an agent needs before its first call: how to word a search, when
-to ask for meaning and when to Grep, what `project_path` names, which languages are
-indexed, and that indexing needs no call of its own. `scripts/check_skill.py` holds the
+skill, so they hold what an agent needs before its first call: how to word a search and
+when to Grep instead, what `project_path` names, which languages are indexed, and that
+indexing needs no call of its own. `scripts/check_skill.py` holds the
 languages and the tools they name to the server's own.
 """
 
 SERVER_INSTRUCTIONS = """\
 Code search over a project's Python, Rust and Markdown files: `search_code` finds \
-functions, classes, methods and document sections by the words their code uses, and by \
-meaning on request.
+functions, classes, methods and document sections by the words their code uses.
 
 - Use `search_code` to find where behaviour or a concept lives, or a definition by its name: \
 write the identifiers and terms the code would use ("retry backoff delay"); on a miss, other \
-words, then `by_meaning` for behaviour described in words the code does not hold. Use Grep \
-for an exact string or a regex, and for every call site: `search_code` returns only its best \
-matches.
+words. Use Grep for an exact string or a regex, and for every call site: `search_code` \
+returns only its best matches.
 - `project_path` is absolute: a repository's root, or a directory inside it, which keeps \
 the search to that directory. A repository keeps one index, whichever directory you name. \
 Left out, it is the client's workspace root, where the client names one and it lies in a \

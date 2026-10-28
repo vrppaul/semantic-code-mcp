@@ -17,6 +17,7 @@ from semantic_code_mcp.domain.models import (
     ChunkKind,
     Language,
     SearchCandidates,
+    SearchMode,
     SearchQuery,
     SearchScope,
 )
@@ -58,12 +59,14 @@ def candidate(
 
 def words_query(text: str) -> SearchQuery:
     """A query of the whole project, by words alone."""
-    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=False)
+    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, mode=SearchMode.words)
 
 
 def meaning_query(text: str) -> SearchQuery:
     """A query of the whole project, by meaning too."""
-    return SearchQuery(text=text, limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=True)
+    return SearchQuery(
+        text=text, limit=LIMIT, scope=WHOLE_PROJECT, mode=SearchMode.words_and_meaning
+    )
 
 
 def found_by_vector(*candidates: Candidate) -> SearchCandidates:
@@ -187,15 +190,18 @@ async def test_a_name_holding_one_separator_under_a_parent_of_another_is_read_by
 
 
 @pytest.mark.parametrize(
-    ("by_meaning", "chunks_embedded"),
-    [pytest.param(False, 0, id="by words"), pytest.param(True, 6, id="by meaning")],
+    ("mode", "chunks_embedded"),
+    [
+        pytest.param(SearchMode.words, 0, id="by words"),
+        pytest.param(SearchMode.words_and_meaning, 6, id="by meaning"),
+    ],
 )
 async def test_a_search_by_meaning_embeds_the_chunks_without_vectors_first(
-    test_settings: Settings, sample_project: Path, *, by_meaning: bool, chunks_embedded: int
+    test_settings: Settings, sample_project: Path, *, mode: SearchMode, chunks_embedded: int
 ):
     store = FakeIndexStore(NO_CANDIDATES)
     service = search_service(store, test_settings, FakeEmbedder())
-    query = SearchQuery(text="greet", limit=LIMIT, scope=WHOLE_PROJECT, by_meaning=by_meaning)
+    query = SearchQuery(text="greet", limit=LIMIT, scope=WHOLE_PROJECT, mode=mode)
 
     await service.search(query, sample_project, progress=NO_PROGRESS)
 
@@ -249,17 +255,21 @@ async def test_a_hit_named_as_the_query_stays_however_far_in_meaning(
 
 
 @pytest.mark.parametrize(
-    "by_meaning", [pytest.param(False, id="by words"), pytest.param(True, id="by meaning")]
+    "mode",
+    [
+        pytest.param(SearchMode.words, id="by words"),
+        pytest.param(SearchMode.words_and_meaning, id="by meaning"),
+    ],
 )
 async def test_no_more_hits_than_the_limit(
-    test_settings: Settings, sample_project: Path, *, by_meaning: bool
+    test_settings: Settings, sample_project: Path, *, mode: SearchMode
 ):
     found = [candidate(f"function_{rank}", CLOSE) for rank in range(LIMIT)]
     store = FakeIndexStore(SearchCandidates(by_vector=found, by_keyword=found))
     service = search_service(store, test_settings, FakeEmbedder())
 
     report = await service.search(
-        SearchQuery(text="anything", limit=3, scope=WHOLE_PROJECT, by_meaning=by_meaning),
+        SearchQuery(text="anything", limit=3, scope=WHOLE_PROJECT, mode=mode),
         sample_project,
         progress=NO_PROGRESS,
     )
@@ -402,7 +412,7 @@ async def test_a_search_hands_its_scope_to_the_store(test_settings: Settings, sa
     service = search_service(store, test_settings, FakeEmbedder())
 
     await service.search(
-        SearchQuery(text="anything", limit=LIMIT, scope=scope, by_meaning=False),
+        SearchQuery(text="anything", limit=LIMIT, scope=scope, mode=SearchMode.words),
         sample_project,
         progress=NO_PROGRESS,
     )

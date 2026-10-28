@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
-from semantic_code_mcp.domain.models import IndexIdentity, VectorIdentity
+from semantic_code_mcp.domain.models import IndexIdentity, SearchMode, VectorIdentity
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
 from semantic_code_mcp.services.vectors import VectorService
@@ -72,9 +72,9 @@ class ProjectRegistry:
         self._services_by_index: dict[Path, ProjectServices] = {}
 
     @property
-    def meaning_by_default(self) -> bool:
-        """Whether a search that does not say searches by meaning too."""
-        return self._settings.by_meaning
+    def search_mode(self) -> SearchMode:
+        """How every search of this server ranks, as its settings say."""
+        return self._settings.search_mode
 
     def locate(self, directory: Path) -> ProjectLocation:
         """Where a directory lies: in the git work tree around it, whose root is its

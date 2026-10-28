@@ -1,6 +1,6 @@
 # Semantic Code MCP
 
-A local MCP server that gives coding agents code search: tree-sitter splits a project into chunks, onnxruntime embeds them with a model's ONNX export, SQLite keeps them and their words, and `search_code` finds code by words and by meaning.
+A local MCP server that gives coding agents code search: tree-sitter splits a project into chunks, SQLite keeps them and their words, and `search_code` finds code by its words; a setting adds meaning, a model's ONNX export on onnxruntime.
 
 ## Commands
 

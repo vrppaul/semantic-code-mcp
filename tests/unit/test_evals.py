@@ -23,8 +23,8 @@ from evals.quality import (
     shares_answer_words,
 )
 from evals.server import (
-    BY_MEANING_VARIABLE,
     INDEX_STORE_VARIABLE,
+    SEARCH_MODE_VARIABLE,
     SearchHit,
     ServerOptions,
     server_environment,
@@ -32,7 +32,7 @@ from evals.server import (
 from evals.speed import Edit, edit_text, edits_in_turn
 
 from semantic_code_mcp.app import build_chunker
-from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language, StoreKind
+from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language, SearchMode, StoreKind
 from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_COMPACTION
 
 
@@ -387,30 +387,35 @@ def test_a_server_of_the_harness_keeps_its_indexes_in_the_store_a_run_names(
     monkeypatch.setenv(INDEX_STORE_VARIABLE, StoreKind.lancedb)
 
     environment = server_environment(
-        tmp_path, ServerOptions(index_store=index_store, by_meaning=False)
+        tmp_path, ServerOptions(index_store=index_store, search_mode=None)
     )
 
     assert environment.get(INDEX_STORE_VARIABLE) == store_given
 
 
 @pytest.mark.parametrize(
-    ("by_meaning", "setting_given"),
+    ("search_mode", "setting_given"),
     [
-        pytest.param(False, None, id="by words, the server's default"),
-        pytest.param(True, "true", id="by meaning, as a run asks"),
+        pytest.param(None, None, id="the server's default"),
+        pytest.param(
+            SearchMode.words_and_meaning, "words_and_meaning", id="by meaning, as a run asks"
+        ),
     ],
 )
-def test_a_server_of_the_harness_searches_by_meaning_only_where_a_run_asks(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, by_meaning: bool, setting_given: str | None
+def test_a_server_of_the_harness_searches_in_the_mode_a_run_names(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    search_mode: SearchMode | None,
+    setting_given: str | None,
 ):
     """The caller's own setting never reaches it."""
-    monkeypatch.setenv(BY_MEANING_VARIABLE, "true")
+    monkeypatch.setenv(SEARCH_MODE_VARIABLE, SearchMode.words_and_meaning)
 
     environment = server_environment(
-        tmp_path, ServerOptions(index_store=None, by_meaning=by_meaning)
+        tmp_path, ServerOptions(index_store=None, search_mode=search_mode)
     )
 
-    assert environment.get(BY_MEANING_VARIABLE) == setting_given
+    assert environment.get(SEARCH_MODE_VARIABLE) == setting_given
 
 
 @pytest.mark.parametrize(
@@ -418,7 +423,9 @@ def test_a_server_of_the_harness_searches_by_meaning_only_where_a_run_asks(
     [
         pytest.param(["quality", "--store", StoreKind.sqlite], id="quality in a store of its own"),
         pytest.param(["speed", "--store", StoreKind.sqlite], id="speed in a store of its own"),
-        pytest.param(["quality", "--by-meaning"], id="quality by meaning"),
+        pytest.param(
+            ["quality", "--search-mode", SearchMode.words_and_meaning], id="quality by meaning"
+        ),
     ],
 )
 def test_a_run_other_than_the_server_s_default_is_never_saved_as_the_baseline(

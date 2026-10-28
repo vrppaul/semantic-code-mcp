@@ -16,8 +16,8 @@ SEARCH_ROOT_DESCRIPTION = (
 )
 # What an agent reads of how much of an index a search by meaning reads without embedding
 EMBEDDED_CHUNKS_DESCRIPTION = (
-    "How many of the chunks have the server's model's vectors; a search by meaning embeds"
-    " the rest before it answers."
+    "How many of the chunks have the server's model's vectors; a server set to search by"
+    " meaning too embeds the rest before it answers."
 )
 SEARCHED_DIRECTORY_DESCRIPTION = (
     "The directory the search kept to: project_root, or a directory under it; the search did"

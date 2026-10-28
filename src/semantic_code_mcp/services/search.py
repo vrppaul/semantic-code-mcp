@@ -1,16 +1,18 @@
 """Search: bring the index up to date, then find the chunks that best answer a query.
 
-By default a search reads words alone (ADR 009, D1): the chunks named as the query come
-first, as an agent that asks for an identifier it knows wants its definition, and a
-qualified name (`Stack.push`) is read as a parent and a name; then the chunks whose words
-best match the query's, by BM25. The model is not loaded for it.
+A search reads words alone unless the server's settings ask for meaning too, the mode a
+query carries (ADR 009, D1, D2). By words, the chunks named as the query come first, as an
+agent that asks for an identifier it knows wants its definition, and a qualified name
+(`Stack.push`) is read as a parent and a name; then the chunks whose words best match the
+query's, by BM25. The model is not loaded for it.
 
-A search by meaning (D2) embeds the chunks without the model's vectors first, inside the
-call (`vectors.py`). Each channel of the store then brings its candidates, the vector channel
-by meaning and the keyword channel by words, and fusion ranks them as one list, which the
-search returns as it stands: hits of one file are not grouped. A hit far in meaning from the
-query is noise and goes, and one whose words match the query's goes only further away; one
-named as the query stays, and so does one without a vector yet, which only its words found.
+By words and meaning, a search embeds the chunks without the model's vectors first, inside
+the call (`vectors.py`). Each channel of the store then brings its candidates, the vector
+channel by meaning and the keyword channel by words, and fusion ranks them as one list,
+which the search returns as it stands: hits of one file are not grouped. A hit far in
+meaning from the query is noise and goes, and one whose words match the query's goes only
+further away; one named as the query stays, and so does one without a vector yet, which
+only its words found.
 """
 
 import asyncio
@@ -27,6 +29,7 @@ from semantic_code_mcp.domain.models import (
     IndexReport,
     IndexStatus,
     SearchHit,
+    SearchMode,
     SearchQuery,
     SearchReport,
     SearchTimings,
@@ -140,15 +143,16 @@ class SearchService:
                 results=[], filtered_count=0, timings=NO_TIMINGS, index_report=index_report
             )
 
-        if query.by_meaning:
-            await self._prepare_meaning(
-                progress, embed_first=counts.chunks_with_vectors < counts.chunks
-            )
-            await progress.report(SearchPhase.searching.value, "Searching...")
-            report = await asyncio.to_thread(self._search_by_meaning, query, index_report)
-        else:
-            await progress.report(SearchPhase.searching.value, "Searching...")
-            report = await asyncio.to_thread(self._search_by_words, query, index_report)
+        match query.mode:
+            case SearchMode.words:
+                await progress.report(SearchPhase.searching.value, "Searching...")
+                report = await asyncio.to_thread(self._search_by_words, query, index_report)
+            case SearchMode.words_and_meaning:
+                await self._prepare_meaning(
+                    progress, embed_first=counts.chunks_with_vectors < counts.chunks
+                )
+                await progress.report(SearchPhase.searching.value, "Searching...")
+                report = await asyncio.to_thread(self._search_by_meaning, query, index_report)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 

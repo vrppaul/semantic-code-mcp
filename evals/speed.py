@@ -8,9 +8,9 @@ grows with each edit of a file other than the last (the copies upkeep keeps for 
 seconds included) and how long the search after it takes, at the median and at the slowest
 (it re-indexes the edited file first; one in twenty compacts a LanceDB index), the server's
 peak memory and what it still holds once its work is done, as a session's idle server keeps
-it, with no model loaded; the model load, a search by meaning of a one-file project in a
-server of its own, then in that server the corpus's first search by meaning, which embeds
-every chunk, and the warm searches by meaning after it; the first answer of a freshly
+it, with no model loaded; in a server of its own set to search by meaning too, the model
+load, a search of a one-file project, then the corpus's first search, which embeds every
+chunk, and the warm searches after it; the first answer of a freshly
 started server on an up-to-date index — the process start an agent waits for — and, last,
 the first answer on a repository never indexed: a server started on an empty index
 directory, until its first search answers, the whole index built inside it. Memory is read
@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict
 from evals.corpus import Corpus, Query, restore
 from evals.quality import RESULTS_PER_QUERY
 from evals.server import SearchNarrowing, ServerConnection, ServerStarter
+from semantic_code_mcp.domain.models import SearchMode
 
 MILLISECONDS_PER_SECOND = 1000
 BYTES_PER_MEGABYTE = 1024 * 1024
@@ -156,14 +157,15 @@ async def measure_speed(
         peak_memory = server_memory_megabytes(PEAK_RESIDENT_FIELD)
         resident_memory = server_memory_megabytes(RESIDENT_FIELD)
 
-    async with servers.connect(index_directory) as connection:
+    async with servers.searching(SearchMode.words_and_meaning).connect(
+        index_directory
+    ) as connection:
         model_load_seconds = await timed_model_load_seconds(connection)
         first_by_meaning_seconds = await timed_search_seconds(
-            connection, working_tree, queries[0], None, by_meaning=True
+            connection, working_tree, queries[0], None
         )
         latencies_by_meaning = [
-            await timed_search_seconds(connection, working_tree, query, None, by_meaning=True)
-            for query in queries
+            await timed_search_seconds(connection, working_tree, query, None) for query in queries
         ]
 
     started = time.perf_counter()
@@ -218,8 +220,8 @@ async def timed_cold_first_answer_seconds(
 
 
 async def timed_model_load_seconds(connection: ServerConnection) -> float:
-    """How long the server takes to load its model: a search by meaning of a project of one
-    tiny file.
+    """How long a server set to search by meaning too takes to load its model: a search of a
+    project of one tiny file.
 
     The file makes the search embed something, so the model loads; an empty project
     would be answered without it, and a search by words never loads it.
@@ -227,9 +229,7 @@ async def timed_model_load_seconds(connection: ServerConnection) -> float:
     with tempfile.TemporaryDirectory() as warm_up_project:
         (Path(warm_up_project) / WARM_UP_FILE_NAME).write_text(WARM_UP_SOURCE)
         started = time.perf_counter()
-        await connection.search(
-            Path(warm_up_project), WARM_UP_QUERY, RESULTS_PER_QUERY, by_meaning=True
-        )
+        await connection.search(Path(warm_up_project), WARM_UP_QUERY, RESULTS_PER_QUERY)
         return time.perf_counter() - started
 
 
@@ -245,15 +245,10 @@ async def timed_search_seconds(
     working_tree: Path,
     query: str,
     narrowing: SearchNarrowing | None,
-    *,
-    by_meaning: bool = False,
 ) -> float:
-    """How long one search takes, seen from the client, narrowed where a narrowing is given,
-    by meaning where asked."""
+    """How long one search takes, seen from the client, narrowed where a narrowing is given."""
     started = time.perf_counter()
-    await connection.search(
-        working_tree, query, RESULTS_PER_QUERY, narrowing, by_meaning=by_meaning
-    )
+    await connection.search(working_tree, query, RESULTS_PER_QUERY, narrowing)
     return time.perf_counter() - started
 
 

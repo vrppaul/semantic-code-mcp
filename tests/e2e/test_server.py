@@ -13,6 +13,7 @@ from mcp.types import CallToolResult, ListRootsResult, Root
 from semantic_code_mcp.app import create_app
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.globs import REFUSED_CHARACTERS
+from semantic_code_mcp.domain.models import SearchMode
 from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.server.responses import (
     IndexCodebaseResponse,
@@ -199,15 +200,25 @@ async def test_index_status_counts_the_indexed_project_whose_index_embeds_nothin
 
 
 @pytest.mark.parametrize(
-    ("arguments", "embedded"),
+    ("search_mode", "arguments", "embedded"),
     [
-        pytest.param({}, 0, id="by words, the default"),
-        pytest.param({"by_meaning": True}, 2, id="by meaning"),
+        pytest.param(SearchMode.words, {}, 0, id="by words, the default"),
+        pytest.param(SearchMode.words, {"by_meaning": True}, 0, id="an agent asking for meaning"),
+        pytest.param(SearchMode.words_and_meaning, {}, 2, id="set to search by meaning too"),
     ],
 )
-async def test_a_search_by_meaning_embeds_the_project_first_and_one_by_words_does_not(
-    project: Path, client: Client, arguments: dict[str, object], embedded: int
+async def test_only_a_server_set_to_search_by_meaning_embeds_the_project_first(
+    project: Path,
+    tmp_path: Path,
+    embedder: OnnxEmbedder,
+    search_mode: SearchMode,
+    arguments: dict[str, object],
+    embedded: int,
 ):
+    """The server's setting picks how a search ranks; an agent's call cannot (ADR 009, D2)."""
+    settings = Settings(cache_dir=tmp_path / "cache", search_mode=search_mode)
+    client = Client(create_app(settings, embedder=embedder), mode="legacy")
+
     async with client:
         await client.call_tool(
             "search_code", {"query": "greeting", "project_path": str(project), **arguments}
@@ -215,20 +226,6 @@ async def test_a_search_by_meaning_embeds_the_project_first_and_one_by_words_doe
         result = await client.call_tool("index_status", {"project_path": str(project)})
 
     assert IndexStatusResponse.model_validate(structured(result)).embedded_chunks_count == embedded
-
-
-async def test_a_search_that_does_not_say_searches_by_meaning_where_the_server_s_setting_does(
-    project: Path, tmp_path: Path, embedder: OnnxEmbedder
-):
-    """For a user who wants meaning always."""
-    settings = Settings(cache_dir=tmp_path / "cache", by_meaning=True)
-    client = Client(create_app(settings, embedder=embedder), mode="legacy")
-
-    async with client:
-        await client.call_tool("search_code", {"query": "greeting", "project_path": str(project)})
-        result = await client.call_tool("index_status", {"project_path": str(project)})
-
-    assert IndexStatusResponse.model_validate(structured(result)).embedded_chunks_count == 2
 
 
 async def test_search_sees_a_function_added_after_indexing(project: Path, client: Client):

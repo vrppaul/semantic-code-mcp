@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "semantic-code",
-      "description": "Find code by what it does: a local MCP server that indexes a project's Python, Rust and Markdown files and searches them by meaning and words, with a skill that tells the agent when to use it and when Grep serves better.",
+      "description": "Find code by what it does: a local MCP server that indexes a project's Python, Rust and Markdown files and searches them by the words their code uses, with a skill that tells the agent when to use it and when Grep serves better.",
       "author": {
         "name": "Pavel Paranin"
       },

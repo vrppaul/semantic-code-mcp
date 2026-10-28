@@ -1,6 +1,6 @@
 {
   "index_store": null,
-  "by_meaning": false,
+  "search_mode": null,
   "corpora": [
     {
       "corpus": "click",
