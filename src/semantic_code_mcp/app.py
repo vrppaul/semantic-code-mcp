@@ -37,8 +37,12 @@ ALWAYS_LOAD_KEY = "anthropic/alwaysLoad"
 # of the libraries below it, as httpx's for each model file the hub fetches, would land
 # among the server's JSON lines
 LIBRARY_LOG_LEVEL = "WARNING"
-# What installs the LanceDB store's libraries, an optional extra of the package
+# What installs the LanceDB store's libraries, an optional extra of the package, and the
+# top-level modules it installs
 LANCEDB_EXTRA = "semantic-code-mcp[lancedb]"
+LANCEDB_LIBRARIES = frozenset({"lancedb", "lance", "pyarrow"})
+# What parts a module's package from its name
+MODULE_NAME_SEPARATOR = "."
 
 
 class StoreUnavailableError(RuntimeError):
@@ -124,6 +128,9 @@ def lancedb_store_class() -> type[DirectoryStore]:
     try:
         from semantic_code_mcp.storage.lancedb import LanceDBIndexStore  # noqa: PLC0415
     except ModuleNotFoundError as error:
+        missing = (error.name or "").partition(MODULE_NAME_SEPARATOR)[0]
+        if missing not in LANCEDB_LIBRARIES:
+            raise
         message = f"the LanceDB store needs its libraries: install {LANCEDB_EXTRA}"
         raise StoreUnavailableError(message) from error
     return LanceDBIndexStore

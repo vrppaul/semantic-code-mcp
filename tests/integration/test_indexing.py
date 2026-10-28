@@ -110,6 +110,19 @@ def test_a_store_whose_libraries_are_missing_stops_the_server_naming_its_extra(
         build_registry(settings, FakeEmbedder())
 
 
+def test_a_module_of_the_package_missing_is_never_taken_for_the_missing_extra(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    """A broken install of the package itself says what is missing, not to install the
+    extra, which would not help."""
+    monkeypatch.setitem(sys.modules, "semantic_code_mcp.storage.globs", None)
+    monkeypatch.delitem(sys.modules, "semantic_code_mcp.storage.lancedb")
+    settings = Settings(cache_dir=test_settings.cache_dir, index_store=StoreKind.lancedb)
+
+    with pytest.raises(ModuleNotFoundError, match=re.escape("semantic_code_mcp.storage.globs")):
+        build_registry(settings, FakeEmbedder())
+
+
 async def test_second_run_without_changes_indexes_nothing(
     indexing: IndexingService, sample_project: Path
 ):

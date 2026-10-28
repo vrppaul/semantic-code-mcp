@@ -238,6 +238,46 @@ type = "independence"
 modules = ["semantic_code_mcp.storage.lancedb", "semantic_code_mcp.storage.sqlite"]
 
 [[tool.importlinter.contracts]]
+name = "LanceDB's store is imported only where it is chosen"
+type = "forbidden"
+# Its libraries come with an optional extra: the composition root imports its module only
+# when the settings pick it, and nothing else imports it at all
+source_modules = [
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.embedding",
+    "semantic_code_mcp.storage.sqlite",
+    "semantic_code_mcp.storage.index_directories",
+    "semantic_code_mcp.storage.globs",
+    "semantic_code_mcp.storage.search_text",
+    "semantic_code_mcp.storage.similarity",
+    "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+forbidden_modules = ["semantic_code_mcp.storage.lancedb"]
+# The entry points reach it through the composition root, which imports it when chosen
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "LanceDB's libraries stay in its store"
+type = "forbidden"
+# A module of storage beside LanceDB's that imported them would stop a server installed
+# without the extra
+source_modules = [
+    "semantic_code_mcp.storage.sqlite",
+    "semantic_code_mcp.storage.index_directories",
+    "semantic_code_mcp.storage.globs",
+    "semantic_code_mcp.storage.search_text",
+    "semantic_code_mcp.storage.similarity",
+]
+forbidden_modules = ["lancedb", "lance", "pyarrow"]
+
+[[tool.importlinter.contracts]]
 name = "The stores' databases and their write lock stay in storage"
 type = "forbidden"
 # Replacing a database, or how its writers keep out of each other's way, touches one part

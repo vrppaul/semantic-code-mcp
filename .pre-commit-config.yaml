@@ -79,6 +79,15 @@ repos:
         files: ^(src/|pyproject\.toml$)
         pass_filenames: false
 
+      # The dev group installs every extra, so nothing else here runs without one: every
+      # module but an extra's must import in the package and its runtime dependencies alone
+      - id: base-install
+        name: base install (every module imports without the extras)
+        entry: uv run --isolated --no-dev python scripts/check_base_install.py
+        language: system
+        files: ^(src/|scripts/check_base_install\.py$|pyproject\.toml$|uv\.lock$)
+        pass_filenames: false
+
       - id: vulture
         name: vulture (code nothing calls)
         entry: uv run vulture
