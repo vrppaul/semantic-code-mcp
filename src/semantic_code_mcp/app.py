@@ -14,13 +14,15 @@ from semantic_code_mcp.chunkers.python import PythonChunker
 from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
-from semantic_code_mcp.domain.interfaces import Embedder
-from semantic_code_mcp.domain.models import IndexIdentity
+from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
+from semantic_code_mcp.domain.models import IndexIdentity, StoreKind
 from semantic_code_mcp.server.instructions import SERVER_INSTRUCTIONS
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
-from semantic_code_mcp.services.projects import ProjectRegistry
+from semantic_code_mcp.services.projects import ProjectRegistry, StoreOpener
+from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
+from semantic_code_mcp.storage.sqlite import SqliteIndexStore
 
 SERVER_NAME = "semantic-code-mcp"
 PACKAGE_NAME = "semantic-code-mcp"
@@ -87,7 +89,7 @@ def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
             git_timeout_seconds=settings.git_timeout_seconds,
             home_directory=Path.home(),
         ),
-        open_store=open_index_store,
+        open_store=store_opener(settings),
     )
 
 
@@ -96,8 +98,31 @@ def build_chunker() -> CompositeChunker:
     return CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
 
 
-def open_index_store(project_directory: Path, identity: IndexIdentity) -> LanceDBIndexStore:
-    """The store of a project's index of one identity, under the project's index directory."""
-    return LanceDBIndexStore(
-        project_directory, identity, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS
+def store_opener(settings: Settings) -> StoreOpener:
+    """What opens each index of a project in the store the settings pick."""
+    return partial(open_index_store, store_kind=settings.index_store)
+
+
+def open_index_store(
+    project_directory: Path, identity: IndexIdentity, *, store_kind: StoreKind
+) -> IndexStore:
+    """The store of a project's index of one identity, of the kind given, built on the
+    index's own directory under the project's index directory."""
+    match store_kind:
+        case StoreKind.sqlite:
+            return SqliteIndexStore(
+                index_directory(project_directory, identity, SqliteIndexStore.LAYOUT)
+            )
+        case StoreKind.lancedb:
+            return LanceDBIndexStore(
+                index_directory(project_directory, identity, LanceDBIndexStore.LAYOUT)
+            )
+
+
+def index_directory(
+    project_directory: Path, identity: IndexIdentity, layout: IndexLayout
+) -> IndexDirectory:
+    """The directory of a project's index of one identity in a store's layout."""
+    return IndexDirectory(
+        project_directory, identity, layout, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS
     )

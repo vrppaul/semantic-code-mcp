@@ -1,11 +1,12 @@
 """Where a project's index lives, and what every store does there alike.
 
 A project's index directory holds an index for each identity — the model and its
-revision, the embedder's version, the chunker's version — and layout, each in a
-directory of its own named after them, with its write lock beside it. So a session of
-another model, revision or version, or a server upgraded or rolled back, uses an index
-of its own and never builds this one again; switching back finds the old one still
-there.
+revision, the embedder's version, the chunker's version — and layout — the store that
+keeps it and the version of that store's schema — each in a directory of its own named
+after them, with its write lock beside it. So a session of another model, revision,
+version or store, or a server upgraded or rolled back, uses an index of its own and never
+builds this one again, nor meets another store's files; switching back finds the old one
+still there. A store is built on its index's directory and owns only what lies inside it.
 
 An index nobody used for UNUSED_INDEX_RETENTION is removed, and so is what 0.4 kept
 directly in the project's directory. A write renames a new manifest into the index's
@@ -32,20 +33,20 @@ import tempfile
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import structlog
 from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from semantic_code_mcp.domain.models import IndexIdentity, IndexManifest
+from semantic_code_mcp.domain.models import IndexIdentity, IndexManifest, StoreKind
 
 log = structlog.get_logger()
 
 # An index's directory, under the project's, named by its layout and its identity's digest;
 # its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
-INDEX_DIRECTORY_FORMAT = "schema-{schema_version}-{identity_digest}"
+INDEX_DIRECTORY_FORMAT = "schema-{schema_version}-{identity_digest}-{store_kind}"
 INDEX_DIRECTORY_PATTERN = "schema-*"
 IDENTITY_DIGEST_LENGTH = 16
 WRITE_LOCK_SUFFIX = ".lock"
@@ -70,6 +71,16 @@ IGNORE_EVERYTHING = "*\n"
 TEMPORARY_SUFFIX = ".tmp"
 
 
+class IndexLayout(BaseModel):
+    """How a store lays an index out: the store's kind, and the version of its schema."""
+
+    model_config = ConfigDict(frozen=True)
+
+    store_kind: StoreKind
+    # Bumped by any change to the store's tables or to what one is made from
+    schema_version: int
+
+
 class LeftIndex(BaseModel):
     """An index of the project this store does not use: the paths it is made of, and the
     lock its writers hold, which 0.4 had none of."""
@@ -81,21 +92,35 @@ class LeftIndex(BaseModel):
 
 
 class IndexDirectory:
-    """The directory of one index of a project: its write lock, its manifest, the stamp of
-    its use, and the sweep of the project's indexes nobody uses.
+    """The directory of a project's index of one identity in one layout: its write lock, its
+    manifest, the stamp of its use, and the sweep of the project's indexes nobody uses.
 
     Nothing touches the disk until it is first used, and only a writer makes the directory.
     """
 
-    def __init__(self, project_directory: Path, name: str, *, lock_timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        project_directory: Path,
+        identity: IndexIdentity,
+        layout: IndexLayout,
+        *,
+        lock_timeout_seconds: float,
+    ) -> None:
         self._project_directory = project_directory
-        self._path = project_directory / name
+        self._identity = identity
+        self._layout = layout
+        self._path = project_directory / index_directory_name(identity, layout)
         self._lock_timeout_seconds = lock_timeout_seconds
 
     @property
     def path(self) -> Path:
         """Where the index lives."""
         return self._path
+
+    @property
+    def lock_timeout_seconds(self) -> float:
+        """How long a write waits while another holds the index."""
+        return self._lock_timeout_seconds
 
     @property
     def write_lock(self) -> Path:
@@ -111,12 +136,15 @@ class IndexDirectory:
         """Hold the index for one write: marked as used, the project's directory made for the
         write lock that lies in it, the lock taken within the timeout the directory was given,
         so two server processes on one index never write side by side, and the index's own
-        directory made under it, as a removal renames an index only under that lock."""
+        directory made under it, as a removal renames an index only under that lock. A write
+        that ends without an error records what built the index in its manifest, under the
+        lock still."""
         self.note_use()
         self._project_directory.mkdir(parents=True, exist_ok=True)
         with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
             self._create()
             yield
+            self._write_manifest()
 
     def _create(self) -> None:
         """Make the directory and the project's `.gitignore`, and mark the index as used, as
@@ -139,8 +167,14 @@ class IndexDirectory:
             log.warning("manifest_unreadable", directory=str(self._path), error=str(error))
             return None
 
-    def write_manifest(self, manifest: IndexManifest) -> None:
-        """Write the manifest whole, renamed over the old one."""
+    def _write_manifest(self) -> None:
+        """Record the index's identity and layout as written now: the manifest whole, renamed
+        over the old one."""
+        manifest = IndexManifest(
+            identity=self._identity,
+            schema_version=self._layout.schema_version,
+            indexed_at=datetime.now(UTC),
+        )
         write_atomically(self._path / MANIFEST_FILE, manifest.model_dump_json())
 
     def note_use(self) -> None:
@@ -162,11 +196,13 @@ class IndexDirectory:
         remove_unused_indexes(self._project_directory, self._path)
 
 
-def index_directory_name(identity: IndexIdentity, schema_version: int) -> str:
+def index_directory_name(identity: IndexIdentity, layout: IndexLayout) -> str:
     """The name of the directory an index of this identity and layout lives in."""
     digest = hashlib.sha256(identity.model_dump_json().encode()).hexdigest()
     return INDEX_DIRECTORY_FORMAT.format(
-        schema_version=schema_version, identity_digest=digest[:IDENTITY_DIGEST_LENGTH]
+        schema_version=layout.schema_version,
+        identity_digest=digest[:IDENTITY_DIGEST_LENGTH],
+        store_kind=layout.store_kind,
     )
 
 

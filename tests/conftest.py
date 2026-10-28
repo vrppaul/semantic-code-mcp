@@ -7,7 +7,7 @@ import pytest
 
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.embedding import OnnxEmbedder
-from tests.stores import STORE_CLASSES, StoreFactory
+from tests.stores import STORE_CLASSES, StoreClass
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -47,8 +47,8 @@ def embedder() -> OnnxEmbedder:
 
 
 @pytest.fixture(params=STORE_CLASSES)
-def store_factory(request: pytest.FixtureRequest) -> StoreFactory:
-    """Each store in turn, as the class that builds one on a project's index directory."""
+def store_class(request: pytest.FixtureRequest) -> StoreClass:
+    """Each store in turn, as the class that builds one on an index's directory."""
     return request.param
 
 
@@ -56,6 +56,12 @@ def store_factory(request: pytest.FixtureRequest) -> StoreFactory:
 def test_settings(tmp_path: Path) -> Settings:
     """Settings whose indexes live in the test's temporary directory."""
     return Settings(cache_dir=tmp_path / "cache")
+
+
+@pytest.fixture
+def store_settings(tmp_path: Path, store_class: StoreClass) -> Settings:
+    """Settings whose indexes live in the test's temporary directory, in each store in turn."""
+    return Settings(cache_dir=tmp_path / "cache", index_store=store_class.LAYOUT.store_kind)
 
 
 @pytest.fixture

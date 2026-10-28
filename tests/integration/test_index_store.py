@@ -1,15 +1,15 @@
 """Tests of the store's contract, held over every store: what is written comes back, by
-vector and by words, within a search's scope; a write replaces, removes and waits for another
-writer; indexes of other identities are kept apart, and removed once nobody uses them."""
+vector and by words, within a search's scope; a write replaces, removes, records what built
+the index and waits for another writer; reads and writes mark the index as used, so the
+project's indexes nobody uses go. Where the index lies, and how unused ones go, is the
+index directory's (`test_index_directories.py`)."""
 
 import os
 import re
 from collections.abc import Callable
 from pathlib import Path
 
-import lancedb
 import numpy
-import pyarrow
 import pytest
 from filelock import FileLock, Timeout
 from hypothesis import HealthCheck, given, settings, strategies
@@ -24,25 +24,20 @@ from semantic_code_mcp.domain.models import (
     SearchScope,
 )
 from semantic_code_mcp.storage.globs import glob_pattern
-from semantic_code_mcp.storage.index_directories import (
-    MANIFEST_FILE,
-    REMOVING_PREFIX,
-    USE_MARK_INTERVAL,
-    USE_STAMP_FILE,
-)
+from semantic_code_mcp.storage.index_directories import IndexDirectory
 from tests.fakes import EMBEDDING_DIMENSION
 from tests.stores import (
     ALTERNATING,
     AWAY_FROM_QUERY,
     IDENTITY,
     LIMIT,
-    LOCK_TIMEOUT_SECONDS,
     NO_CANDIDATES,
     OTHER_IDENTITY,
     QUERY,
     TOWARD_QUERY,
-    StoreFactory,
+    StoreClass,
     function_chunk,
+    index_directory_of,
     matching,
     nearest,
     query_of,
@@ -52,8 +47,13 @@ from tests.stores import (
 
 
 @pytest.fixture
-def store(store_factory: StoreFactory, tmp_path: Path) -> IndexStore:
-    return store_factory(tmp_path / "index", IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
+def index_directory(store_class: StoreClass, tmp_path: Path) -> IndexDirectory:
+    return index_directory_of(store_class, tmp_path / "index", IDENTITY)
+
+
+@pytest.fixture
+def store(store_class: StoreClass, index_directory: IndexDirectory) -> IndexStore:
+    return store_class(index_directory)
 
 
 # The chunks a filled store holds, nearest the query first
@@ -80,20 +80,8 @@ def filled_store(store: IndexStore) -> IndexStore:
 
 # Long enough to tell a write that waits from one that does not, short for a test
 SHORT_LOCK_TIMEOUT_SECONDS = 0.2
-# A time long before any test runs: an index last written then is long unused
+# A time long before any test runs: an index last used then is long unused
 LONG_AGO_SECONDS = 1_000_000_000
-# What 0.4 kept in a project's index directory: its chunks table, and its record of mtimes
-LEGACY_TABLE = "chunks"
-LEGACY_RECORDS = "file_mtimes.json"
-LEGACY_ROW = {
-    "vector": [0.5] * EMBEDDING_DIMENSION,
-    "file_path": "/elsewhere/old.py",
-    "line_start": 1,
-    "line_end": 2,
-    "content": "def old(): pass",
-    "chunk_type": "function",
-    "name": "old",
-}
 
 
 def test_vector_search_ranks_the_nearest_chunk_first(filled_store: IndexStore):
@@ -389,26 +377,26 @@ def test_removing_files_takes_only_their_chunks_and_records(filled_store: IndexS
     assert filled_store.counts().chunks == 2
 
 
-def test_a_write_waits_while_another_process_writes(tmp_path: Path, store_factory: StoreFactory):
-    store = store_factory(
-        tmp_path / "index", IDENTITY, lock_timeout_seconds=SHORT_LOCK_TIMEOUT_SECONDS
+def test_a_write_waits_while_another_process_writes(tmp_path: Path, store_class: StoreClass):
+    directory = index_directory_of(
+        store_class, tmp_path / "index", IDENTITY, SHORT_LOCK_TIMEOUT_SECONDS
     )
-    store.directory.mkdir(parents=True)
+    store = store_class(directory)
+    directory.path.mkdir(parents=True)
     chunk = function_chunk("held", "held.py", "def held(): pass")
 
-    with FileLock(store.write_lock), pytest.raises(Timeout):
+    with FileLock(directory.write_lock), pytest.raises(Timeout):
         store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
     assert store.counts().chunks == 0
 
 
 def test_a_store_sees_what_another_store_on_its_directory_wrote(
-    tmp_path: Path, store_factory: StoreFactory
+    store_class: StoreClass, index_directory: IndexDirectory
 ):
     """Two server processes on one project: each reads what the other has written."""
-    directory = tmp_path / "index"
-    reader = store_factory(directory, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
-    writer = store_factory(directory, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
+    reader = store_class(index_directory)
+    writer = store_class(index_directory)
     first = function_chunk("first", "first.py", "def first(): pass")
     second = function_chunk("second", "second.py", "def second(): pass")
     writer.write(update_of([first], removed_paths=[]), vectors_of(TOWARD_QUERY))
@@ -433,68 +421,16 @@ def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_un
     assert [candidate.chunk.name for candidate in nearest(filled_store, wide_query)] == ["near"]
 
 
-def test_an_index_of_another_identity_on_the_project_is_kept_apart(
-    filled_store: IndexStore, tmp_path: Path, store_factory: StoreFactory
-):
-    """Two models, or two versions of the chunker, on one project never write each other's index."""
-    other = store_factory(
-        tmp_path / "index", OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
+def test_a_write_records_what_built_the_index(store_class: StoreClass, store: IndexStore):
+    before = store.manifest()
+    store.write(update_of([], removed_paths=[]), numpy.empty((0, 0), dtype=numpy.float32))
+    after = store.manifest()
+
+    assert (before, after.identity, after.schema_version) == (
+        None,
+        IDENTITY,
+        store_class.LAYOUT.schema_version,
     )
-    chunk = function_chunk("other", "other.py", "def other(): pass")
-
-    other.write(update_of([chunk], removed_paths=[]), vectors_of(AWAY_FROM_QUERY))
-
-    assert (filled_store.counts(), other.counts()) == (
-        IndexCounts(files=3, chunks=3),
-        IndexCounts(files=1, chunks=1),
-    )
-
-
-def leave_an_index_of_another_identity(
-    project_directory: Path, store_factory: StoreFactory
-) -> list[str]:
-    """Another model's index of the project; the names it made in the project's directory."""
-    other = store_factory(
-        project_directory, OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
-    )
-    chunk = function_chunk("other", "other.py", "def other(): pass")
-    other.write(update_of([chunk], removed_paths=[]), vectors_of(AWAY_FROM_QUERY))
-    return [other.directory.name]
-
-
-def leave_an_index_of_version_0_4(
-    project_directory: Path, _store_factory: StoreFactory
-) -> list[str]:
-    """What 0.4 kept in the project's directory: a chunks table and a record of mtimes, the
-    same whatever store this version uses."""
-    lancedb.connect(str(project_directory)).create_table(
-        LEGACY_TABLE, data=pyarrow.Table.from_pylist([LEGACY_ROW])
-    )
-    (project_directory / LEGACY_RECORDS).write_text("{}")
-    return [f"{LEGACY_TABLE}.lance", LEGACY_RECORDS]
-
-
-LEFT_INDEXES = [
-    pytest.param(leave_an_index_of_another_identity, id="another identity"),
-    pytest.param(leave_an_index_of_version_0_4, id="version 0.4"),
-]
-
-
-@pytest.mark.parametrize("leave_index", LEFT_INDEXES)
-def test_an_index_written_within_the_week_is_left_alone(
-    store: IndexStore,
-    tmp_path: Path,
-    store_factory: StoreFactory,
-    leave_index: Callable[[Path, StoreFactory], list[str]],
-):
-    """Another session may still use it; this store reads and writes its own index only."""
-    left = leave_index(tmp_path / "index", store_factory)
-    chunk = function_chunk("own", "own.py", "def own(): pass")
-
-    store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
-
-    assert set(left) <= set(names_in(tmp_path / "index"))
-    assert store.counts() == IndexCounts(files=1, chunks=1)
 
 
 def write_own_index(store: IndexStore) -> None:
@@ -502,128 +438,54 @@ def write_own_index(store: IndexStore) -> None:
     store.write(update_of([chunk], removed_paths=[]), vectors_of(TOWARD_QUERY))
 
 
-def read_own_index(store: IndexStore) -> None:
+def count_own_index(store: IndexStore) -> None:
     store.counts()
 
 
-@pytest.mark.parametrize("leave_index", LEFT_INDEXES)
+def list_own_files(store: IndexStore) -> None:
+    store.indexed_files()
+
+
+def search_own_index(store: IndexStore) -> None:
+    store.search_candidates(QUERY, query_of("own"), LIMIT)
+
+
+def read_own_vectors(store: IndexStore) -> None:
+    store.stored_vectors(["own.py#own"])
+
+
 @pytest.mark.parametrize(
     "use_own_index",
-    [pytest.param(write_own_index, id="written"), pytest.param(read_own_index, id="read")],
+    [
+        pytest.param(write_own_index, id="written"),
+        pytest.param(count_own_index, id="counted"),
+        pytest.param(list_own_files, id="its files listed"),
+        pytest.param(search_own_index, id="searched"),
+        pytest.param(read_own_vectors, id="its vectors read"),
+    ],
 )
 def test_an_index_nobody_used_for_a_week_is_removed_when_another_is_used(
+    store_class: StoreClass,
     store: IndexStore,
     tmp_path: Path,
-    store_factory: StoreFactory,
-    leave_index: Callable[[Path, StoreFactory], list[str]],
     use_own_index: Callable[[IndexStore], None],
 ):
-    """A week after both were last used, a session of this store's index reads or writes it."""
-    write_own_index(
-        store_factory(tmp_path / "index", IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
-    )
-    left = leave_index(tmp_path / "index", store_factory)
+    """A week after both were last used, a session of this store's index uses it: every read
+    and write marks the index as used, and with it removes the project's unused ones."""
+    write_own_index(store)
+    other = index_directory_of(store_class, tmp_path / "index", OTHER_IDENTITY)
+    write_own_index(store_class(other))
     set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
 
     use_own_index(store)
 
-    assert set(names_in(tmp_path / "index")).isdisjoint(left)
-
-
-def test_an_index_only_read_within_the_week_is_left_alone(
-    store: IndexStore, tmp_path: Path, store_factory: StoreFactory
-):
-    """A session that searches a project nobody edits keeps its index, unwritten for weeks."""
-    left = leave_an_index_of_another_identity(tmp_path / "index", store_factory)
-    read_as_another_session(tmp_path / "index", store_factory)
-    set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
-    read_as_another_session(tmp_path / "index", store_factory)
-
-    write_own_index(store)
-
-    assert set(left) <= set(names_in(tmp_path / "index"))
-
-
-def read_as_another_session(project_directory: Path, store_factory: StoreFactory) -> None:
-    """A search of the other identity's index, by a server process of its own."""
-    store_factory(
-        project_directory, OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
-    ).counts()
-
-
-def test_a_store_marks_its_index_again_once_its_stamp_is_older_than_the_interval(
-    filled_store: IndexStore,
-):
-    """However long the machine slept since this store last looked: the stamp tells."""
-    stamp = filled_store.directory / USE_STAMP_FILE
-    filled_store.counts()
-    long_before = stamp.stat().st_mtime - 2 * USE_MARK_INTERVAL.total_seconds()
-    os.utime(stamp, (long_before, long_before))
-
-    filled_store.counts()
-
-    assert stamp.stat().st_mtime > long_before + USE_MARK_INTERVAL.total_seconds()
-
-
-def test_an_unused_index_that_another_process_is_writing_is_left_alone(
-    store: IndexStore, tmp_path: Path, store_factory: StoreFactory
-):
-    other = store_factory(
-        tmp_path / "index", OTHER_IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS
-    )
-    write_own_index(other)
-    set_mtime_of_tree(tmp_path / "index", LONG_AGO_SECONDS)
-
-    with FileLock(other.write_lock):
-        write_own_index(store)
-
-    assert other.directory.name in names_in(tmp_path / "index")
-
-
-def test_a_removal_stopped_midway_is_finished_by_the_next_use(store: IndexStore, tmp_path: Path):
-    """An index is renamed before it is deleted; a crash between the two leaves the name."""
-    half_removed = tmp_path / "index" / f"{REMOVING_PREFIX}schema-1-0123456789abcdef"
-    half_removed.mkdir(parents=True)
-    (half_removed / MANIFEST_FILE).write_text("{}")
-
-    write_own_index(store)
-
-    assert half_removed.name not in names_in(tmp_path / "index")
-
-
-def names_in(directory: Path) -> list[str]:
-    return sorted(entry.name for entry in directory.iterdir())
+    assert not other.exists()
 
 
 def set_mtime_of_tree(directory: Path, seconds: int) -> None:
     """Set the modification time of a directory and of everything under it."""
     for path in [directory, *directory.rglob("*")]:
         os.utime(path, (seconds, seconds))
-
-
-def write_bytes_that_are_not_utf8(manifest: Path) -> None:
-    manifest.write_bytes(b'{"identity": "\xff"}')
-
-
-def make_a_directory(manifest: Path) -> None:
-    manifest.mkdir()
-
-
-@pytest.mark.parametrize(
-    "spoil",
-    [
-        pytest.param(write_bytes_that_are_not_utf8, id="not UTF-8"),
-        pytest.param(make_a_directory, id="a directory"),
-    ],
-)
-def test_a_manifest_that_cannot_be_read_counts_as_none(
-    filled_store: IndexStore, spoil: Callable[[Path], None]
-):
-    manifest = filled_store.directory / MANIFEST_FILE
-    manifest.unlink()
-    spoil(manifest)
-
-    assert filled_store.manifest() is None
 
 
 def test_a_chunk_written_again_under_its_id_stands_where_it_now_is(

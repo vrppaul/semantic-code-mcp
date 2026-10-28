@@ -1,7 +1,7 @@
 """LanceDB storage of one project's index: the chunks with their vectors, the record of
-each file they came from, and the manifest of what built them, in a directory of its own
-(`index_directories.py` holds where it lies, its lock, its manifest and the sweep of the
-project's unused indexes).
+each file they came from, and the manifest of what built them, in the index's directory,
+which the store is built on (`index_directories.py` holds where it lies, its lock, its
+manifest and the sweep of the project's unused indexes).
 
 A write is one call, under the index's write lock, so two server processes on one index
 never write side by side. Its chunks take the place of the chunks of the files it writes
@@ -29,9 +29,9 @@ rewrote the whole table.
 
 import threading
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
-from typing import override
+from typing import ClassVar, override
 
 import lance
 import lancedb
@@ -49,7 +49,6 @@ from semantic_code_mcp.domain.models import (
     ChunkKind,
     IndexCounts,
     IndexedFiles,
-    IndexIdentity,
     IndexManifest,
     IndexUpdate,
     Language,
@@ -57,17 +56,14 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SearchScope,
     SourceFile,
+    StoreKind,
 )
 from semantic_code_mcp.storage.globs import glob_pattern
-from semantic_code_mcp.storage.index_directories import IndexDirectory, index_directory_name
+from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
 from semantic_code_mcp.storage.search_text import search_text
 from semantic_code_mcp.storage.similarity import VECTOR_LENGTH_AXIS, cosine_similarities
 
 log = structlog.get_logger()
-
-# Bumped by any change to the tables' columns or to what one is made from, its full-text
-# index among them (5: stop words kept); each version keeps an index of its own
-SCHEMA_VERSION = 5
 
 CHUNKS_TABLE = "chunks"
 FILES_TABLE = "files"
@@ -209,36 +205,22 @@ class StoredFile(BaseModel):
 
 
 class LanceDBIndexStore(IndexStore):
-    """One project's index of one identity, in a LanceDB database directory of its own
-    under the project's index directory.
+    """One project's index of one identity, in a LanceDB database in the index's directory.
 
     Nothing touches the disk until it is first used, and only a write makes the
     directory; the connection is opened once, by whichever worker thread needs it first.
     """
 
-    def __init__(
-        self, project_directory: Path, identity: IndexIdentity, *, lock_timeout_seconds: float
-    ) -> None:
-        self._identity = identity
-        self._directory = IndexDirectory(
-            project_directory,
-            index_directory_name(identity, SCHEMA_VERSION),
-            lock_timeout_seconds=lock_timeout_seconds,
-        )
+    # The schema's version is bumped by any change to the tables' columns or to what one is
+    # made from, its full-text index among them (5: stop words kept)
+    LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.lancedb, schema_version=5)
+
+    def __init__(self, directory: IndexDirectory) -> None:
+        self._directory = directory
         self._connecting = threading.Lock()
         self._connection: lancedb.DBConnection | None = None
         # How many upkeeps this store runs before it compacts; none before its first
         self._upkeeps_until_compaction = 0
-
-    @property
-    def directory(self) -> Path:
-        """Where this index lives."""
-        return self._directory.path
-
-    @property
-    def write_lock(self) -> Path:
-        """The file a writer of this index locks, beside its directory."""
-        return self._directory.write_lock
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -295,12 +277,6 @@ class LanceDBIndexStore(IndexStore):
             if update.last_of_run:
                 # After them: a reader meanwhile finds the files the run wrote recorded
                 self._keep_up()
-            manifest = IndexManifest(
-                identity=self._identity,
-                schema_version=SCHEMA_VERSION,
-                indexed_at=datetime.now(UTC),
-            )
-            self._directory.write_manifest(manifest)
         log.debug(
             "index_written",
             files=len(update.files),
@@ -335,7 +311,7 @@ class LanceDBIndexStore(IndexStore):
         stored_chunks = self._open(CHUNKS_TABLE)
         if stored_chunks is None or stored_chunks.schema == chunks_schema(width):
             return
-        log.warning("index_layout_replaced", directory=str(self.directory), width=width)
+        log.warning("index_layout_replaced", directory=str(self._directory.path), width=width)
         for name in (FILES_TABLE, CHUNKS_TABLE):
             if self._open(name) is not None:
                 database.drop_table(name)

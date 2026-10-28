@@ -132,6 +132,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEMANTIC_CODE_MCP_CACHE_DIR` | `~/.cache/semantic-code-mcp` | Where indexes are stored |
+| `SEMANTIC_CODE_MCP_INDEX_STORE` | `lancedb` | What keeps the indexes: `lancedb` or `sqlite`. Each keeps indexes of its own, so a change builds the index again once |
 | `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` at the root of each project's repository; it holds a `.gitignore`, so git never shows it |
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | A sentence-transformers model that pools by the mean, with an ONNX export in one file (`onnx/model.onnx`), by hub name or directory. Only the default model's vectors are tested against sentence-transformers'; another is read from its configs as well as the embedder can, and refused where it can see the vectors would differ |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |

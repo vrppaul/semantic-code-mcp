@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from semantic_code_mcp.domain.models import HIGHEST_SIMILARITY, LOWEST_SIMILARITY
+from semantic_code_mcp.domain.models import HIGHEST_SIMILARITY, LOWEST_SIMILARITY, StoreKind
 
 # Never source. A name matches a path component at any depth; `name/**` matches only
 # at the project root, so a source package called `build` or `dist` deeper down is indexed.
@@ -47,6 +47,8 @@ class Settings(BaseSettings):
 
     cache_dir: Path = DEFAULT_CACHE_DIR
     local_index: bool = False
+    # What keeps the indexes (ADR 009, D8); each store keeps indexes of its own
+    index_store: StoreKind = StoreKind.lancedb
 
     debug: bool = False
     # Profile every request with pyinstrument, a dev dependency

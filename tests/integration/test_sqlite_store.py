@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.models import Chunk
 from semantic_code_mcp.storage.search_text import search_text
-from semantic_code_mcp.storage.sqlite import DATABASE_FILE, SCHEMA_VERSION, SqliteIndexStore
-from tests.stores import IDENTITY, LOCK_TIMEOUT_SECONDS, TOWARD_QUERY, update_of, vectors_of
+from semantic_code_mcp.storage.sqlite import DATABASE_FILE, SqliteIndexStore
+from tests.stores import IDENTITY, TOWARD_QUERY, index_directory_of, update_of, vectors_of
 
-# The chunks LanceDB's recorded schema keeps, and what each SCHEMA_VERSION of this store
+# The chunks LanceDB's recorded schema keeps, and what each version of this store's schema
 # stored of them: each chunk's search text and the statements that made its tables
 CHUNKS_RECORD = Path(__file__).parent.parent / "data" / "schema_outputs.json"
 RECORDED_SCHEMA = Path(__file__).parent.parent / "data" / "sqlite_schema_outputs.json"
@@ -44,18 +44,19 @@ class StoredSchema(BaseModel):
 
 
 class RecordedSchema(BaseModel):
-    """What each SCHEMA_VERSION stored of the recorded chunks."""
+    """What each version of the store's schema stored of the recorded chunks."""
 
     model_config = ConfigDict(frozen=True)
 
     schemas: dict[int, StoredSchema]
 
 
-def stored_schema(chunks: list[Chunk], directory: Path) -> StoredSchema:
+def stored_schema(chunks: list[Chunk], project_directory: Path) -> StoredSchema:
     """What the store keeps of the chunks once it has written them."""
-    store = SqliteIndexStore(directory, IDENTITY, lock_timeout_seconds=LOCK_TIMEOUT_SECONDS)
+    index_directory = index_directory_of(SqliteIndexStore, project_directory, IDENTITY)
+    store = SqliteIndexStore(index_directory)
     store.write(update_of(chunks, removed_paths=[]), vectors_of(*([TOWARD_QUERY] * len(chunks))))
-    with sqlite3.connect(store.directory / DATABASE_FILE) as connection:
+    with sqlite3.connect(index_directory.path / DATABASE_FILE) as connection:
         rows = connection.execute(SCHEMA_STATEMENTS).fetchall()
     return StoredSchema(
         search_texts=[search_text(chunk) for chunk in chunks],
@@ -64,24 +65,26 @@ def stored_schema(chunks: list[Chunk], directory: Path) -> StoredSchema:
 
 
 def record_schema() -> None:
-    """Record what the store keeps under the current SCHEMA_VERSION, unless that version is
+    """Record what the store keeps under its schema's current version, unless that version is
     recorded already. Run it by hand from the repository's root, through `uv run python -c`
     and an import of this module."""
     chunks = RecordedChunks.model_validate_json(CHUNKS_RECORD.read_text()).chunks
     recorded = RecordedSchema.model_validate_json(RECORDED_SCHEMA.read_text())
     with tempfile.TemporaryDirectory() as directory:
         schema = stored_schema(chunks, Path(directory))
-    updated = RecordedSchema(schemas={SCHEMA_VERSION: schema} | recorded.schemas)
+    updated = RecordedSchema(
+        schemas={SqliteIndexStore.LAYOUT.schema_version: schema} | recorded.schemas
+    )
     RECORDED_SCHEMA.write_text(updated.model_dump_json(indent=RECORD_INDENT) + "\n")
 
 
 def test_the_schema_s_version_names_what_the_store_keeps(tmp_path: Path):
-    """An index holds the tables of one SCHEMA_VERSION, so a change to them or to what one is
-    made from, the search text among them, needs a new version, whose output `record_schema`
-    records; none recorded fails here."""
+    """An index holds the tables of one version of the store's schema, so a change to them or
+    to what one is made from, the search text among them, needs a new version, whose output
+    `record_schema` records; none recorded fails here."""
     chunks = RecordedChunks.model_validate_json(CHUNKS_RECORD.read_text()).chunks
     recorded = RecordedSchema.model_validate_json(RECORDED_SCHEMA.read_text())
 
     schema = stored_schema(chunks, tmp_path / "index")
 
-    assert schema == recorded.schemas.get(SCHEMA_VERSION)
+    assert schema == recorded.schemas.get(SqliteIndexStore.LAYOUT.schema_version)

@@ -231,6 +231,13 @@ class IndexIdentity(BaseModel):
     chunker_version: int
 
 
+class StoreKind(StrEnum):
+    """What keeps a project's indexes; each kind keeps indexes of its own."""
+
+    sqlite = auto()
+    lancedb = auto()
+
+
 class IndexManifest(BaseModel):
     """What built an index, in which layout of the store, and when it was last written."""
 

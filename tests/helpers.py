@@ -3,26 +3,15 @@
 import subprocess
 from pathlib import Path
 
-import lancedb
-from lance.fragment import LanceFragment
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.app import open_index_store
+from semantic_code_mcp.app import store_opener
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry
-from semantic_code_mcp.storage.lancedb import (
-    CHUNKS_TABLE,
-    FULL_TEXT_INDEX_NAME,
-    LanceDBIndexStore,
-)
-
-# Where LanceDB keeps each version of every index of a table, a directory each: while the
-# chunks table has no index but the full-text one, the newest is the full-text index's
-TABLE_INDEX_VERSIONS = "_indices"
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -55,34 +44,6 @@ def commit_all(repository: Path) -> None:
     run_git(repository, "commit", "--quiet", "--message", "snapshot")
 
 
-def chunks_outside_the_full_text_index(store: LanceDBIndexStore) -> int:
-    """How many chunks of a store its full-text index does not hold yet."""
-    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
-    return chunks_table.index_stats(FULL_TEXT_INDEX_NAME).num_unindexed_rows
-
-
-def chunks_fragments(store: LanceDBIndexStore) -> list[LanceFragment]:
-    """The fragments the latest version of a store's chunks table reads, in order."""
-    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
-    return chunks_table.to_lance().get_fragments()
-
-
-def full_text_index_documents(store: LanceDBIndexStore) -> int:
-    """How many rows a store's full-text index counts in its word statistics: those the
-    table holds, and those writes replaced, until a rebuild drops them."""
-    chunks_table = lancedb.connect(str(store.directory)).open_table(CHUNKS_TABLE)
-    statistics = chunks_table.to_lance().stats.index_stats(FULL_TEXT_INDEX_NAME)
-    return sum(part["num_docs"] for part in statistics["indices"])
-
-
-def newest_full_text_index_files(store: LanceDBIndexStore) -> int:
-    """How many files the newest version of a store's full-text index holds: each part an
-    upkeep folds in adds some, and a rebuild starts again from one part."""
-    versions = store.directory / f"{CHUNKS_TABLE}.lance" / TABLE_INDEX_VERSIONS
-    newest = max(versions.iterdir(), key=lambda version: version.stat().st_mtime_ns)
-    return len(list(newest.rglob("*")))
-
-
 def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:
     """The real discovery, finding the files a chunker reads."""
     return SourceDiscovery(
@@ -108,13 +69,13 @@ def indexing_service(
 
 def registry_of(settings: Settings, embedder: Embedder, chunker: Chunker) -> ProjectRegistry:
     """The registry of a server whose model and chunker are the given ones, its indexes in
-    the real store."""
+    the store the settings pick."""
     return ProjectRegistry(
         settings=settings,
         embedder=embedder,
         chunker=chunker,
         discovery=discovery_for(settings, chunker),
-        open_store=open_index_store,
+        open_store=store_opener(settings),
     )
 
 

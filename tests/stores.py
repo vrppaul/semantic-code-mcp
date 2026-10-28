@@ -1,7 +1,6 @@
 """What the store tests share: chunks, their records and writes of them, vectors near and far
 from the query, the searches of each channel, and the stores the contract's tests run over."""
 
-from collections.abc import Callable
 from pathlib import Path
 
 import numpy
@@ -20,13 +19,13 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SourceFile,
 )
+from semantic_code_mcp.storage.index_directories import IndexDirectory
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 from semantic_code_mcp.storage.sqlite import SqliteIndexStore
 from tests.fakes import EMBEDDING_DIMENSION
 
-# A store built on a project's index directory, for an identity, as each store's class builds
-# one: `store_factory(project_directory, identity, lock_timeout_seconds=...)`
-type StoreFactory = Callable[..., IndexStore]
+# A store's class, built on an index's directory in the layout the class names
+type StoreClass = type[LanceDBIndexStore] | type[SqliteIndexStore]
 # Every store the contract's tests run over
 STORE_CLASSES = [
     pytest.param(LanceDBIndexStore, id="lancedb"),
@@ -49,6 +48,28 @@ IDENTITY = IndexIdentity(
 OTHER_IDENTITY = IndexIdentity(
     model_name="other-model", model_revision=None, embedder_version=1, chunker_version=1
 )
+
+
+def index_directory_of(
+    store_class: StoreClass,
+    project_directory: Path,
+    identity: IndexIdentity,
+    lock_timeout_seconds: float = LOCK_TIMEOUT_SECONDS,
+) -> IndexDirectory:
+    """The directory of a project's index of an identity in a store's layout."""
+    return IndexDirectory(
+        project_directory,
+        identity,
+        store_class.LAYOUT,
+        lock_timeout_seconds=lock_timeout_seconds,
+    )
+
+
+def open_store(
+    store_class: StoreClass, project_directory: Path, identity: IndexIdentity
+) -> IndexStore:
+    """A store of a project's index of an identity, as another session would open it."""
+    return store_class(index_directory_of(store_class, project_directory, identity))
 
 
 def function_chunk(name: str, path: str, content: str) -> Chunk:

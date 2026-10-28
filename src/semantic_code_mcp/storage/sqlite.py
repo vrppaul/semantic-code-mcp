@@ -1,7 +1,8 @@
 """SQLite storage of one project's index: the chunks with their vectors, their words in a
 full-text index, the record of each file they came from, and the manifest of what built them,
-in one database file in a directory of its own (`index_directories.py` holds where it lies,
-its lock, its manifest and the sweep of the project's unused indexes).
+in one database file in the index's directory, which the store is built on
+(`index_directories.py` holds where it lies, its lock, its manifest and the sweep of the
+project's unused indexes).
 
 A write is one transaction, under the index's write lock beside SQLite's own: the chunks of
 the files written take the place of those files' and the removed files' chunks, their words
@@ -25,9 +26,8 @@ import re
 import sqlite3
 from collections.abc import Generator, Sequence
 from contextlib import closing, contextmanager
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import override
+from typing import ClassVar, override
 
 import numpy
 import structlog
@@ -41,7 +41,6 @@ from semantic_code_mcp.domain.models import (
     ChunkKind,
     IndexCounts,
     IndexedFiles,
-    IndexIdentity,
     IndexManifest,
     IndexUpdate,
     Language,
@@ -49,20 +48,15 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SearchScope,
     SourceFile,
+    StoreKind,
 )
 from semantic_code_mcp.storage.globs import glob_pattern
-from semantic_code_mcp.storage.index_directories import IndexDirectory, index_directory_name
+from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
 from semantic_code_mcp.storage.search_text import search_text
 from semantic_code_mcp.storage.similarity import VECTOR_LENGTH_AXIS, cosine_similarities
 
 log = structlog.get_logger()
 
-# Bumped by any change to the tables or to what one is made from, its full-text index among
-# them; each version keeps an index of its own
-SCHEMA_VERSION = 1
-# What follows the name of this store's index directories, so they never meet another
-# store's: LanceDB's keep the names they had before there were two
-DIRECTORY_SUFFIX = "-sqlite"
 DATABASE_FILE = "index.sqlite"
 # A new database is made under this name beside its own, then renamed into place whole
 UNFINISHED_SUFFIX = ".unfinished"
@@ -156,32 +150,17 @@ class ScopeCondition(BaseModel):
 
 
 class SqliteIndexStore(IndexStore):
-    """One project's index of one identity, in a SQLite database of its own under the
-    project's index directory.
+    """One project's index of one identity, in a SQLite database in the index's directory.
 
     Nothing touches the disk until it is first used, and only a write makes the database.
     """
 
-    def __init__(
-        self, project_directory: Path, identity: IndexIdentity, *, lock_timeout_seconds: float
-    ) -> None:
-        self._identity = identity
-        self._directory = IndexDirectory(
-            project_directory,
-            index_directory_name(identity, SCHEMA_VERSION) + DIRECTORY_SUFFIX,
-            lock_timeout_seconds=lock_timeout_seconds,
-        )
-        self._lock_timeout_seconds = lock_timeout_seconds
+    # The schema's version is bumped by any change to the tables or to what one is made from,
+    # its full-text index among them
+    LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.sqlite, schema_version=1)
 
-    @property
-    def directory(self) -> Path:
-        """Where this index lives."""
-        return self._directory.path
-
-    @property
-    def write_lock(self) -> Path:
-        """The file a writer of this index locks, beside its directory."""
-        return self._directory.write_lock
+    def __init__(self, directory: IndexDirectory) -> None:
+        self._directory = directory
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -239,15 +218,8 @@ class SqliteIndexStore(IndexStore):
                     replace_chunks(connection, update, vectors)
                     replace_records(connection, update)
             except sqlite3.Error as error:
-                message = f"SQLite could not write the index in {self.directory}: {error}"
+                message = f"SQLite could not write the index in {self._directory.path}: {error}"
                 raise SqliteStoreError(message) from error
-            self._directory.write_manifest(
-                IndexManifest(
-                    identity=self._identity,
-                    schema_version=SCHEMA_VERSION,
-                    indexed_at=datetime.now(UTC),
-                )
-            )
         log.debug(
             "index_written",
             files=len(update.files),
@@ -277,7 +249,7 @@ class SqliteIndexStore(IndexStore):
         stored = connection.execute(STORED_WIDTH).fetchone()
         if stored is None or stored[0] == width * VECTOR_COMPONENT_BYTES:
             return
-        log.warning("index_layout_replaced", directory=str(self.directory), width=width)
+        log.warning("index_layout_replaced", directory=str(self._directory.path), width=width)
         for statement in (DELETE_EVERY_WORD, DELETE_EVERY_CHUNK, DELETE_EVERY_RECORD):
             connection.execute(statement)
 
@@ -315,7 +287,7 @@ class SqliteIndexStore(IndexStore):
                 finally:
                     connection.rollback()
         except sqlite3.Error as error:
-            message = f"SQLite could not read the index in {self.directory}: {error}"
+            message = f"SQLite could not read the index in {self._directory.path}: {error}"
             raise SqliteStoreError(message) from error
 
     def _connect(self) -> sqlite3.Connection:
@@ -323,7 +295,7 @@ class SqliteIndexStore(IndexStore):
         index's, its transactions begun and ended by the store."""
         connection = sqlite3.connect(
             self._directory.path / DATABASE_FILE,
-            timeout=self._lock_timeout_seconds,
+            timeout=self._directory.lock_timeout_seconds,
             isolation_level=None,
         )
         connection.create_function(

@@ -19,9 +19,9 @@ from semantic_code_mcp.domain.models import (
 )
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
-from semantic_code_mcp.storage.lancedb import NO_CANDIDATES
 from tests.fakes import FakeEmbedder, FakeIndexStore, ProgressRecorder
 from tests.helpers import indexing_service, registry_of
+from tests.stores import NO_CANDIDATES
 
 NO_PROGRESS = ProgressReporter(None)
 LIMIT = 10
