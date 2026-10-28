@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI runs every pre-commit gate, the tests and a build on each push to `master` and each pull request
 - `CONTRIBUTING.md`, `SECURITY.md` and a pull request template
 - `python -m evals quality` and `python -m evals speed` measure search quality and speed on three pinned corpora through the server's tools, against a saved baseline
+- `python -m evals speed --words-only` leaves out the server set to search by meaning, whose first search embeds every chunk (an hour at Sentry's size), so a large corpus is timed by words in about a minute; the memory of that server is reported beside its speeds
 - `python -m evals agents` asks Claude Code headless each question of the corpora it names, in arms named by what the agent is given (its own tools, or this server's search in a mode), and compares the arms question by question in turns and prompt tokens; every session is kept with its stream under the run's name, and `python -m evals rescore` scores a kept run again once a judge has settled the answers no key names
 - End-to-end tests drive the three MCP tools through a client
 

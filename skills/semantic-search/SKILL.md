@@ -99,7 +99,8 @@ searched (`files_indexed`, `chunks_indexed`).
   before searching.
 - Call `index_codebase` with `force=true` only when results point at code that is gone:
   it reads every file again, and on a server set to search by meaning too, a model whose
-  weights nothing pins embeds every chunk again, while renames and deletions need nothing.
+  weights nothing pins has its vectors dropped, so the next search embeds every chunk
+  again; renames and deletions need nothing.
   It answers `project_root`, `files_indexed`, `chunks_indexed`, `files_deleted` and
   `duration_seconds`.
 - Call `index_status` to see which root a directory belongs to and what built its index,

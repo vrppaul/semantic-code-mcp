@@ -10,10 +10,11 @@ seconds included) and how long the search after it takes, at the median and at t
 peak memory and what it still holds once its work is done, as a session's idle server keeps
 it, with no model loaded; in a server of its own set to search by meaning too, the model
 load, a search of a one-file project, then the corpus's first search, which embeds every
-chunk, and the warm searches after it; the first answer of a freshly
-started server on an up-to-date index — the process start an agent waits for — and, last,
-the first answer on a repository never indexed: a server started on an empty index
-directory, until its first search answers, the whole index built inside it. Memory is read
+chunk, the warm searches after it, and that server's memory, left out of a run asked to
+measure words alone, as that first search takes an hour at Sentry's size; the first answer
+of a freshly started server on an up-to-date index — the process start an agent waits for —
+and, last, the first answer on a repository never indexed: a server started on an empty
+index directory, until its first search answers, the whole index built inside it. Memory is read
 from `/proc`, so it is reported on Linux only. With 15 to 20 questions per corpus, p95 is
 close to the slowest search: read it as that.
 """
@@ -78,6 +79,29 @@ class Machine(BaseModel):
     python: str
 
 
+class SpeedRun(BaseModel):
+    """How a run measures each corpus: the edits it makes, and whether a server set to search
+    by meaning is measured too."""
+
+    model_config = ConfigDict(frozen=True)
+
+    edits: int
+    by_meaning: bool
+
+
+class MeaningSpeed(BaseModel):
+    """The speeds of a server set to search by meaning too, and its memory."""
+
+    model_config = ConfigDict(frozen=True)
+
+    model_load_seconds: float
+    # The first search by meaning of the corpus, which embeds every chunk inside the call
+    first_search_seconds: float
+    warm_search_p50_milliseconds: float
+    peak_memory_megabytes: float | None
+    resident_memory_megabytes: float | None
+
+
 class CorpusSpeed(BaseModel):
     """The speeds of one corpus."""
 
@@ -99,10 +123,8 @@ class CorpusSpeed(BaseModel):
     search_after_edit_slowest_milliseconds: float
     peak_memory_megabytes: float | None
     resident_memory_megabytes: float | None
-    model_load_seconds: float
-    # The first search by meaning of the corpus, which embeds every chunk inside the call
-    first_search_by_meaning_seconds: float
-    warm_search_by_meaning_p50_milliseconds: float
+    # None for a run that measures words alone
+    meaning: MeaningSpeed | None
     first_search_seconds: float
 
 
@@ -133,7 +155,11 @@ def processor_model() -> str:
 
 
 async def measure_speed(
-    corpus: Corpus, working_tree: Path, index_directory: Path, edits: int, servers: ServerStarter
+    corpus: Corpus,
+    working_tree: Path,
+    index_directory: Path,
+    run: SpeedRun,
+    servers: ServerStarter,
 ) -> CorpusSpeed:
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
@@ -150,23 +176,18 @@ async def measure_speed(
         status_seconds = [
             await timed_status_seconds(connection, working_tree) for _ in range(STATUS_CALLS)
         ]
-        edits_cost = await edit_cost(connection, corpus, working_tree, index_directory, edits)
+        edits_cost = await edit_cost(connection, corpus, working_tree, index_directory, run.edits)
         # Restoring the checkout touched the edited files: index them now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
         peak_memory = server_memory_megabytes(PEAK_RESIDENT_FIELD)
         resident_memory = server_memory_megabytes(RESIDENT_FIELD)
 
-    async with servers.searching(SearchMode.words_and_meaning).connect(
-        index_directory
-    ) as connection:
-        model_load_seconds = await timed_model_load_seconds(connection)
-        first_by_meaning_seconds = await timed_search_seconds(
-            connection, working_tree, queries[0], None
-        )
-        latencies_by_meaning = [
-            await timed_search_seconds(connection, working_tree, query, None) for query in queries
-        ]
+    meaning = (
+        await measure_meaning(working_tree, index_directory, queries, servers)
+        if run.by_meaning
+        else None
+    )
 
     started = time.perf_counter()
     async with servers.connect(index_directory) as connection:
@@ -192,19 +213,39 @@ async def measure_speed(
         narrowed_search_p50_milliseconds=percentile_milliseconds(narrowed_latencies, MEDIAN_CUT),
         status_p50_milliseconds=median_milliseconds(status_seconds),
         index_growth_megabytes_per_edit=rounded(
-            edits_cost.growth_bytes / BYTES_PER_MEGABYTE / edits
+            edits_cost.growth_bytes / BYTES_PER_MEGABYTE / run.edits
         ),
         search_after_edit_p50_milliseconds=median_milliseconds(edits_cost.search_seconds),
         search_after_edit_slowest_milliseconds=milliseconds(max(edits_cost.search_seconds)),
         peak_memory_megabytes=peak_memory,
         resident_memory_megabytes=resident_memory,
-        model_load_seconds=rounded(model_load_seconds),
-        first_search_by_meaning_seconds=rounded(first_by_meaning_seconds),
-        warm_search_by_meaning_p50_milliseconds=percentile_milliseconds(
-            latencies_by_meaning, MEDIAN_CUT
-        ),
+        meaning=meaning,
         first_search_seconds=rounded(first_search_seconds),
     )
+
+
+async def measure_meaning(
+    working_tree: Path, index_directory: Path, queries: Sequence[str], servers: ServerStarter
+) -> MeaningSpeed:
+    """A server set to search by meaning too, on the corpus's index of words: its model's
+    load, its first search, which embeds every chunk, its warm searches, and its memory."""
+    async with servers.searching(SearchMode.words_and_meaning).connect(
+        index_directory
+    ) as connection:
+        model_load_seconds = await timed_model_load_seconds(connection)
+        first_search_seconds = await timed_search_seconds(
+            connection, working_tree, queries[0], None
+        )
+        latencies = [
+            await timed_search_seconds(connection, working_tree, query, None) for query in queries
+        ]
+        return MeaningSpeed(
+            model_load_seconds=rounded(model_load_seconds),
+            first_search_seconds=rounded(first_search_seconds),
+            warm_search_p50_milliseconds=percentile_milliseconds(latencies, MEDIAN_CUT),
+            peak_memory_megabytes=server_memory_megabytes(PEAK_RESIDENT_FIELD),
+            resident_memory_megabytes=server_memory_megabytes(RESIDENT_FIELD),
+        )
 
 
 async def timed_cold_first_answer_seconds(

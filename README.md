@@ -106,7 +106,7 @@ Returns `project_root` (the project's root: its repository's, or the directory i
 
 ### `index_codebase`
 
-Index a codebase for semantic search. Only processes new and changed files unless `force=True`.
+Index a codebase's words for search; it embeds nothing, and a server set to search by meaning embeds the chunks on its next search. Only processes new and changed files unless `force=True`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -275,7 +275,7 @@ def build_chunker() -> CompositeChunker:
 - `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
 - `src/semantic_code_mcp/embedding/`, `src/semantic_code_mcp/storage/` — the embedder and the model it loads from the `meaning` extra, and the stores (SQLite, LanceDB) behind one contract
 - `src/semantic_code_mcp/domain/` — models and interfaces
-- `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`)
+- `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`, `speed`), and agents' sessions with and without the search (`agents`, on corpora it names)
 - `docs/decisions/` — architecture decision records
 - `TODO.md` — epics and planning
 - `CHANGELOG.md` — completed work (Keep a Changelog format)

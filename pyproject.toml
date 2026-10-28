@@ -1,7 +1,7 @@
 [project]
 name = "semantic-code-mcp"
 dynamic = ["version"]
-description = "Local MCP server for semantic code search"
+description = "Local MCP server for code search: a project's functions, classes and sections found by their words"
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"

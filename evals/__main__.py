@@ -3,7 +3,7 @@
     uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--search-mode MODE]
         [--save-baseline] [--held-out]
     uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--store STORE]
-        [--edits N] [--save-baseline]
+        [--edits N] [--words-only] [--save-baseline]
     uv run python -m evals agents (--corpus NAME | --corpus-file PATH) ... [--arm ARM ...]
         [--repeats N] [--model MODEL]
     uv run python -m evals rescore RUN
@@ -15,7 +15,9 @@ saved baseline, writes the whole report as JSON to `evals/results/`, and with
 (`--corpus-file`, as a large or a private one is) is never saved to it, nor a run in a store
 other than the server's default (`--store`, as when two stores are compared in turns), nor a
 quality run in another search mode than the server's default (`--search-mode`, which sets
-the servers' setting to it, `words_and_meaning` searching by meaning too). `agents` asks
+the servers' setting to it, `words_and_meaning` searching by meaning too), nor a speed run
+without its server set to search by meaning (`--words-only`, as that server's first search
+embeds every chunk, an hour at Sentry's size). `agents` asks
 Claude Code headless each question of the corpora it names in each arm (`evals/agents.py`),
 spending the owner's subscription; it prints each session as it ends, then each arm's sums
 and every two arms compared, and keeps no baseline, as its sessions hold the questions of
@@ -86,7 +88,14 @@ from evals.quality import (
     measure_quality,
 )
 from evals.server import DEFAULT_OPTIONS, ServerOptions, ServerStarter, ToolCallFailedError
-from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
+from evals.speed import (
+    CorpusSpeed,
+    Machine,
+    MeaningSpeed,
+    SpeedRun,
+    current_machine,
+    measure_speed,
+)
 from semantic_code_mcp.domain.models import SearchMode, StoreKind
 from semantic_code_mcp.logging import configure_logging
 
@@ -118,6 +127,8 @@ JSON_INDENT = 2
 BASELINE_COMMANDS = frozenset({"quality", "speed"})
 # The command that asks agents, which asks only the corpora it names
 AGENTS_COMMAND = "agents"
+# The command that times the server, which may leave meaning out
+SPEED_COMMAND = "speed"
 # How a report that named no store names the one it ran in
 DEFAULT_STORE_NAME = "the server's default"
 # How a report that named no search mode names the one its servers searched in
@@ -170,7 +181,7 @@ def main() -> int:
                 run_speed(
                     chosen_corpora(arguments.corpus, arguments.corpus_file),
                     index_store=arguments.store,
-                    edits=arguments.edits,
+                    run=SpeedRun(edits=arguments.edits, by_meaning=not arguments.words_only),
                     save_baseline=arguments.save_baseline,
                 )
             case "agents":
@@ -207,7 +218,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.set_defaults(search_mode=None)
     commands = parser.add_subparsers(dest="command", required=True)
     quality = commands.add_parser("quality", help="search quality: where the answers land")
-    speed = commands.add_parser("speed", help="indexing, search, memory and index growth")
+    speed = commands.add_parser(SPEED_COMMAND, help="indexing, search, memory and index growth")
     for command in (quality, speed):
         command.add_argument(
             "--corpus", action="append", default=[], choices=available_corpus_names()
@@ -224,6 +235,9 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     # The held-out questions are asked on every run but shown only once a choice is made
     quality.add_argument("--held-out", action="store_true")
     speed.add_argument("--edits", type=positive_integer, default=DEFAULT_EDITS)
+    # Words alone, never saved to the baseline: the server set to search by meaning embeds
+    # every chunk on its first search, an hour at Sentry's size
+    speed.add_argument("--words-only", action="store_true")
     agents = commands.add_parser(
         AGENTS_COMMAND, help="search judged by agents: Claude Code headless"
     )
@@ -246,6 +260,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         parser.error("--save-baseline keeps the default store's figures: leave --store out")
     if keeps_a_baseline and arguments.save_baseline and arguments.search_mode is not None:
         parser.error("--save-baseline keeps the default search's figures: leave --search-mode out")
+    if arguments.command == SPEED_COMMAND and arguments.save_baseline and arguments.words_only:
+        parser.error("--save-baseline keeps the speeds by meaning too: leave --words-only out")
     return arguments
 
 
@@ -278,7 +294,7 @@ def run_quality(
 
 
 def run_speed(
-    corpora: list[Corpus], *, index_store: StoreKind | None, edits: int, save_baseline: bool
+    corpora: list[Corpus], *, index_store: StoreKind | None, run: SpeedRun, save_baseline: bool
 ) -> None:
     report = SpeedReport(
         machine=current_machine(),
@@ -286,7 +302,7 @@ def run_speed(
         corpora=tuple(
             asyncio.run(
                 collect_speed(
-                    corpora, ServerOptions(index_store=index_store, search_mode=None), edits
+                    corpora, ServerOptions(index_store=index_store, search_mode=None), run
                 )
             )
         ),
@@ -481,7 +497,7 @@ async def collect_quality(corpora: list[Corpus], options: ServerOptions) -> list
 
 
 async def collect_speed(
-    corpora: list[Corpus], options: ServerOptions, edits: int
+    corpora: list[Corpus], options: ServerOptions, run: SpeedRun
 ) -> list[CorpusSpeed]:
     measured: list[CorpusSpeed] = []
     for corpus in corpora:
@@ -493,7 +509,7 @@ async def collect_speed(
             server_log.write(log_header("speed", corpus))
             servers = ServerStarter(server_log, options)
             measured.append(
-                await measure_speed(corpus, working_tree, Path(index_directory), edits, servers)
+                await measure_speed(corpus, working_tree, Path(index_directory), run, servers)
             )
     return measured
 
@@ -569,14 +585,24 @@ def speed_summary(entry: CorpusSpeed) -> str:
         f"{entry.warm_search_p50_milliseconds}ms p95 {entry.warm_search_p95_milliseconds}ms, "
         f"narrowed p50 {entry.narrowed_search_p50_milliseconds}ms; "
         f"status {entry.status_p50_milliseconds}ms; "
-        f"model load {entry.model_load_seconds}s; first search by meaning "
-        f"{entry.first_search_by_meaning_seconds}s, warm p50 "
-        f"{entry.warm_search_by_meaning_p50_milliseconds}ms; "
+        f"{meaning_summary(entry.meaning)}; "
         f"first search {entry.first_search_seconds}s; "
         f"peak {entry.peak_memory_megabytes}MB, held after {entry.resident_memory_megabytes}MB; "
         f"index growth {entry.index_growth_megabytes_per_edit}MB per edit; "
         f"search after an edit {entry.search_after_edit_p50_milliseconds}ms, "
         f"slowest {entry.search_after_edit_slowest_milliseconds}ms"
+    )
+
+
+def meaning_summary(meaning: MeaningSpeed | None) -> str:
+    """The speeds of the server set to search by meaning too, or that the run left it out."""
+    if meaning is None:
+        return "meaning left out"
+    return (
+        f"by meaning: model load {meaning.model_load_seconds}s, first search "
+        f"{meaning.first_search_seconds}s, warm p50 {meaning.warm_search_p50_milliseconds}ms, "
+        f"peak {meaning.peak_memory_megabytes}MB, held after "
+        f"{meaning.resident_memory_megabytes}MB"
     )
 
 

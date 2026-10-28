@@ -141,14 +141,14 @@ async def index_codebase(
     """Index a codebase's words for search.
 
     Splits Python, Rust and Markdown files into functions, classes, methods, module
-    docstrings and document sections, and stores them with their words; a server set to
-    search by meaning too embeds them. `search_code` indexes on its own; call this only to
-    re-index everything.
+    docstrings and document sections, and stores them with their words; it embeds nothing,
+    and a server set to search by meaning too embeds them on its next search.
+    `search_code` indexes on its own; call this only to re-index everything.
 
     With `force: true`, it re-indexes everything even if files haven't changed; a model
     whose weights nothing pins, as a local path, has its vectors dropped too, so a server
-    set to search by meaning embeds every chunk again. Otherwise, only new and modified
-    files are indexed (incremental).
+    set to search by meaning embeds every chunk again on its next search. Otherwise, only
+    new and modified files are indexed (incremental).
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository

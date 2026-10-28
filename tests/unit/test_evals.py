@@ -444,6 +444,7 @@ def test_a_starter_set_to_search_by_meaning_starts_servers_that_do_in_the_same_s
         pytest.param(
             ["quality", "--search-mode", SearchMode.words_and_meaning], id="quality by meaning"
         ),
+        pytest.param(["speed", "--words-only"], id="speed without meaning"),
     ],
 )
 def test_a_run_other_than_the_server_s_default_is_never_saved_as_the_baseline(

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "semantic-code-marketplace",
-  "description": "Semantic code search for coding agents",
+  "description": "Code search for coding agents",
   "owner": {
     "name": "Pavel Paranin"
   },
