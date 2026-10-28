@@ -11,20 +11,20 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
                                     │
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
-              AST Chunker      Embedder        LanceDB
-             (tree-sitter)   (onnxruntime)    (vectors)
+              AST Chunker      Embedder         SQLite
+             (tree-sitter)   (onnxruntime)  (words, vectors)
 ```
 
 1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
 2. **Embedding** — onnxruntime runs the model's ONNX export on each chunk (all-MiniLM-L6-v2, 384d), with no torch
-3. **Storage** — vectors stored in LanceDB (embedded, like SQLite)
+3. **Storage** — the chunks, their vectors and a full-text index of their words in one SQLite database per index (LanceDB, an optional extra, in its place)
 4. **Search** — a search by meaning and one by words, fused by rank
 
 Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each model, embedder version, chunker version and storage layout keeps an index of its own, so a new version or another model builds a new index once, and switching back finds the old one; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads lazily on first query.
 
 ## Installation
 
-One command on every platform, about 0.6 GB installed; the first start fetches the model's ONNX file (90 MB) from the Hugging Face hub once:
+One command on every platform, about 190 MB installed; the first start fetches the model's ONNX file (90 MB) from the Hugging Face hub once:
 
 ```bash
 uvx semantic-code-mcp
@@ -132,7 +132,7 @@ All settings are environment variables with the `SEMANTIC_CODE_MCP_` prefix (via
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEMANTIC_CODE_MCP_CACHE_DIR` | `~/.cache/semantic-code-mcp` | Where indexes are stored |
-| `SEMANTIC_CODE_MCP_INDEX_STORE` | `lancedb` | What keeps the indexes: `lancedb` or `sqlite`. Each keeps indexes of its own, so a change builds the index again once |
+| `SEMANTIC_CODE_MCP_INDEX_STORE` | `sqlite` | What keeps the indexes: `sqlite`, or `lancedb`, whose libraries come with the extra `semantic-code-mcp[lancedb]` (`uvx --from 'semantic-code-mcp[lancedb]' semantic-code-mcp`). Each keeps indexes of its own, so a change builds the index again once |
 | `SEMANTIC_CODE_MCP_LOCAL_INDEX` | `false` | Store index in `.semantic-code/` at the root of each project's repository; it holds a `.gitignore`, so git never shows it |
 | `SEMANTIC_CODE_MCP_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | A sentence-transformers model that pools by the mean, with an ONNX export in one file (`onnx/model.onnx`), by hub name or directory. Only the default model's vectors are tested against sentence-transformers'; another is read from its configs as well as the embedder can, and refused where it can see the vectors would differ |
 | `SEMANTIC_CODE_MCP_DEBUG` | `false` | Enable debug logging |
@@ -177,7 +177,7 @@ claude mcp add --scope user semantic-code \
 |-----------|--------|-----------|
 | MCP Framework | mcp 2.x (`MCPServer`) | The official Python SDK, STDIO transport |
 | Embeddings | onnxruntime over the model's ONNX export | Local, no API costs, no torch |
-| Vector Store | LanceDB | Embedded (like SQLite), no server needed |
+| Index | SQLite with FTS5 | In Python's standard library: one file, a write in one transaction, no server; LanceDB as an optional extra |
 | Chunking | tree-sitter | AST-based, respects code structure |
 
 ## Development
@@ -272,7 +272,7 @@ def build_chunker() -> CompositeChunker:
 - `src/semantic_code_mcp/services/` — indexing, search, the registry of projects
 - `src/semantic_code_mcp/discovery.py` — which files get indexed (git or a file-system walk, ignore patterns)
 - `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
-- `src/semantic_code_mcp/embedding.py`, `src/semantic_code_mcp/storage/` — embeddings and the LanceDB store
+- `src/semantic_code_mcp/embedding.py`, `src/semantic_code_mcp/storage/` — embeddings, and the stores (SQLite, LanceDB) behind one contract
 - `src/semantic_code_mcp/domain/` — models and interfaces
 - `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`)
 - `docs/decisions/` — architecture decision records

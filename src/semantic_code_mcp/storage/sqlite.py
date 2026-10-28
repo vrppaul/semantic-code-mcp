@@ -86,6 +86,7 @@ VECTOR_COMPONENT_BYTES = numpy.dtype(VECTOR_TYPE).itemsize
 ROW_ID_TYPE = numpy.int64
 # What the vectors are read after for a matrix read whole: before every row id SQLite gives
 BEFORE_EVERY_ROW = 0
+# The count of an index that holds no chunk, which a search answers with no candidate
 NO_CHUNKS = 0
 # The function SQLite's REGEXP operator calls, with its pattern and the text, in that order
 REGEXP_FUNCTION = "regexp"
@@ -99,7 +100,7 @@ NO_CONDITION = "1"
 CONDITION_SEPARATOR = " AND "
 VALUE_SEPARATOR = ", "
 VALUE_PLACEHOLDER = "?"
-# How far a new chunk's row id lies past the last one the table holds
+# How far a new chunk's row id lies past the last one the table gave
 NEXT_ROW_ID_STEP = 1
 
 CREATE_CHUNKS = (

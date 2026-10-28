@@ -10,14 +10,11 @@ authors = [{ name = "Pavel Paranin" }]
 dependencies = [
     "filelock>=3.20.3,<4",
     "huggingface-hub>=2.3.0,<3",
-    "lancedb==0.30.2",
     "mcp>=2.3.0,<3",
     "numpy>=2.4.1,<3",
     "onnxruntime>=1.31.1,<2",
-    "pyarrow>=23.0.0,<24",
     "pydantic>=2.12.5,<3",
     "pydantic-settings>=2.12.0,<3",
-    "pylance>=4.0.2,<4.1",
     "structlog>=26.1.0,<27",
     "tokenizers>=0.23.3,<0.24",
     "tree-sitter>=0.25.2,<0.26",
@@ -33,6 +30,13 @@ Changelog = "https://github.com/vrppaul/semantic-code-mcp/blob/master/CHANGELOG.
 
 [project.scripts]
 semantic-code-mcp = "semantic_code_mcp.cli:main"
+
+[project.optional-dependencies]
+lancedb = [
+    "lancedb==0.30.2",
+    "pyarrow>=23.0.0,<24",
+    "pylance>=4.0.2,<4.1",
+]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -56,6 +60,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.14.14",
+    "semantic-code-mcp[lancedb]",
     "ty>=0.0.13",
     "typos>=1.51.1",
     "vulture>=2.16",
@@ -342,3 +347,6 @@ ignore_names = [
     "record_vectors",
     "record_schema",
 ]
+
+[tool.uv.sources]
+semantic-code-mcp = { workspace = true }

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     cache_dir: Path = DEFAULT_CACHE_DIR
     local_index: bool = False
     # What keeps the indexes (ADR 009, D8); each store keeps indexes of its own
-    index_store: StoreKind = StoreKind.lancedb
+    index_store: StoreKind = StoreKind.sqlite
 
     debug: bool = False
     # Profile every request with pyinstrument, a dev dependency

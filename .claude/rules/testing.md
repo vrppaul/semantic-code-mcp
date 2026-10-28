@@ -17,7 +17,7 @@ paths:
 
 ## At which level
 
-- One level, the cheapest that sees the behaviour: `tests/unit/` is pure (a chunker on a string, scoring, settings); `tests/integration/` touches files, git, LanceDB or the model; `tests/e2e/` drives the tools through an MCP client.
+- One level, the cheapest that sees the behaviour: `tests/unit/` is pure (a chunker on a string, scoring, settings); `tests/integration/` touches files, git, a store or the model; `tests/e2e/` drives the tools through an MCP client.
 - A part a test does not exercise is a fake from `tests/fakes.py`, never a `MagicMock`.
 - What git decides is tested against a real repository (`tests/helpers.py` builds one), never a mocked subprocess.
 - The real embedding model only where a test is about ranking or what is stored; it is loaded once per session (`tests/conftest.py`).

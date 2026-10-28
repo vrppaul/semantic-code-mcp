@@ -7,9 +7,6 @@ What we mean to build and why. How each epic is built lives in `docs/decisions/`
 ### Rebuild on mcp 2.x
 The published 0.4.0 does not start on mcp 2.x, the index dropped code without a word, search ranks prose over the code it describes, indexing runs 20–50× slower than our own target, and our gates passed without checking anything. `docs/decisions/006-rebuild-on-mcp-2.md` holds the plan in ten stages, from a hotfix to the skill and the plugin; the stages and their state live there.
 
-### The index store behind a contract
-The store's interface speaks LanceDB, the index's life sits inside the LanceDB store, and the tests hold the implementation, so the store cannot be read, tested or replaced apart from LanceDB; and a run cancelled as its last write lands leaves that write's rows out of the full-text index. SQLite was tried behind the plan and turned down for its keyword search, 13 times slower at 100k chunks; with words the default channel, ADR 009 takes it as the default store and keeps LanceDB as an option. `docs/decisions/007-storage-behind-a-contract.md` holds the contract, ADR 009 the order.
-
 ## Pending
 
 ### A first search in seconds, not after the whole index
@@ -39,5 +36,8 @@ The owner wants the code of a project's dependencies searchable too, last and in
 ### Debt: chunker tests named by their input
 About forty tests of the three chunker test files are named by what they feed the chunker (`test_simple_function`, `test_struct_definition`), not by the behaviour they hold, as `.claude/rules/testing.md` asks; stage 6 renamed only those it rewrote.
 
+### Versions held by what makes their output
+The chunker's, the embedder's and each store's schema's versions are held by tests of hand-picked samples, and a review found nine chunker rules and the full-text index's settings outside them, so a change of output can keep an old version and meet an index of another making. A digest of what makes each output, held by a gate, would catch it (ADR 007, D6).
+
 ### LanceDB index tuning
-A flat cosine scan answers in 23–36 ms at 11.5k chunks and 50–90 ms at 100k over one fragment on LanceDB 0.30, about 40 ms over the fragments of 4,096 rows that upkeep now keeps, read side by side. LanceDB 0.32 to 0.40 scan two to three times slower over one fragment (150–190 ms at 100k), which holds the package at 0.30.2; whether they gain as much from such fragments is not measured; a vector index (IVF or HNSW) past some row count would let it move on, and pays off on large corpora anyway.
+For the LanceDB store, an optional extra since ADR 009. A flat cosine scan answers in 23–36 ms at 11.5k chunks and 50–90 ms at 100k over one fragment on LanceDB 0.30, about 40 ms over the fragments of 4,096 rows that upkeep now keeps, read side by side. LanceDB 0.32 to 0.40 scan two to three times slower over one fragment (150–190 ms at 100k), which holds the package at 0.30.2; whether they gain as much from such fragments is not measured; a vector index (IVF or HNSW) past some row count would let it move on, and pays off on large corpora anyway.

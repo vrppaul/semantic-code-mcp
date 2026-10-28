@@ -3,8 +3,9 @@
 `uvx semantic-code-mcp` ignores uv.lock: it resolves the newest versions within the bounds
 of pyproject.toml, and only the runtime ones. The suite and the harness run on the lock, so
 a release ships only a lock whose runtime packages are those such a resolve takes (ADR 006,
-D14). Both sides leave the dev group out: no user installs it, so a new release of a dev
-tool refuses nothing. A dev package that holds a runtime one back in the lock shows too, as
+D14). Both sides take every extra, as a user may install one (`semantic-code-mcp[lancedb]`),
+and leave the dev group out: no user installs it, so a new release of a dev tool refuses
+nothing. A dev package that holds a runtime one back in the lock shows too, as
 the lock's version then differs from the fresh resolve's.
 
 Run in the repository's root, before tagging a release, weekly in CI after the lock is
@@ -26,6 +27,7 @@ LOCKED_COMMAND = (
     "export",
     "--frozen",
     "--no-dev",
+    "--all-extras",
     "--no-hashes",
     "--no-emit-project",
     "--no-header",
@@ -38,6 +40,7 @@ FRESH_COMMAND = (
     "compile",
     "pyproject.toml",
     "--universal",
+    "--all-extras",
     "--upgrade",
     "--no-header",
     "--no-annotate",

@@ -1,6 +1,6 @@
 # Semantic Code MCP
 
-A local MCP server that gives coding agents semantic code search: tree-sitter splits a project into chunks, onnxruntime embeds them with a model's ONNX export, LanceDB stores them, and `search_code` finds code by meaning.
+A local MCP server that gives coding agents code search: tree-sitter splits a project into chunks, onnxruntime embeds them with a model's ONNX export, SQLite keeps them and their words, and `search_code` finds code by words and by meaning.
 
 ## Commands
 
@@ -18,7 +18,7 @@ uv run python -m evals agents         # agents' sessions with and without search
 
 ## Stack
 
-Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers (all-MiniLM-L6-v2's ONNX export, 384 dimensions) · LanceDB · tree-sitter (Python, Rust, Markdown) · structlog · pydantic and pydantic-settings.
+Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers (all-MiniLM-L6-v2's ONNX export, 384 dimensions) · SQLite and FTS5 (LanceDB an extra) · tree-sitter (Python, Rust, Markdown) · structlog · pydantic and pydantic-settings.
 
 ## How we work
 
