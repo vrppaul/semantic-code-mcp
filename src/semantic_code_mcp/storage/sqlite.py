@@ -20,15 +20,18 @@ agent's question is never read as FTS5's own syntax (ADR 007, D7).
 
 The vector channel searches a matrix of every chunk's vector the store holds between
 searches (ADR 009, D8), which the search's read transaction checks is of the state it reads:
-a chunk's row id is never given twice and a stored vector never changes, so the last row id
-the table gave and its count of rows tell whether any write, of this process or another,
-changed the chunks since. A later state refreshes the matrix by its rows, the deleted
-dropped and the new read, and both channels take their similarities from it.
+a chunk's row id is never given twice in one database and a stored vector never changes, so
+the database's own id, made with it, the last row id its table gave and its count of rows
+tell whether any write, of this process or another, changed the chunks since, or another
+database took the place of the one the matrix was read from. A later state of the same
+database refreshes the matrix by its rows, the deleted dropped and the new read, and both
+channels take their similarities from it.
 """
 
 import re
 import sqlite3
 import threading
+import uuid
 from collections.abc import Generator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -122,7 +125,21 @@ CREATE_WORDS = (
     "CREATE VIRTUAL TABLE words USING fts5("
     f"search_text, tokenize='{FULL_TEXT_TOKENIZER}', content='', contentless_delete=1)"
 )
-CREATE_TABLES = (CREATE_CHUNKS, CREATE_CHUNKS_BY_PATH, CREATE_FILES, CREATE_WORDS)
+# A random id made with the database, one row: a database made again in its place starts its
+# row ids again, so a matrix held of the old one is told apart by it
+CREATE_DATABASE_ID = "CREATE TABLE database (id TEXT NOT NULL)"
+CREATE_TABLES = (
+    CREATE_CHUNKS,
+    CREATE_CHUNKS_BY_PATH,
+    CREATE_FILES,
+    CREATE_WORDS,
+    CREATE_DATABASE_ID,
+)
+INSERT_DATABASE_ID = "INSERT INTO database (id) VALUES (?)"
+SELECT_DATABASE_ID = "SELECT id FROM database"
+# Opens a database that exists, never makes one: a read racing the index's removal fails
+# rather than leave an empty file a write would take for a made database
+EXISTING_DATABASE = "?mode=rw"
 WRITE_AHEAD_LOG = "PRAGMA journal_mode=WAL"
 FULL_TEXT_COMPILED_IN = "SELECT sqlite_compileoption_used('ENABLE_FTS5')"
 BEGIN_READ = "BEGIN"
@@ -158,9 +175,30 @@ VECTORS_AFTER = "SELECT row_id, vector FROM chunks WHERE row_id > ? ORDER BY row
 SELECT_RECORDS = "SELECT path, mtime_ns, size_bytes FROM files"
 COUNT_RECORDS = "SELECT count(*) FROM files"
 COUNT_CHUNKS = "SELECT count(*) FROM chunks"
-CHUNKS_STATE = f"SELECT ({LAST_ROW_ID}), ({COUNT_CHUNKS})"  # nosec B608: constants alone
+CHUNKS_STATE = f"SELECT ({SELECT_DATABASE_ID}), ({LAST_ROW_ID}), ({COUNT_CHUNKS})"  # nosec B608: constants
+# Statements a call completes with its list of placeholders or its scope's condition, each
+# named in braces; the values they take are bound
+SELECT_STORED_VECTORS = "SELECT chunk_id, vector FROM chunks WHERE chunk_id IN ({placeholders})"
+SELECT_CANDIDATES = f"SELECT {CANDIDATE_COLUMNS} FROM chunks WHERE row_id IN ({{placeholders}})"  # nosec B608
+SELECT_ROW_IDS_IN_SCOPE = "SELECT row_id FROM chunks WHERE {condition}"
+# The chunks of a scope whose words best match a question: the scope's chunks listed once, from
+# the index of their narrow columns; the unary plus keeps SQLite from handing the list to FTS5
+# as one lookup a row id, a full-text query each (21 s against 24 ms at 88k chunks)
+SCOPED_BEST_MATCHES = (
+    "SELECT rowid FROM words WHERE words MATCH ? "
+    "AND +rowid IN (SELECT row_id FROM chunks WHERE {condition}) "
+    "ORDER BY bm25(words) LIMIT ?"
+)
+KINDS_CONDITION = "kind IN ({placeholders})"
+LANGUAGES_CONDITION = "language IN ({placeholders})"
+# A glob is matched once a file, against the files' records, not once a chunk
+GLOB_CONDITION = "path IN (SELECT path FROM files WHERE path REGEXP ?)"
+EXCLUDED_GLOB_CONDITION = "path NOT IN (SELECT path FROM files WHERE path REGEXP ?)"
+DIRECTORY_CONDITION = "substr(path, 1, ?) = ?"
 # What a search finds when the index holds no chunks yet
 NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
+# A sort that keeps equals in the order they came, so the earlier row of two as near leads
+STABLE_SORT = "stable"
 
 
 class SqliteStoreError(RuntimeError):
@@ -182,20 +220,23 @@ class ScopeCondition(BaseModel):
 
 
 class ChunksState(BaseModel):
-    """Where the chunks table stands: the last row id it ever gave, and how many rows it
-    holds. A write that changes the chunks gives new row ids or deletes rows alone, so a later
-    state has a later last row id, or the same one and fewer rows."""
+    """Where the chunks table stands: the id of the database it is in, the last row id it
+    ever gave, and how many rows it holds. A write that changes the chunks gives new row
+    ids or deletes rows alone, so a later state of one database has a later last row id, or
+    the same one and fewer rows."""
 
     model_config = ConfigDict(frozen=True)
 
+    database_id: str
     last_row_id: int
     chunks: int
 
     def precedes(self, later: ChunksState) -> bool:
-        """Whether this state came before the later one, whose rows are then this one's
-        less those deleted since, and those past this one's last row id."""
-        return self.last_row_id < later.last_row_id or (
-            self.last_row_id == later.last_row_id and self.chunks > later.chunks
+        """Whether this state came before the later one in the same database, whose rows are
+        then this one's less those deleted since, and those past this one's last row id."""
+        return self.database_id == later.database_id and (
+            self.last_row_id < later.last_row_id
+            or (self.last_row_id == later.last_row_id and self.chunks > later.chunks)
         )
 
 
@@ -227,7 +268,7 @@ class RowSimilarities(BaseModel):
             positions = numpy.flatnonzero(self.similarities >= least_kept)
         else:
             positions = numpy.arange(len(self.similarities))
-        order = numpy.argsort(-self.similarities[positions], kind="stable")[:limit]
+        order = numpy.argsort(-self.similarities[positions], kind=STABLE_SORT)[:limit]
         return self.row_ids[positions[order]].tolist()
 
 
@@ -257,8 +298,8 @@ class SqliteIndexStore(DirectoryStore):
 
     # The schema's version is bumped by any change to the tables or to what one is made from,
     # its full-text index among them (2: a row id never given twice, which the held vectors
-    # rest on)
-    LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.sqlite, schema_version=2)
+    # rest on; 3: the database's id)
+    LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.sqlite, schema_version=3)
 
     def __init__(self, directory: IndexDirectory) -> None:
         super().__init__(directory)
@@ -296,9 +337,7 @@ class SqliteIndexStore(DirectoryStore):
                 row
                 for batch in batches(chunk_ids)
                 for row in connection.execute(
-                    f"SELECT chunk_id, vector FROM chunks "  # nosec B608: placeholders alone
-                    f"WHERE chunk_id IN ({placeholders(batch)})",
-                    batch,
+                    SELECT_STORED_VECTORS.format(placeholders=placeholders(batch)), batch
                 )
             ]
         return {chunk_id: vector_of(blob) for chunk_id, blob in rows}
@@ -391,6 +430,7 @@ class SqliteIndexStore(DirectoryStore):
             connection.execute(WRITE_AHEAD_LOG)
             for statement in CREATE_TABLES:
                 connection.execute(statement)
+            connection.execute(INSERT_DATABASE_ID, [uuid.uuid4().hex])
         unfinished.replace(database)
 
     @contextmanager
@@ -416,9 +456,10 @@ class SqliteIndexStore(DirectoryStore):
         """A connection of this call's own, waiting for SQLite's lock as long as for the
         index's, its transactions begun and ended by the store."""
         connection = sqlite3.connect(
-            self._directory.path / DATABASE_FILE,
+            (self._directory.path / DATABASE_FILE).absolute().as_uri() + EXISTING_DATABASE,
             timeout=self._directory.lock_timeout_seconds,
             isolation_level=None,
+            uri=True,
         )
         connection.create_function(
             REGEXP_FUNCTION, REGEXP_ARGUMENTS, matches_pattern, deterministic=True
@@ -484,8 +525,8 @@ def replace_records(connection: sqlite3.Connection, update: IndexUpdate) -> None
 
 def chunks_state(connection: sqlite3.Connection) -> ChunksState:
     """Where the chunks table stands in the state the connection reads."""
-    last_row_id, chunks = connection.execute(CHUNKS_STATE).fetchone()
-    return ChunksState(last_row_id=last_row_id, chunks=chunks)
+    database_id, last_row_id, chunks = connection.execute(CHUNKS_STATE).fetchone()
+    return ChunksState(database_id=database_id, last_row_id=last_row_id, chunks=chunks)
 
 
 def vectors_read_whole(connection: sqlite3.Connection, state: ChunksState) -> HeldVectors:
@@ -546,8 +587,7 @@ def nearest_candidates(
 def row_ids_in(connection: sqlite3.Connection, condition: ScopeCondition) -> NDArray[numpy.int64]:
     """The row ids of the chunks a scope keeps."""
     rows = connection.execute(
-        f"SELECT row_id FROM chunks WHERE {condition.sql}",  # nosec B608: bound values
-        condition.values,
+        SELECT_ROW_IDS_IN_SCOPE.format(condition=condition.sql), condition.values
     )
     return numpy.fromiter((row_id for (row_id,) in rows), dtype=ROW_ID_TYPE)
 
@@ -565,16 +605,11 @@ def keyword_candidates(
     if not tokens:
         return []
     expression = EITHER_WORD.join(QUOTE + token + QUOTE for token in tokens)
-    # The scope's chunks are listed once, from the index of their narrow columns; the unary
-    # plus keeps SQLite from handing the list to FTS5 as one lookup a row id, a full-text
-    # query each (21 s against 24 ms at 88k chunks)
     ranked = (
         connection.execute(BEST_MATCHES, [expression, limit])
         if condition.keeps_every_chunk
         else connection.execute(
-            "SELECT rowid FROM words WHERE words MATCH ? "  # nosec B608: bound values
-            f"AND +rowid IN (SELECT row_id FROM chunks WHERE {condition.sql}) "
-            "ORDER BY bm25(words) LIMIT ?",
+            SCOPED_BEST_MATCHES.format(condition=condition.sql),
             [expression, *condition.values, limit],
         )
     )
@@ -590,9 +625,7 @@ def candidates_of(
     chunks_by_row_id = {
         row["row_id"]: row
         for row in connection.execute(
-            f"SELECT {CANDIDATE_COLUMNS} FROM chunks "  # nosec B608: placeholders alone
-            f"WHERE row_id IN ({placeholders(row_ids)})",
-            row_ids,
+            SELECT_CANDIDATES.format(placeholders=placeholders(row_ids)), row_ids
         )
     }
     return [
@@ -623,21 +656,20 @@ def scope_condition(scope: SearchScope) -> ScopeCondition:
     clauses: list[str] = []
     values: list[str | int] = []
     if scope.kinds:
-        clauses.append(f"kind IN ({placeholders(scope.kinds)})")
+        clauses.append(KINDS_CONDITION.format(placeholders=placeholders(scope.kinds)))
         values.extend(scope.kinds)
     if scope.languages:
-        clauses.append(f"language IN ({placeholders(scope.languages)})")
+        clauses.append(LANGUAGES_CONDITION.format(placeholders=placeholders(scope.languages)))
         values.extend(scope.languages)
-    # A glob is matched once a file, against the files' records, not once a chunk
     if scope.path_glob is not None:
-        clauses.append("path IN (SELECT path FROM files WHERE path REGEXP ?)")
+        clauses.append(GLOB_CONDITION)
         values.append(glob_pattern(scope.path_glob, scope.directory))
     if scope.exclude_glob is not None:
-        clauses.append("path NOT IN (SELECT path FROM files WHERE path REGEXP ?)")
+        clauses.append(EXCLUDED_GLOB_CONDITION)
         values.append(glob_pattern(scope.exclude_glob, scope.directory))
     if scope.directory is not None:
         prefix = scope.directory.as_posix() + PATH_SEPARATOR
-        clauses.append("substr(path, 1, ?) = ?")
+        clauses.append(DIRECTORY_CONDITION)
         values.extend([len(prefix), prefix])
     return ScopeCondition(sql=CONDITION_SEPARATOR.join(clauses) or NO_CONDITION, values=values)
 

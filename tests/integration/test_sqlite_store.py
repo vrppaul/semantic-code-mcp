@@ -1,16 +1,27 @@
 """Tests of what the SQLite store does of its own, beside the contract every store holds
-(`test_index_store.py`): what its schema's version names."""
+(`test_index_store.py`): a write applied whole or not at all, and what its schema's version
+names."""
 
 import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.domain.models import Chunk
+from semantic_code_mcp.domain.models import Chunk, IndexUpdate
 from semantic_code_mcp.storage.search_text import search_text
-from semantic_code_mcp.storage.sqlite import DATABASE_FILE, SqliteIndexStore
-from tests.stores import IDENTITY, TOWARD_QUERY, index_directory_of, update_of, vectors_of
+from semantic_code_mcp.storage.sqlite import DATABASE_FILE, SqliteIndexStore, SqliteStoreError
+from tests.stores import (
+    IDENTITY,
+    TOWARD_QUERY,
+    function_chunk,
+    index_directory_of,
+    nearest,
+    record_of,
+    update_of,
+    vectors_of,
+)
 
 # The chunks LanceDB's recorded schema keeps, and what each version of this store's schema
 # stored of them: each chunk's search text and the statements that made its tables
@@ -88,3 +99,27 @@ def test_the_schema_s_version_names_what_the_store_keeps(tmp_path: Path):
     schema = stored_schema(chunks, tmp_path / "index")
 
     assert schema == recorded.schemas.get(SqliteIndexStore.LAYOUT.schema_version)
+
+
+def test_a_write_that_fails_midway_leaves_the_index_as_it_was(tmp_path: Path):
+    """A write is one transaction: the removal it began with is undone with it, and the
+    caller learns why."""
+    store = SqliteIndexStore(index_directory_of(SqliteIndexStore, tmp_path / "index", IDENTITY))
+    kept = function_chunk("kept", "kept.py", "def kept(): pass")
+    store.write(update_of([kept], removed_paths=[]), vectors_of(TOWARD_QUERY))
+    twice = function_chunk("twice", "twice.py", "def twice(): pass")
+    # The same chunk twice fails at its second insert, after the removal ran
+    update = IndexUpdate(
+        files=[record_of("twice.py")],
+        chunks=[twice, twice],
+        removed_paths=[Path("kept.py")],
+        last_of_run=True,
+    )
+
+    with pytest.raises(SqliteStoreError):
+        store.write(update, vectors_of(TOWARD_QUERY, TOWARD_QUERY))
+
+    assert (
+        store.indexed_files().records,
+        [candidate.chunk.name for candidate in nearest(store)],
+    ) == ([record_of("kept.py")], ["kept"])

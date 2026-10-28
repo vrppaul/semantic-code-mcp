@@ -6,6 +6,7 @@ index directory's (`test_index_directories.py`)."""
 
 import os
 import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -476,6 +477,31 @@ def test_a_search_sees_what_another_store_on_its_directory_wrote_since_its_last_
     edit(store_class(index_directory))
 
     assert [candidate.chunk.name for candidate in nearest(filled_store)] == found
+
+
+def test_a_search_after_its_index_was_removed_and_built_again_sees_the_new_one_alone(
+    store_class: StoreClass, index_directory: IndexDirectory, filled_store: IndexStore
+):
+    """A cache cleared, or another session's sweep, while a session held the old index: the
+    new one starts its rows again, and what the session kept of the old must not stand."""
+    nearest(filled_store)
+    shutil.rmtree(index_directory.path)
+    rebuilt = [
+        function_chunk(f"new_{number}", f"new_{number}.py", "def f(): pass")
+        for number in range(len(FILLED_CHUNK_NAMES) + 1)
+    ]
+
+    store_class(index_directory).write(
+        update_of(rebuilt, removed_paths=[]),
+        vectors_of(AWAY_FROM_QUERY, TOWARD_QUERY, ALTERNATING, PARTLY_TOWARD_QUERY),
+    )
+
+    assert [candidate.chunk.name for candidate in nearest(filled_store)] == [
+        "new_1",
+        "new_3",
+        "new_2",
+        "new_0",
+    ]
 
 
 def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_unrecorded(
