@@ -176,6 +176,26 @@ class TestGitDiscovery:
 
         assert relative_names(files) == {"real.py"}
 
+    def test_tracked_files_of_a_directory_a_symlink_replaced_are_skipped_outside_the_project(
+        self, tmp_path: Path
+    ):
+        """Git still lists them from its index; read through the link, they lie elsewhere."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "module.py").write_text("x = 1\n")
+        repository = make_repository(tmp_path / "repo")
+        (repository / "code.py").write_text("x = 1\n")
+        (repository / "package").mkdir()
+        (repository / "package" / "module.py").write_text("x = 1\n")
+        commit_all(repository)
+        (repository / "package" / "module.py").unlink()
+        (repository / "package").rmdir()
+        (repository / "package").symlink_to(elsewhere, target_is_directory=True)
+
+        files = make_discovery().discover(repository)
+
+        assert relative_names(files) == {"code.py"}
+
     def test_git_variables_in_the_environment_do_not_redirect_the_listing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
