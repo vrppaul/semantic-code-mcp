@@ -77,9 +77,10 @@ TOKENS_PER_THOUSAND = 1000
 # How much of a question a session's line shows
 QUESTION_SHOWN_LENGTH = 60
 SERVER_LOG_FILE = "server.log"
-# Edits enough for one to pay a store's periodic upkeep, which the slowest search after an
-# edit shows: LanceDB compacts and rebuilds its full-text index at its first upkeep, the full
-# index's, and once in twenty after, so at the last edit's
+# Edits enough for the slowest search after an edit to show a store's periodic upkeep, the
+# costliest an edit can meet: LanceDB compacts and rebuilds its full-text index at its first
+# upkeep, the full index's, and once in its UPKEEPS_PER_COMPACTION after, so at the last
+# edit's; a unit test holds the two together, as evals import no store
 DEFAULT_EDITS = 20
 JSON_INDENT = 2
 EXIT_OK = 0

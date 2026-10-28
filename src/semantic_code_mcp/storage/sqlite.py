@@ -228,9 +228,7 @@ class SqliteIndexStore(IndexStore):
         if len(update.chunks) != len(vectors):
             message = f"{len(update.chunks)} chunks but {len(vectors)} vectors"
             raise ValueError(message)
-        self._directory.prepare_for_writing()
-        with self._directory.locked():
-            self._directory.create()
+        with self._directory.writing():
             try:
                 self._make_database()
                 with closing(self._connect()) as connection, connection:

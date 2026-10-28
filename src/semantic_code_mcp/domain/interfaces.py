@@ -93,8 +93,9 @@ class IndexStore(ABC):
         """Apply one write of an index run as a unit no other writer interleaves with, in
         this process or another, a cancelled request's thread included: the chunks of the
         files written take the place of those files' and the removed files' chunks, so a
-        reader finds a file's old chunks or its new ones, never neither; the files' records
-        and the manifest follow them. The vector of each chunk is in its row of `vectors`.
+        reader finds a file's old chunks or its new ones, never neither, and the same write
+        records those files and what built the index. The vector of each chunk is in its row
+        of `vectors`.
         A write stopped midway leaves its files' old records, so the next run writes them
         again; the run's last write also does what the store has to at a run's end.
 
@@ -108,7 +109,7 @@ class IndexStore(ABC):
     ) -> SearchCandidates:
         """The `per_channel` chunks of the query's scope nearest its vector and the
         `per_channel` whose words best match its text, each with the cosine similarity of
-        its vector to the query's, both read from one version of the index."""
+        its vector to the query's, both read from one state of the index."""
 
 
 class Chunker(ABC):

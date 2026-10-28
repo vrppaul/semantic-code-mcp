@@ -30,6 +30,8 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 
@@ -104,27 +106,26 @@ class IndexDirectory:
         """Whether a write has made the directory."""
         return self._path.is_dir()
 
-    def locked(self) -> FileLock:
-        """The write lock, taken within the timeout the directory was given: two server
-        processes on one index never write side by side."""
-        return FileLock(self.write_lock, timeout=self._lock_timeout_seconds)
+    @contextmanager
+    def writing(self) -> Generator[None]:
+        """Hold the index for one write: marked as used, the project's directory made for the
+        write lock that lies in it, the lock taken within the timeout the directory was given,
+        so two server processes on one index never write side by side, and the index's own
+        directory made under it, as a removal renames an index only under that lock."""
+        self.note_use()
+        self._project_directory.mkdir(parents=True, exist_ok=True)
+        with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
+            self._create()
+            yield
 
-    def create(self) -> None:
-        """Make the directory and the project's `.gitignore`, for a writer, and mark the index
-        as used, as a first write would leave the project's unused indexes for its first read
-        otherwise. Called under the write lock: a removal renames an index only under that
-        lock, so it cannot take the directory between its making and the write."""
+    def _create(self) -> None:
+        """Make the directory and the project's `.gitignore`, and mark the index as used, as
+        a first write would leave the project's unused indexes for its first read otherwise."""
         self._path.mkdir(parents=True, exist_ok=True)
         ignore_file = self._project_directory / GITIGNORE_FILE
         if not ignore_file.exists():
             ignore_file.write_text(IGNORE_EVERYTHING)
         self.note_use()
-
-    def prepare_for_writing(self) -> None:
-        """Mark the index as used and make the project's directory, before the write lock,
-        which lies in it, is taken."""
-        self.note_use()
-        self._project_directory.mkdir(parents=True, exist_ok=True)
 
     def manifest(self) -> IndexManifest | None:
         """What built the index; None before its first write, or where the manifest cannot

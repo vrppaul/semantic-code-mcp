@@ -630,6 +630,22 @@ async def test_a_run_that_wrote_leaves_every_chunk_in_the_full_text_index(
     assert chunks_outside_the_full_text_index(store) == 0
 
 
+# Files of FUNCTIONS_PER_FILE chunks enough for three slices: two of two files, one of one
+FILES_OF_THREE_SLICES = 5
+
+
+async def test_a_run_ends_in_its_last_write_alone(test_settings: Settings, tmp_path: Path):
+    """A store does what a run's end needs once, in the last write, not in each slice's."""
+    project = functions_in_files(tmp_path, FILES_OF_THREE_SLICES, FUNCTIONS_PER_FILE)
+    store = FakeIndexStore(NO_CANDIDATES)
+
+    await first_index(
+        indexing_service(store, FakeEmbedder(), test_settings, build_chunker()), project
+    )
+
+    assert [update.last_of_run for update in store.updates] == [False, False, True]
+
+
 # How long a test waits for a held write to begin and to land, far beyond either
 HELD_WRITE_TIMEOUT_SECONDS = 30.0
 

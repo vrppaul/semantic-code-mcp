@@ -113,6 +113,7 @@ class FakeIndexStore(IndexStore):
         self.vectors_by_file: dict[Path, list[Vector]] = defaultdict(list)
         self.files_by_path: dict[Path, SourceFile] = {}
         self.written_manifest: IndexManifest | None = None
+        self.updates: list[IndexUpdate] = []
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -120,12 +121,8 @@ class FakeIndexStore(IndexStore):
 
     @override
     def indexed_files(self) -> IndexedFiles:
-        return IndexedFiles(
-            records=list(self.files_by_path.values()),
-            unrecorded_paths=[
-                path for path in self.chunks_by_file if path not in self.files_by_path
-            ],
-        )
+        # Its write records chunks and files together: no chunk is left without its record
+        return IndexedFiles(records=list(self.files_by_path.values()), unrecorded_paths=[])
 
     @override
     def counts(self) -> IndexCounts:
@@ -145,6 +142,7 @@ class FakeIndexStore(IndexStore):
 
     @override
     def write(self, update: IndexUpdate, vectors: VectorMatrix) -> None:
+        self.updates.append(update)
         replaced = [*(file.path for file in update.files), *update.removed_paths]
         for path in replaced:
             self.chunks_by_file.pop(path, None)

@@ -29,6 +29,7 @@ from semantic_code_mcp.storage.lancedb import (
 )
 from semantic_code_mcp.storage.search_text import search_text
 from tests.helpers import (
+    TABLE_INDEX_VERSIONS,
     chunks_fragments,
     chunks_outside_the_full_text_index,
     full_text_index_documents,
@@ -219,6 +220,32 @@ def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     with pytest.raises((OSError, RuntimeError)):
         filled_store.write(update, vectors_of(TOWARD_QUERY))
     set_mode_of_tree(chunks_table_directory, WRITABLE)
+
+    assert sorted(filled_store.indexed_files().records, key=lambda file: file.path) == [
+        record_of("far.py"),
+        record_of("indexer.py"),
+        record_of("near.py"),
+    ]
+
+
+def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_were(
+    filled_store: LanceDBIndexStore,
+):
+    """The fold comes before the records: a write stopped there leaves the old records, which
+    the next run reads as files changed, and writes and folds again."""
+    indices_directory = filled_store.directory / f"{CHUNKS_TABLE}.lance" / TABLE_INDEX_VERSIONS
+    set_mode_of_tree(indices_directory, READ_ONLY)
+    edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
+    update = IndexUpdate(
+        files=[SourceFile(path=Path("near.py"), mtime_ns=2, size_bytes=2)],
+        chunks=[edited],
+        removed_paths=[],
+        last_of_run=True,
+    )
+
+    with pytest.raises((OSError, RuntimeError)):
+        filled_store.write(update, vectors_of(TOWARD_QUERY))
+    set_mode_of_tree(indices_directory, WRITABLE)
 
     assert sorted(filled_store.indexed_files().records, key=lambda file: file.path) == [
         record_of("far.py"),

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from evals.__main__ import DEFAULT_EDITS
 from evals.corpus import TOP_LEVEL, Answer, Corpus, CorpusSource, Query, QuestionKind
 from evals.quality import (
     Hit,
@@ -26,6 +27,7 @@ from evals.speed import Edit, edit_text, edits_in_turn
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language
+from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_COMPACTION
 
 
 def test_first_rank_counts_from_one():
@@ -355,3 +357,8 @@ def test_the_speed_run_edits_the_files_that_answer_its_questions_in_turn():
         Edit(path=Path("first.py"), question="first question"),
         Edit(path=Path("second.py"), question="third question"),
     ]
+
+
+def test_the_speed_run_edits_enough_for_its_last_edit_to_meet_a_compaction():
+    """The slowest search after an edit shows LanceDB's compaction only if the run reaches it."""
+    assert DEFAULT_EDITS == UPKEEPS_PER_COMPACTION

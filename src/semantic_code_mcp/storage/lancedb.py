@@ -15,12 +15,13 @@ Reads take no lock: each opens its table again, at its latest version, so a long
 connection still sees what another process wrote, and a table not yet made reads as
 empty. So old versions are pruned only once they are older than any read can last.
 
-A run's last write keeps the index up: after its chunks and before their records it folds
-the new rows into the full-text index, as rows it has not folded in score on another scale,
-so a run cancelled as that write lands still leaves them folded, and a write stopped before
-the fold leaves its files stale for the next run to write and fold again; it prunes old
-versions too. Now and then it first compacts the tables and rebuilds the full-text index
-whole: each fold adds the index a part no later one merges, and counts the rows an edit
+A run's last write keeps the index up. After its chunks and before their records it folds
+the new rows into the full-text index, as rows it has not folded in score on another scale:
+a run cancelled as that write lands still leaves them folded, and a write stopped before the
+fold leaves its files stale for the next run to write and fold again. After the records it
+prunes old versions, and now and then first compacts the tables and rebuilds the full-text
+index whole, which takes seconds at 100k chunks, so a reader meanwhile finds the run's files
+recorded: each fold adds the index a part no later one merges, and counts the rows an edit
 replaced in the index's word statistics until then. LanceDB's own optimize compacts at
 every call, merging every fragment under a million rows, so at 100k chunks each edit
 rewrote the whole table.
@@ -282,18 +283,18 @@ class LanceDBIndexStore(IndexStore):
         if len(update.chunks) != len(vectors):
             message = f"{len(update.chunks)} chunks but {len(vectors)} vectors"
             raise ValueError(message)
-        self._directory.prepare_for_writing()
-        with self._directory.locked():
-            database = self._created_database()
+        with self._directory.writing():
+            database = self._connect()
             if update.chunks:
                 self._fit_layout(database, vectors.shape[VECTOR_LENGTH_AXIS])
             self._write_chunks(database, update, vectors)
             if update.last_of_run:
-                self._compact_when_due()
-                self._fold_and_prune(CHUNKS_TABLE)
+                # Before the records: a write stopped before the fold leaves its files stale
+                self._fold(CHUNKS_TABLE)
             self._write_records(database, update)
             if update.last_of_run:
-                self._fold_and_prune(FILES_TABLE)
+                # After them: a reader meanwhile finds the files the run wrote recorded
+                self._keep_up()
             manifest = IndexManifest(
                 identity=self._identity,
                 schema_version=SCHEMA_VERSION,
@@ -397,12 +398,21 @@ class LanceDBIndexStore(IndexStore):
         rows = table.search().select([PATH_COLUMN]).limit(None).to_arrow()
         return rows.column(PATH_COLUMN).unique().to_pylist()
 
-    def _fold_and_prune(self, name: str) -> None:
-        """Fold a table's new rows into its indexes and prune its old versions, if it is made."""
+    def _fold(self, name: str) -> None:
+        """Fold a table's new rows into its indexes, if it is made."""
         table = self._open(name)
         if table is not None:
-            fold_and_prune(table.to_lance())
-            log.debug("table_kept_up", table=name)
+            table.to_lance().optimize.optimize_indices()
+
+    def _keep_up(self) -> None:
+        """Compact the tables when due, then fold and prune each: what a run's end does once
+        its records are written."""
+        self._compact_when_due()
+        for name in (CHUNKS_TABLE, FILES_TABLE):
+            table = self._open(name)
+            if table is not None:
+                fold_and_prune(table.to_lance())
+                log.debug("table_kept_up", table=name)
 
     def _compact_when_due(self) -> None:
         """Compact both tables, then rebuild the full-text index whole over the rows left, at
@@ -439,11 +449,6 @@ class LanceDBIndexStore(IndexStore):
         self._directory.note_use()
         if not self._directory.exists():
             return None
-        return self._connect()
-
-    def _created_database(self) -> lancedb.DBConnection:
-        """The connection, for a writer, its directory made first, under the write lock."""
-        self._directory.create()
         return self._connect()
 
     def _connect(self) -> lancedb.DBConnection:
