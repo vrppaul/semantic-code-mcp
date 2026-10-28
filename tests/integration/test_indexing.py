@@ -1,6 +1,8 @@
 """Tests of indexing a project, into each store in turn."""
 
 import asyncio
+import re
+import sys
 import threading
 from collections.abc import Callable
 from functools import partial
@@ -9,11 +11,16 @@ from pathlib import Path
 import numpy
 import pytest
 
-from semantic_code_mcp.app import build_chunker, build_registry
+from semantic_code_mcp.app import (
+    LANCEDB_EXTRA,
+    StoreUnavailableError,
+    build_chunker,
+    build_registry,
+)
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 from semantic_code_mcp.domain.interfaces import Chunker
-from semantic_code_mcp.domain.models import IndexCounts
+from semantic_code_mcp.domain.models import IndexCounts, StoreKind
 from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.services.indexing import EMBEDDING_SLICE_SIZE, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
@@ -88,6 +95,19 @@ async def test_the_index_is_kept_in_the_store_the_settings_pick(
 
     project_directory = get_index_path(store_settings, sample_project)
     assert open_store(store_class, project_directory, IDENTITY).counts().chunks == 6
+
+
+def test_a_store_whose_libraries_are_missing_stops_the_server_naming_its_extra(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    """LanceDB comes with an optional extra; a server set to it without the extra says so
+    as it starts, rather than at its first search."""
+    monkeypatch.setitem(sys.modules, "lancedb", None)
+    monkeypatch.delitem(sys.modules, "semantic_code_mcp.storage.lancedb")
+    settings = Settings(cache_dir=test_settings.cache_dir, index_store=StoreKind.lancedb)
+
+    with pytest.raises(StoreUnavailableError, match=re.escape(LANCEDB_EXTRA)):
+        build_registry(settings, FakeEmbedder())
 
 
 async def test_second_run_without_changes_indexes_nothing(

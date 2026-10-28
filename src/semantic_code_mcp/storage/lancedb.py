@@ -42,14 +42,13 @@ from lancedb.query import FullTextOperator, MatchQuery
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.globs import PATH_SEPARATOR
-from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
+from semantic_code_mcp.domain.interfaces import Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
     Candidate,
     Chunk,
     ChunkKind,
     IndexCounts,
     IndexedFiles,
-    IndexManifest,
     IndexUpdate,
     Language,
     SearchCandidates,
@@ -59,7 +58,11 @@ from semantic_code_mcp.domain.models import (
     StoreKind,
 )
 from semantic_code_mcp.storage.globs import glob_pattern
-from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
+from semantic_code_mcp.storage.index_directories import (
+    DirectoryStore,
+    IndexDirectory,
+    IndexLayout,
+)
 from semantic_code_mcp.storage.search_text import search_text
 from semantic_code_mcp.storage.similarity import VECTOR_LENGTH_AXIS, cosine_similarities
 
@@ -204,7 +207,7 @@ class StoredFile(BaseModel):
         return SourceFile(path=Path(self.path), mtime_ns=self.mtime_ns, size_bytes=self.size_bytes)
 
 
-class LanceDBIndexStore(IndexStore):
+class LanceDBIndexStore(DirectoryStore):
     """One project's index of one identity, in a LanceDB database in the index's directory.
 
     Nothing touches the disk until it is first used, and only a write makes the
@@ -216,15 +219,11 @@ class LanceDBIndexStore(IndexStore):
     LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.lancedb, schema_version=5)
 
     def __init__(self, directory: IndexDirectory) -> None:
-        self._directory = directory
+        super().__init__(directory)
         self._connecting = threading.Lock()
         self._connection: lancedb.DBConnection | None = None
         # How many upkeeps this store runs before it compacts; none before its first
         self._upkeeps_until_compaction = 0
-
-    @override
-    def manifest(self) -> IndexManifest | None:
-        return self._directory.manifest()
 
     @override
     def indexed_files(self) -> IndexedFiles:

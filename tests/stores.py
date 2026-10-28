@@ -19,13 +19,13 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SourceFile,
 )
-from semantic_code_mcp.storage.index_directories import IndexDirectory
+from semantic_code_mcp.storage.index_directories import DirectoryStore, IndexDirectory
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
 from semantic_code_mcp.storage.sqlite import SqliteIndexStore
 from tests.fakes import EMBEDDING_DIMENSION
 
 # A store's class, built on an index's directory in the layout the class names
-type StoreClass = type[LanceDBIndexStore] | type[SqliteIndexStore]
+type StoreClass = type[DirectoryStore]
 # Every store the contract's tests run over
 STORE_CLASSES = [
     pytest.param(LanceDBIndexStore, id="lancedb"),

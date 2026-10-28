@@ -35,11 +35,13 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import ClassVar, override
 
 import structlog
 from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from semantic_code_mcp.domain.interfaces import IndexStore
 from semantic_code_mcp.domain.models import IndexIdentity, IndexManifest, StoreKind
 
 log = structlog.get_logger()
@@ -194,6 +196,20 @@ class IndexDirectory:
         except OSError as error:
             log.debug("index_use_not_marked", directory=str(self._path), error=str(error))
         remove_unused_indexes(self._project_directory, self._path)
+
+
+class DirectoryStore(IndexStore):
+    """A store built on its index's directory, in the layout its class names, so whoever
+    picks a store builds it alike without importing what keeps the index."""
+
+    LAYOUT: ClassVar[IndexLayout]
+
+    def __init__(self, directory: IndexDirectory) -> None:
+        self._directory = directory
+
+    @override
+    def manifest(self) -> IndexManifest | None:
+        return self._directory.manifest()
 
 
 def index_directory_name(identity: IndexIdentity, layout: IndexLayout) -> str:

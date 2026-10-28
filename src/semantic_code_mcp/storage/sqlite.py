@@ -40,14 +40,13 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.globs import PATH_SEPARATOR
-from semantic_code_mcp.domain.interfaces import IndexStore, Vector, VectorMatrix
+from semantic_code_mcp.domain.interfaces import Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
     Candidate,
     Chunk,
     ChunkKind,
     IndexCounts,
     IndexedFiles,
-    IndexManifest,
     IndexUpdate,
     Language,
     SearchCandidates,
@@ -57,7 +56,11 @@ from semantic_code_mcp.domain.models import (
     StoreKind,
 )
 from semantic_code_mcp.storage.globs import glob_pattern
-from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
+from semantic_code_mcp.storage.index_directories import (
+    DirectoryStore,
+    IndexDirectory,
+    IndexLayout,
+)
 from semantic_code_mcp.storage.search_text import search_text
 from semantic_code_mcp.storage.similarity import (
     VECTOR_LENGTH_AXIS,
@@ -245,7 +248,7 @@ class HeldVectors(BaseModel):
         )
 
 
-class SqliteIndexStore(IndexStore):
+class SqliteIndexStore(DirectoryStore):
     """One project's index of one identity, in a SQLite database in the index's directory.
 
     Nothing touches the disk until it is first used, and only a write makes the database.
@@ -257,15 +260,11 @@ class SqliteIndexStore(IndexStore):
     LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.sqlite, schema_version=2)
 
     def __init__(self, directory: IndexDirectory) -> None:
-        self._directory = directory
+        super().__init__(directory)
         # The vectors of the latest state a search read, kept for the next; searches run in
         # worker threads, so they take and replace them under a lock
         self._holding = threading.Lock()
         self._held: HeldVectors | None = None
-
-    @override
-    def manifest(self) -> IndexManifest | None:
-        return self._directory.manifest()
 
     @override
     def indexed_files(self) -> IndexedFiles:

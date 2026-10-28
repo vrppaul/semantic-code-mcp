@@ -20,8 +20,7 @@ from semantic_code_mcp.server.instructions import SERVER_INSTRUCTIONS
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
 from semantic_code_mcp.services.projects import ProjectRegistry, StoreOpener
-from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
-from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
+from semantic_code_mcp.storage.index_directories import DirectoryStore, IndexDirectory
 from semantic_code_mcp.storage.sqlite import SqliteIndexStore
 
 SERVER_NAME = "semantic-code-mcp"
@@ -38,6 +37,12 @@ ALWAYS_LOAD_KEY = "anthropic/alwaysLoad"
 # of the libraries below it, as httpx's for each model file the hub fetches, would land
 # among the server's JSON lines
 LIBRARY_LOG_LEVEL = "WARNING"
+# What installs the LanceDB store's libraries, an optional extra of the package
+LANCEDB_EXTRA = "semantic-code-mcp[lancedb]"
+
+
+class StoreUnavailableError(RuntimeError):
+    """The settings pick a store whose libraries are not installed."""
 
 
 def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegistry]:
@@ -99,30 +104,40 @@ def build_chunker() -> CompositeChunker:
 
 
 def store_opener(settings: Settings) -> StoreOpener:
-    """What opens each index of a project in the store the settings pick."""
-    return partial(open_index_store, store_kind=settings.index_store)
+    """What opens each index of a project in the store the settings pick; its class is
+    found now, so a store whose libraries are missing stops the server as it starts."""
+    return partial(open_index_store, store_class=store_class_of(settings.index_store))
+
+
+def store_class_of(store_kind: StoreKind) -> type[DirectoryStore]:
+    """The class of the store of a kind."""
+    match store_kind:
+        case StoreKind.sqlite:
+            return SqliteIndexStore
+        case StoreKind.lancedb:
+            return lancedb_store_class()
+
+
+def lancedb_store_class() -> type[DirectoryStore]:
+    """The LanceDB store's class, imported only when chosen, as an optional extra installs
+    its libraries."""
+    try:
+        from semantic_code_mcp.storage.lancedb import LanceDBIndexStore  # noqa: PLC0415
+    except ModuleNotFoundError as error:
+        message = f"the LanceDB store needs its libraries: install {LANCEDB_EXTRA}"
+        raise StoreUnavailableError(message) from error
+    return LanceDBIndexStore
 
 
 def open_index_store(
-    project_directory: Path, identity: IndexIdentity, *, store_kind: StoreKind
+    project_directory: Path, identity: IndexIdentity, *, store_class: type[DirectoryStore]
 ) -> IndexStore:
-    """The store of a project's index of one identity, of the kind given, built on the
-    index's own directory under the project's index directory."""
-    match store_kind:
-        case StoreKind.sqlite:
-            return SqliteIndexStore(
-                index_directory(project_directory, identity, SqliteIndexStore.LAYOUT)
-            )
-        case StoreKind.lancedb:
-            return LanceDBIndexStore(
-                index_directory(project_directory, identity, LanceDBIndexStore.LAYOUT)
-            )
-
-
-def index_directory(
-    project_directory: Path, identity: IndexIdentity, layout: IndexLayout
-) -> IndexDirectory:
-    """The directory of a project's index of one identity in a store's layout."""
-    return IndexDirectory(
-        project_directory, identity, layout, lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS
+    """The store of a project's index of one identity, built on the index's own directory
+    under the project's index directory."""
+    directory = IndexDirectory(
+        project_directory,
+        identity,
+        store_class.LAYOUT,
+        lock_timeout_seconds=WRITE_LOCK_TIMEOUT_SECONDS,
     )
+    return store_class(directory)
