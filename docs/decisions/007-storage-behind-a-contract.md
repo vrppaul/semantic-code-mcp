@@ -1,6 +1,6 @@
 # 007: The index store behind a contract, and SQLite tried behind it
 
-**Status**: accepted; D7, SQLite, turned down on its spike (2026-10-27)
+**Status**: accepted; D7, SQLite, turned down on its spike (2026-10-27), then taken as the default store by ADR 009 (2026-10-28)
 **Date**: 2026-10-27
 **Continues**: 006 (D4 storage), before its release
 
