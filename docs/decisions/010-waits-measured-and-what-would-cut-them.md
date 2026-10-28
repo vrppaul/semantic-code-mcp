@@ -46,7 +46,7 @@ Chunking in a pool of processes (ADR 009's step 7, moved here): about 7-10 s to 
 
 ### O5. The model's libraries imported with the model
 
-onnxruntime, tokenizers and huggingface_hub imported when a search by meaning first loads the model: 22 MB and 80 ms less for every server. Done (2026-10-28) with ADR 009's extra `semantic-code-mcp[meaning]`, which installs them: a server's imports by words 490-560 ms and 93 MB at their peak against 570-740 ms and 117-119 MB with them, in alternating turns at a load of 0.3.
+onnxruntime, tokenizers and huggingface_hub imported when a search by meaning first loads the model: 22 MB and 80 ms less for every server. Done (2026-10-28) with ADR 009's extra `semantic-code-mcp[meaning]`, which installs them, imported only where meaning is asked for, when a model loads or a server set to search by meaning starts: a server's imports by words 89 MB at their peak and 0.655 s at the median of twelve alternating turns, against 113 MB and 0.79 s with them.
 
 ### O6. The search by meaning's own costs, with ADR 009's step 9
 

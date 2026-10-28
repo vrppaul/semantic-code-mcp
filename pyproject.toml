@@ -212,7 +212,7 @@ layers = [
     "semantic_code_mcp.server",
     "semantic_code_mcp.services",
     "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage",
-    "semantic_code_mcp.config | semantic_code_mcp.logging",
+    "semantic_code_mcp.config | semantic_code_mcp.logging | semantic_code_mcp.extras",
     "semantic_code_mcp.domain",
 ]
 

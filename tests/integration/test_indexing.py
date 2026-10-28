@@ -10,20 +10,13 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.app import (
-    LANCEDB_EXTRA,
-    StoreUnavailableError,
-    build_chunker,
-    build_registry,
-)
+from semantic_code_mcp.app import build_chunker, build_registry, store_opener
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
+from semantic_code_mcp.cli import build_server
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
-from semantic_code_mcp.domain.models import SearchMode, StoreKind
-from semantic_code_mcp.embedding.embedder import (
-    MEANING_EXTRA,
-    MeaningUnavailableError,
-    OnnxEmbedder,
-)
+from semantic_code_mcp.domain.models import WHOLE_PROJECT, SearchMode, SearchQuery, StoreKind
+from semantic_code_mcp.embedding.embedder import OnnxEmbedder
+from semantic_code_mcp.extras import LANCEDB_EXTRA, MEANING_EXTRA, ExtraMissingError, OptionalExtra
 from semantic_code_mcp.services import indexing as indexing_module
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
@@ -76,7 +69,11 @@ def delete(path: Path) -> None:
 
 @pytest.fixture
 def indexing(store_settings: Settings, sample_project: Path) -> IndexingService:
-    return build_registry(store_settings, FakeEmbedder()).services_for(sample_project).indexing
+    return (
+        build_registry(store_settings, FakeEmbedder(), store_opener(store_settings))
+        .services_for(sample_project)
+        .indexing
+    )
 
 
 async def test_index_stores_every_chunk_of_every_file(
@@ -103,17 +100,15 @@ async def test_the_index_is_kept_in_the_store_the_settings_pick(
 
 class ExtraCase(BaseModel):
     """A setting that needs an optional extra: a library the extra installs, the module of
-    the package that imports it, one of the package's own modules that module imports, and
-    what a server set so says without the extra."""
+    the package that imports it, and one of the package's own modules that module imports."""
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True)
 
     setting: dict[str, StoreKind | SearchMode]
+    extra: OptionalExtra
     library: str
     extra_module: str
     package_module: str
-    refusal: type[RuntimeError]
-    extra: str
 
 
 EXTRA_CASES = [
@@ -123,7 +118,6 @@ EXTRA_CASES = [
             library="lancedb",
             extra_module="semantic_code_mcp.storage.lancedb",
             package_module="semantic_code_mcp.storage.globs",
-            refusal=StoreUnavailableError,
             extra=LANCEDB_EXTRA,
         ),
         id="the LanceDB store",
@@ -134,7 +128,6 @@ EXTRA_CASES = [
             library="onnxruntime",
             extra_module="semantic_code_mcp.embedding.onnx_model",
             package_module="semantic_code_mcp.domain.interfaces",
-            refusal=MeaningUnavailableError,
             extra=MEANING_EXTRA,
         ),
         id="a search by meaning",
@@ -152,8 +145,8 @@ def test_a_setting_whose_extra_is_missing_stops_the_server_naming_the_extra(
     monkeypatch.delitem(sys.modules, case.extra_module, raising=False)
     settings = Settings(cache_dir=test_settings.cache_dir, **case.setting)
 
-    with pytest.raises(case.refusal, match=re.escape(case.extra)):
-        build_registry(settings, FakeEmbedder())
+    with pytest.raises(ExtraMissingError, match=re.escape(case.extra.requirement)):
+        build_server(settings)
 
 
 @pytest.mark.parametrize("case", EXTRA_CASES)
@@ -167,7 +160,27 @@ def test_a_module_of_the_package_missing_is_never_taken_for_the_missing_extra(
     settings = Settings(cache_dir=test_settings.cache_dir, **case.setting)
 
     with pytest.raises(ModuleNotFoundError, match=re.escape(case.package_module)):
-        build_registry(settings, FakeEmbedder())
+        build_server(settings)
+
+
+async def test_a_server_by_words_starts_and_searches_without_the_model_s_libraries(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch, sample_project: Path
+):
+    """The extra `semantic-code-mcp[meaning]` is for a search by meaning alone."""
+    for library in MEANING_EXTRA.libraries:
+        monkeypatch.setitem(sys.modules, library, None)
+    monkeypatch.delitem(sys.modules, "semantic_code_mcp.embedding.onnx_model", raising=False)
+    settings = Settings(cache_dir=test_settings.cache_dir)
+    build_server(settings)
+    registry = build_registry(settings, OnnxEmbedder(MODEL_NAME), store_opener(settings))
+
+    report = await registry.services_for(sample_project).search.search(
+        SearchQuery(text="greet", limit=1, scope=WHOLE_PROJECT),
+        sample_project,
+        progress=NO_PROGRESS,
+    )
+
+    assert [chunk.name for chunk in report.results] == ["greet"]
 
 
 async def test_second_run_without_changes_indexes_nothing(
@@ -340,7 +353,11 @@ async def test_a_run_waits_while_another_session_builds_the_index_then_finds_it_
         )
     )
     await asyncio.to_thread(other_store.writing.wait, WAIT_SEEN_TIMEOUT_SECONDS)
-    indexing = build_registry(store_settings, FakeEmbedder()).services_for(sample_project).indexing
+    indexing = (
+        build_registry(store_settings, FakeEmbedder(), store_opener(store_settings))
+        .services_for(sample_project)
+        .indexing
+    )
     run = asyncio.create_task(indexing.index(sample_project, force=False, progress=NO_PROGRESS))
 
     with pytest.raises(TimeoutError):
@@ -365,7 +382,11 @@ async def test_a_run_cancelled_while_it_waits_leaves_the_index_free(
     other_session = open_store(store_class, project_directory, IDENTITY)
     other_session.try_hold_for_run()
     watcher = FirstReportWatcher()
-    indexing = build_registry(store_settings, FakeEmbedder()).services_for(sample_project).indexing
+    indexing = (
+        build_registry(store_settings, FakeEmbedder(), store_opener(store_settings))
+        .services_for(sample_project)
+        .indexing
+    )
     run = asyncio.create_task(
         indexing.index(sample_project, force=False, progress=ProgressReporter(watcher))
     )
@@ -428,7 +449,11 @@ async def test_a_local_index_never_shows_in_the_project_s_git_status(
         local_index=True,
         index_store=store_class.LAYOUT.store_kind,
     )
-    indexing = build_registry(settings, FakeEmbedder()).services_for(sample_project).indexing
+    indexing = (
+        build_registry(settings, FakeEmbedder(), store_opener(settings))
+        .services_for(sample_project)
+        .indexing
+    )
 
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
@@ -443,12 +468,18 @@ async def test_a_project_moved_with_its_local_index_keeps_it(
         local_index=True,
         index_store=store_class.LAYOUT.store_kind,
     )
-    first = build_registry(settings, FakeEmbedder()).services_for(sample_project).indexing
+    first = (
+        build_registry(settings, FakeEmbedder(), store_opener(settings))
+        .services_for(sample_project)
+        .indexing
+    )
     await first.index(sample_project, force=False, progress=NO_PROGRESS)
     moved = await asyncio.to_thread(sample_project.rename, tmp_path / "moved")
 
     status = (
-        await build_registry(settings, FakeEmbedder()).services_for(moved).indexing.status(moved)
+        await build_registry(settings, FakeEmbedder(), store_opener(settings))
+        .services_for(moved)
+        .indexing.status(moved)
     )
 
     assert (status.chunks_count, status.stale_files_count) == (6, 0)
@@ -469,7 +500,11 @@ async def test_status_of_a_project_never_indexed_leaves_no_trace(
     project = tmp_path / "fresh"
     project.mkdir()
     (project / "code.py").write_text("def code():\n    return 1\n")
-    indexing = build_registry(store_settings, FakeEmbedder()).services_for(project).indexing
+    indexing = (
+        build_registry(store_settings, FakeEmbedder(), store_opener(store_settings))
+        .services_for(project)
+        .indexing
+    )
 
     status = await indexing.status(project)
 
@@ -502,7 +537,11 @@ async def test_a_project_without_indexable_files_indexes_nothing(
     project = tmp_path / "notes"
     project.mkdir()
     (project / "notes.txt").write_text("nothing to index\n")
-    indexing = build_registry(store_settings, FakeEmbedder()).services_for(project).indexing
+    indexing = (
+        build_registry(store_settings, FakeEmbedder(), store_opener(store_settings))
+        .services_for(project)
+        .indexing
+    )
 
     report = await indexing.index(project, force=False, progress=NO_PROGRESS)
     status = await indexing.status(project)
@@ -512,7 +551,11 @@ async def test_a_project_without_indexable_files_indexes_nothing(
 
 async def test_status_does_not_load_the_model(test_settings: Settings, sample_project: Path):
     embedder = OnnxEmbedder(MODEL_NAME)
-    indexing = build_registry(test_settings, embedder).services_for(sample_project).indexing
+    indexing = (
+        build_registry(test_settings, embedder, store_opener(test_settings))
+        .services_for(sample_project)
+        .indexing
+    )
 
     await indexing.status(sample_project)
 
@@ -520,7 +563,7 @@ async def test_status_does_not_load_the_model(test_settings: Settings, sample_pr
 
 
 def test_one_project_has_one_set_of_services(test_settings: Settings, sample_project: Path):
-    registry = build_registry(test_settings, FakeEmbedder())
+    registry = build_registry(test_settings, FakeEmbedder(), store_opener(test_settings))
 
     assert registry.services_for(sample_project) is registry.services_for(sample_project)
 

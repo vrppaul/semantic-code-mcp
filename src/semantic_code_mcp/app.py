@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
-from typing import assert_never
 
 from mcp.server.mcpserver import MCPServer
 
@@ -16,8 +15,8 @@ from semantic_code_mcp.chunkers.rust import RustChunker
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Embedder, IndexStore
-from semantic_code_mcp.domain.models import IndexIdentity, SearchMode, StoreKind
-from semantic_code_mcp.embedding.embedder import model_loader
+from semantic_code_mcp.domain.models import IndexIdentity, StoreKind
+from semantic_code_mcp.extras import LANCEDB_EXTRA, needing
 from semantic_code_mcp.server.instructions import SERVER_INSTRUCTIONS
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
@@ -39,16 +38,6 @@ ALWAYS_LOAD_KEY = "anthropic/alwaysLoad"
 # of the libraries below it, as httpx's for each model file the hub fetches, would land
 # among the server's JSON lines
 LIBRARY_LOG_LEVEL = "WARNING"
-# What installs the LanceDB store's libraries, an optional extra of the package, and the
-# top-level modules it installs
-LANCEDB_EXTRA = "semantic-code-mcp[lancedb]"
-LANCEDB_LIBRARIES = frozenset({"lancedb", "lance", "pyarrow"})
-# What parts a module's package from its name
-MODULE_NAME_SEPARATOR = "."
-
-
-class StoreUnavailableError(RuntimeError):
-    """The settings pick a store whose libraries are not installed."""
 
 
 def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegistry]:
@@ -63,7 +52,13 @@ def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegis
         SERVER_NAME,
         instructions=SERVER_INSTRUCTIONS,
         version=version(PACKAGE_NAME),
-        lifespan=partial(project_registry_lifespan, settings=settings, embedder=embedder),
+        # Found before the server runs, so a store whose extra is missing stops it at once
+        lifespan=partial(
+            project_registry_lifespan,
+            settings=settings,
+            embedder=embedder,
+            open_store=store_opener(settings),
+        ),
         middleware=middleware,
         log_level=LIBRARY_LOG_LEVEL,
     )
@@ -77,18 +72,23 @@ def create_app(settings: Settings, embedder: Embedder) -> MCPServer[ProjectRegis
 
 @asynccontextmanager
 async def project_registry_lifespan(
-    _server: MCPServer[ProjectRegistry], *, settings: Settings, embedder: Embedder
+    _server: MCPServer[ProjectRegistry],
+    *,
+    settings: Settings,
+    embedder: Embedder,
+    open_store: StoreOpener,
 ) -> AsyncGenerator[ProjectRegistry]:
     """The state every request of a session shares: the projects and their services.
 
     The lifespan protocol hands in the server; the registry does not need it.
     """
-    yield build_registry(settings, embedder)
+    yield build_registry(settings, embedder, open_store)
 
 
-def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
+def build_registry(
+    settings: Settings, embedder: Embedder, open_store: StoreOpener
+) -> ProjectRegistry:
     """The registry of projects, over the parts the server is built from."""
-    require_libraries_of(settings.search_mode)
     chunker = build_chunker()
     return ProjectRegistry(
         settings=settings,
@@ -101,25 +101,13 @@ def build_registry(settings: Settings, embedder: Embedder) -> ProjectRegistry:
             git_timeout_seconds=settings.git_timeout_seconds,
             home_directory=Path.home(),
         ),
-        open_store=store_opener(settings),
+        open_store=open_store,
     )
 
 
 def build_chunker() -> CompositeChunker:
     """Every language the server indexes. Add a language here."""
     return CompositeChunker([PythonChunker(), RustChunker(), MarkdownChunker()])
-
-
-def require_libraries_of(search_mode: SearchMode) -> None:
-    """The libraries a search mode needs, looked for now, so a server set to search by
-    meaning without the extra that installs them stops as it starts."""
-    match search_mode:
-        case SearchMode.words:
-            return
-        case SearchMode.words_and_meaning:
-            model_loader()
-        case unhandled:
-            assert_never(unhandled)
 
 
 def store_opener(settings: Settings) -> StoreOpener:
@@ -140,14 +128,8 @@ def store_class_of(store_kind: StoreKind) -> type[DirectoryStore]:
 def lancedb_store_class() -> type[DirectoryStore]:
     """The LanceDB store's class, imported only when chosen, as an optional extra installs
     its libraries."""
-    try:
+    with needing(LANCEDB_EXTRA):
         from semantic_code_mcp.storage.lancedb import LanceDBIndexStore  # noqa: PLC0415
-    except ModuleNotFoundError as error:
-        missing = (error.name or "").partition(MODULE_NAME_SEPARATOR)[0]
-        if missing not in LANCEDB_LIBRARIES:
-            raise
-        message = f"the LanceDB store needs its libraries: install {LANCEDB_EXTRA}"
-        raise StoreUnavailableError(message) from error
     return LanceDBIndexStore
 
 

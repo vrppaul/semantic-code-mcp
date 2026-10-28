@@ -115,7 +115,9 @@ searched (`files_indexed`, `chunks_indexed`).
   a tool's parameters: a repository whose `.gitignore` hides source on purpose needs
   `use_gitignore` off (`SEMANTIC_CODE_MCP_USE_GITIGNORE=false`), so ask the user for it;
   with `local_index` the index lives in `.semantic-code/` inside the project; with
-  `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning` every search searches by meaning too.
+  `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning` every search searches by meaning too,
+  where the server was installed with its extra `semantic-code-mcp[meaning]`; without it the
+  server does not start.
 
 ## 7. Traps already met
 

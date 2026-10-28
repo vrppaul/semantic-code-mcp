@@ -10,8 +10,8 @@ What names a model's vectors, its revision and the embedder's version, is known 
 the model: a server that searches by words alone reads it for the index's counts and
 never loads the model. The libraries that load it (onnxruntime, tokenizers,
 huggingface_hub) come with the extra `semantic-code-mcp[meaning]`, so `onnx_model.py`,
-which needs them, is imported only when a model loads, and a server set to search by
-meaning without them is told which extra installs them (ADR 009, D2).
+which needs them, is imported only when a model loads or a server set to search by meaning
+starts, which is told which extra installs them where they are missing (ADR 009, D2).
 """
 
 import threading
@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, override
 import structlog
 
 from semantic_code_mcp.domain.interfaces import Embedder, Vector, VectorMatrix
+from semantic_code_mcp.extras import MEANING_EXTRA, needing
 
 if TYPE_CHECKING:
     from semantic_code_mcp.embedding.onnx_model import OnnxModel
@@ -41,19 +42,8 @@ PINNED_REVISIONS: Mapping[str, str] = MappingProxyType(
         "sentence-transformers/all-MiniLM-L6-v2": ALL_MINILM_L6_V2_REVISION,
     }
 )
-# What installs the libraries that load a model, an optional extra of the package, and the
-# top-level modules it installs
-MEANING_EXTRA = "semantic-code-mcp[meaning]"
-MEANING_LIBRARIES = frozenset({"onnxruntime", "tokenizers", "huggingface_hub"})
-# What parts a module's package from its name
-MODULE_NAME_SEPARATOR = "."
-
 # Loads a model by its name and the revision of its weights, None where nothing pins them
 type ModelLoader = Callable[[str, str | None], OnnxModel]
-
-
-class MeaningUnavailableError(RuntimeError):
-    """A model is to load, and the libraries that load one are not installed."""
 
 
 class OnnxEmbedder(Embedder):
@@ -110,12 +100,6 @@ class OnnxEmbedder(Embedder):
 def model_loader() -> ModelLoader:
     """What loads a model, imported only now, as the extra installs the libraries it needs;
     or an error naming the extra where they are missing."""
-    try:
+    with needing(MEANING_EXTRA):
         from semantic_code_mcp.embedding.onnx_model import load_model  # noqa: PLC0415
-    except ModuleNotFoundError as error:
-        missing = (error.name or "").partition(MODULE_NAME_SEPARATOR)[0]
-        if missing not in MEANING_LIBRARIES:
-            raise
-        message = f"a search by meaning needs the model's libraries: install {MEANING_EXTRA}"
-        raise MeaningUnavailableError(message) from error
     return load_model

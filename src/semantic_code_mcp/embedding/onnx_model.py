@@ -3,7 +3,8 @@ files and run on onnxruntime: the part of the embedder that needs the extra
 `semantic-code-mcp[meaning]`, imported only when a model loads (`embedder.py`).
 
 Loading the model reads its files, fetched once from the Hugging Face hub at a pinned
-revision, and starts an inference session.
+revision, and starts an inference session. Any change here to how a text's vector is made
+bumps `EMBEDDER_VERSION` (`embedder.py`), which names the vectors it makes.
 
 The vectors are those sentence-transformers makes of the same model, to a few parts in a
 million, so an index it built keeps answering: the tokenizer lowercases a text where the
