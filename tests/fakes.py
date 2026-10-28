@@ -128,6 +128,15 @@ class FakeIndexStore(IndexStore):
         return self.written_manifest
 
     @override
+    def try_hold_for_run(self) -> bool:
+        # One fake serves one session's runs, which its service's own lock keeps apart
+        return True
+
+    @override
+    def release_run(self) -> None:
+        pass
+
+    @override
     def indexed_files(self) -> IndexedFiles:
         # Its write records chunks and files together: no chunk is left without its record
         return IndexedFiles(records=list(self.files_by_path.values()), unrecorded_paths=[])
@@ -255,6 +264,14 @@ class DelegatingStore(IndexStore):
     @override
     def manifest(self) -> IndexManifest | None:
         return self._inner.manifest()
+
+    @override
+    def try_hold_for_run(self) -> bool:
+        return self._inner.try_hold_for_run()
+
+    @override
+    def release_run(self) -> None:
+        self._inner.release_run()
 
     @override
     def indexed_files(self) -> IndexedFiles:

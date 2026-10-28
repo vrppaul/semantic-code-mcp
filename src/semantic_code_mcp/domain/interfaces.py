@@ -80,6 +80,17 @@ class IndexStore(ABC):
         """What built the index and when it was last written; None before the first write."""
 
     @abstractmethod
+    def try_hold_for_run(self) -> bool:
+        """Take the index for one run of words, so no other run, in this process or another,
+        builds it meanwhile; whether it was free. Never waits, so a run cancelled as it asks
+        never holds it after; `release_run` frees it, and so does its process ending. The
+        run's own writes, and another session's vectors, do not wait for it."""
+
+    @abstractmethod
+    def release_run(self) -> None:
+        """Free the index a run held."""
+
+    @abstractmethod
     def indexed_files(self) -> IndexedFiles:
         """The record of every file the index holds, and the paths it holds chunks of with
         no record."""

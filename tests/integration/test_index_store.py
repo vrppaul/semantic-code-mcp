@@ -461,6 +461,41 @@ def test_a_write_waits_while_another_process_writes(tmp_path: Path, store_class:
     assert store.counts(MODEL).chunks == 0
 
 
+def test_a_run_another_session_holds_keeps_this_one_waiting_until_it_ends(
+    store_class: StoreClass, tmp_path: Path
+):
+    """Two sessions on one repository never chunk it twice: a run takes the index first, and
+    another's hold keeps it out until that one releases it. Each session has a directory of
+    its own on the index, as each process does."""
+    holder = store_class(index_directory_of(store_class, tmp_path / "index", IDENTITY))
+    waiting = store_class(index_directory_of(store_class, tmp_path / "index", IDENTITY))
+    holder.try_hold_for_run()
+
+    taken_while_held = waiting.try_hold_for_run()
+    holder.release_run()
+    taken_once_released = waiting.try_hold_for_run()
+    waiting.release_run()
+
+    assert (taken_while_held, taken_once_released) == (False, True)
+
+
+def test_a_run_held_writes_and_another_session_adds_vectors_meanwhile(
+    store_class: StoreClass, tmp_path: Path
+):
+    """The run's hold keeps other runs out, not its own writes, nor another session's vectors,
+    which wait only for a write."""
+    runner = store_class(index_directory_of(store_class, tmp_path / "index", IDENTITY))
+    other = store_class(index_directory_of(store_class, tmp_path / "index", IDENTITY))
+    chunk = function_chunk("held", "held.py", "def held(): pass")
+    runner.try_hold_for_run()
+
+    runner.write(update_of([chunk], removed_paths=[]))
+    other.add_vectors(MODEL, [chunk.chunk_id], vectors_of(TOWARD_QUERY))
+    runner.release_run()
+
+    assert other.counts(MODEL) == IndexCounts(files=1, chunks=1, chunks_with_vectors=1)
+
+
 def test_a_store_sees_what_another_store_on_its_directory_wrote(
     store_class: StoreClass, index_directory: IndexDirectory
 ):

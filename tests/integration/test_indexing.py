@@ -19,7 +19,8 @@ from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
 from semantic_code_mcp.domain.models import IndexCounts, StoreKind
 from semantic_code_mcp.embedding import OnnxEmbedder
-from semantic_code_mcp.services.indexing import IndexingService
+from semantic_code_mcp.services import indexing as indexing_module
+from semantic_code_mcp.services.indexing import ANOTHER_SESSION_BUILDS, IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.storage.index_directories import LEGACY_ENTRIES
 from tests.conftest import MODEL_NAME
@@ -55,6 +56,10 @@ from tests.stores import NO_CANDIDATES, StoreClass, open_store
 
 # A vector width other than the fake model's, so a change of model changes the width too
 WIDE = 16
+# How often a waiting run tries the index again in these tests, and how long a test waits to
+# see it wait
+SHORT_WAIT_SECONDS = 0.05
+WAIT_SEEN_TIMEOUT_SECONDS = 30.0
 # 0.4's record of mtimes, which it kept in a project-local index directory
 LEGACY_RECORDS = LEGACY_ENTRIES[1]
 
@@ -257,6 +262,55 @@ async def test_sessions_of_two_models_share_the_index_of_words(
     )
 
     assert second_run.files_indexed == 0
+
+
+class FirstReportWatcher:
+    """A progress callback that keeps every message and marks when the first comes."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+        self.first_report = asyncio.Event()
+
+    async def __call__(self, _progress: float, _total: float, message: str) -> None:
+        self.messages.append(message)
+        self.first_report.set()
+
+
+async def test_a_run_waits_while_another_session_builds_the_index_then_finds_it_built(
+    store_settings: Settings,
+    sample_project: Path,
+    store_class: StoreClass,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """It says so as it waits, as a large repository's build takes seconds and more, and has
+    no limit: the other's lock goes with its process."""
+    monkeypatch.setattr(indexing_module, "RUN_RETRY_SECONDS", SHORT_WAIT_SECONDS)
+    project_directory = get_index_path(store_settings, sample_project)
+    other_session = open_store(store_class, project_directory, IDENTITY)
+    other_session.try_hold_for_run()
+    watcher = FirstReportWatcher()
+    indexing = build_registry(store_settings, FakeEmbedder()).services_for(sample_project).indexing
+    run = asyncio.create_task(
+        indexing.index(sample_project, force=False, progress=ProgressReporter(watcher))
+    )
+
+    await asyncio.wait_for(watcher.first_report.wait(), WAIT_SEEN_TIMEOUT_SECONDS)
+    await indexing_service(other_session, store_settings, build_chunker()).index(
+        sample_project, force=False, progress=NO_PROGRESS
+    )
+    other_session.release_run()
+    report = await run
+
+    status = await indexing.status(sample_project)
+    assert (
+        report.files_indexed,
+        status.chunks_count,
+        ANOTHER_SESSION_BUILDS in watcher.messages[0],
+    ) == (
+        0,
+        6,
+        True,
+    )
 
 
 async def test_two_runs_at_once_store_each_chunk_once(

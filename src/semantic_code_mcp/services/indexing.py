@@ -1,20 +1,25 @@
 """Indexing: find a project's files, see what changed, then chunk and store them with their
 words.
 
-A run plans before it changes anything: the records discovery takes of the files on
-disk, compared with the records the index keeps and the files its chunks come from,
-give the files to index and the paths gone. It then writes a slice of whole files at a
-time, each slice's chunks taking the place of what the index held of those files, so a
-reader always finds every file's old chunks or its new ones, and a run stopped midway
-keeps the slices it wrote. A run embeds nothing: a chunk whose text the index holds
-already keeps the vectors it has, by its id, and the rest are embedded by the first
-search by meaning (`vectors.py`); a forced run drops the model's vectors, so that search
-embeds every chunk again. The index is the one of this server's chunker version; the store
-keeps those of others apart.
+A run first holds the index against every other run, in this process or another, so two
+sessions on one repository never chunk it twice: one that finds it held tries again every
+RUN_RETRY_SECONDS, for as long as the other holds it, and says so; it then plans afresh and
+finds the other's work done. A run plans before it changes anything: the records discovery
+takes of the files on disk, compared with the records the index keeps and the files its
+chunks come from, give the files to index and the paths gone. It then writes a slice of
+whole files at a time, each slice's chunks taking the place of what the index held of those
+files, so a reader always finds every file's old chunks or its new ones, and a run stopped
+midway keeps the slices it wrote. A run embeds nothing: a chunk whose text the index holds
+already keeps the vectors it has, by its id, and the rest are embedded by the first search
+by meaning (`vectors.py`); a forced run drops the model's vectors, so that search embeds
+every chunk again. The index is the one of this server's chunker version; the store keeps
+those of others apart.
 """
 
 import asyncio
 import time
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from enum import Enum
 from pathlib import Path
 
@@ -33,7 +38,12 @@ from semantic_code_mcp.domain.models import (
     SourceFile,
     VectorIdentity,
 )
-from semantic_code_mcp.services.progress import PROGRESS_TOTAL, ProgressReporter, share_done
+from semantic_code_mcp.services.progress import (
+    PROGRESS_START,
+    PROGRESS_TOTAL,
+    ProgressReporter,
+    share_done,
+)
 from semantic_code_mcp.services.timing import elapsed_milliseconds
 
 log = structlog.get_logger()
@@ -41,6 +51,11 @@ log = structlog.get_logger()
 DURATION_DECIMALS = 3
 # The fewest chunks a write holds, but the last of a run: a report comes before each
 WRITE_SLICE_SIZE = 256
+# How often a run that finds another holding the index tries again, a report before each:
+# the other's build takes seconds, under load a minute and more, and has no limit (ADR 009, D3)
+RUN_RETRY_SECONDS = 1.0
+# What a run waiting for another session's tells the client
+ANOTHER_SESSION_BUILDS = "Another session is building the index, waiting..."
 
 
 class IndexPhase(Enum):
@@ -79,9 +94,10 @@ class IndexingService:
     """Keeps one project's index in step with its files.
 
     One instance serves one project. Its asyncio lock keeps two index runs of that
-    project from planning and writing at once. A cancelled request releases that lock
-    while its worker thread may still be writing; the store's write is a unit no other
-    writer interleaves with, so the next run's write waits until that one has landed.
+    project from planning and writing at once, and the store's hold of the index those of
+    other processes. A cancelled request releases both while its worker thread may still be
+    writing; the store's write is a unit no other writer interleaves with, so the next run's
+    write waits until that one has landed.
     """
 
     def __init__(
@@ -102,8 +118,21 @@ class IndexingService:
     ) -> IndexReport:
         """Bring the index up to date with the files: all of them when forced, else what
         changed."""
-        async with self._lock:
+        async with self._lock, self._held_run(progress):
             return await self._index(project_root, force=force, progress=progress)
+
+    @asynccontextmanager
+    async def _held_run(self, progress: ProgressReporter) -> AsyncGenerator[None]:
+        """Hold the index for a run, trying again while another run holds it. Each try is a
+        lock taken without waiting, on the event loop's own thread, so a cancelled run never
+        leaves a worker thread to take the lock after it."""
+        while not self._store.try_hold_for_run():
+            await progress.report(PROGRESS_START, ANOTHER_SESSION_BUILDS)
+            await asyncio.sleep(RUN_RETRY_SECONDS)
+        try:
+            yield
+        finally:
+            self._store.release_run()
 
     async def status(self, project_root: Path) -> IndexStatus:
         """How far the project's index is from its files, worked out off the event loop."""

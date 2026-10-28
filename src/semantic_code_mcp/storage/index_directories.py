@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import ClassVar, override
 
 import structlog
-from filelock import FileLock
+from filelock import FileLock, Timeout
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from semantic_code_mcp.domain.interfaces import IndexStore
@@ -47,12 +47,14 @@ from semantic_code_mcp.domain.models import IndexIdentity, IndexManifest, StoreK
 log = structlog.get_logger()
 
 # An index's directory, under the project's, named by its layout and its identity's digest;
-# its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX
+# its write lock is a file beside it, of the same name with WRITE_LOCK_SUFFIX, and the lock a
+# run of words holds for its whole length another, with RUN_LOCK_SUFFIX
 INDEX_DIRECTORY_FORMAT = "schema-{schema_version}-{identity_digest}-{store_kind}"
 INDEX_DIRECTORY_PATTERN = "schema-*"
 # How many hex digits of a digest name an identity: an index's, or a model's in its index
 IDENTITY_DIGEST_LENGTH = 16
 WRITE_LOCK_SUFFIX = ".lock"
+RUN_LOCK_SUFFIX = ".run.lock"
 # An index nobody read or wrote for this long is removed: no session used its model or
 # version for a week, and a rebuild costs minutes where keeping it costs the disk it fills
 UNUSED_INDEX_RETENTION = timedelta(days=7)
@@ -60,7 +62,8 @@ UNUSED_INDEX_RETENTION = timedelta(days=7)
 # rarely enough to cost nothing, far more often than an index takes to count as unused
 USE_MARK_INTERVAL = timedelta(hours=1)
 USE_STAMP_FILE = "last_used"
-# Taken without waiting: an index whose writer holds its lock is in use
+# Taken without waiting: an index whose writer holds its lock is in use, and a run finding
+# another run's lock held tries again later
 NO_WAIT_SECONDS = 0
 # What 0.4 kept directly in a project's index directory: its chunks table and its record
 # of mtimes, removed together
@@ -114,6 +117,10 @@ class IndexDirectory:
         self._layout = layout
         self._path = project_directory / index_directory_name(identity, layout)
         self._lock_timeout_seconds = lock_timeout_seconds
+        # Taken and freed by the thread of a run's event loop, never waited for
+        self._run_lock = FileLock(
+            self._path.with_name(self._path.name + RUN_LOCK_SUFFIX), timeout=NO_WAIT_SECONDS
+        )
 
     @property
     def path(self) -> Path:
@@ -133,6 +140,21 @@ class IndexDirectory:
     def exists(self) -> bool:
         """Whether a write has made the directory."""
         return self._path.is_dir()
+
+    def try_hold_for_run(self) -> bool:
+        """Take the run's lock if no other run holds it, the project's directory made for the
+        lock file that lies in it; whether it was taken. A file lock: its holder's process
+        ending frees it."""
+        self._project_directory.mkdir(parents=True, exist_ok=True)
+        try:
+            self._run_lock.acquire()
+        except Timeout:
+            return False
+        return True
+
+    def release_run(self) -> None:
+        """Free the run's lock."""
+        self._run_lock.release()
 
     @contextmanager
     def writing(self) -> Generator[None]:
@@ -212,6 +234,14 @@ class DirectoryStore(IndexStore):
     @override
     def manifest(self) -> IndexManifest | None:
         return self._directory.manifest()
+
+    @override
+    def try_hold_for_run(self) -> bool:
+        return self._directory.try_hold_for_run()
+
+    @override
+    def release_run(self) -> None:
+        self._directory.release_run()
 
 
 def index_directory_name(identity: IndexIdentity, layout: IndexLayout) -> str:
