@@ -148,19 +148,25 @@ def within_the_run(chunk: Chunk) -> IndexUpdate:
 
 def test_a_first_build_shows_nothing_until_its_last_write_then_everything(tmp_path: Path):
     """A first index of words is built in a database of its own, without a journal, and
-    renamed into place whole, readers beside its writer from then on (ADR 009, D12)."""
+    renamed into place whole, readers beside its writer from then on (ADR 009, D12); its
+    manifest comes with it, so no status names an index that is not there."""
     builder = session_store(tmp_path / "index")
     reader = session_store(tmp_path / "index")
     builder.try_hold_for_run()
     builder.write(within_the_run(function_chunk("first", "first.py", "def first(): pass")))
-    during = reader.counts(MODEL).chunks
+    during = (reader.counts(MODEL).chunks, reader.manifest())
 
     builder.write(update_of([function_chunk("last", "last.py", "def last(): pass")], []))
     builder.release_run()
 
     with sqlite3.connect(builder_database(tmp_path / "index")) as connection:
         mode = connection.execute(JOURNAL_MODE).fetchone()[0]
-    assert (during, reader.counts(MODEL).chunks, mode) == (0, 2, WRITE_AHEAD_LOG_MODE)
+    assert (during, reader.counts(MODEL).chunks, reader.manifest() is None, mode) == (
+        (0, None),
+        2,
+        False,
+        WRITE_AHEAD_LOG_MODE,
+    )
 
 
 def test_a_first_build_stopped_midway_leaves_no_index_and_the_next_builds_whole(

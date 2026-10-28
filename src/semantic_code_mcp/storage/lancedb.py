@@ -273,7 +273,7 @@ class LanceDBIndexStore(DirectoryStore):
 
     @override
     def write(self, update: IndexUpdate) -> None:
-        with self._directory.writing():
+        with self._directory.writing(records_manifest=True):
             database = self._connect()
             self._write_chunks(database, update)
             if update.last_of_run:
@@ -312,7 +312,7 @@ class LanceDBIndexStore(DirectoryStore):
             raise ValueError(message)
         if not chunk_ids:
             return
-        with self._directory.writing():
+        with self._directory.writing(records_manifest=True):
             chunks = self._open(CHUNKS_TABLE)
             if chunks is None:
                 # No chunks table holds no chunk to add a vector to
@@ -325,7 +325,7 @@ class LanceDBIndexStore(DirectoryStore):
     @override
     def remove_vectors(self, model: VectorIdentity) -> None:
         name = vectors_table_name(model)
-        with self._directory.writing():
+        with self._directory.writing(records_manifest=True):
             if self._open(name) is not None:
                 self._connect().drop_table(name)
 

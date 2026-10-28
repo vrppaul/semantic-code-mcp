@@ -24,7 +24,7 @@ Indexing is incremental: the index records each file's modification time and siz
 
 ## Installation
 
-One command on every platform, about 190 MB installed; the first start fetches the model's ONNX file (90 MB) from the Hugging Face hub once:
+One command on every platform, about 190 MB installed; the first search by meaning fetches the model's ONNX file (90 MB) from the Hugging Face hub once:
 
 ```bash
 uvx semantic-code-mcp

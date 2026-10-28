@@ -20,7 +20,7 @@ from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_
 from semantic_code_mcp.domain.models import StoreKind
 from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.services import indexing as indexing_module
-from semantic_code_mcp.services.indexing import ANOTHER_SESSION_BUILDS, IndexingService
+from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.storage.index_directories import LEGACY_ENTRIES
 from tests.conftest import MODEL_NAME
@@ -32,6 +32,7 @@ from tests.fakes import (
     FakeEmbedder,
     FakeIndexStore,
     ProgressRecorder,
+    StoreHeldInItsWrite,
     VersionedChunker,
 )
 from tests.helpers import (
@@ -58,6 +59,8 @@ WIDE = 16
 # see it wait
 SHORT_WAIT_SECONDS = 0.05
 WAIT_SEEN_TIMEOUT_SECONDS = 30.0
+# How long a waiting run is watched not to go on: many of its tries
+RETRIES_SEEN_SECONDS = 0.5
 # 0.4's record of mtimes, which it kept in a project-local index directory
 LEGACY_RECORDS = LEGACY_ENTRIES[1]
 
@@ -263,14 +266,12 @@ async def test_sessions_of_two_models_share_the_index_of_words(
 
 
 class FirstReportWatcher:
-    """A progress callback that keeps every message and marks when the first comes."""
+    """A progress callback that marks when the first report comes."""
 
     def __init__(self) -> None:
-        self.messages: list[str] = []
         self.first_report = asyncio.Event()
 
-    async def __call__(self, _progress: float, _total: float, message: str) -> None:
-        self.messages.append(message)
+    async def __call__(self, _progress: float, _total: float, _message: str) -> None:
         self.first_report.set()
 
 
@@ -280,8 +281,37 @@ async def test_a_run_waits_while_another_session_builds_the_index_then_finds_it_
     store_class: StoreClass,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """It says so as it waits, as a large repository's build takes seconds and more, and has
-    no limit: the other's lock goes with its process."""
+    """The other session's run holds the index inside its write: this one tries again and
+    again without going on, however long that takes, then finds the work done."""
+    monkeypatch.setattr(indexing_module, "RUN_RETRY_SECONDS", SHORT_WAIT_SECONDS)
+    project_directory = get_index_path(store_settings, sample_project)
+    other_store = StoreHeldInItsWrite(open_store(store_class, project_directory, IDENTITY))
+    other_run = asyncio.create_task(
+        indexing_service(other_store, store_settings, build_chunker()).index(
+            sample_project, force=False, progress=NO_PROGRESS
+        )
+    )
+    await asyncio.to_thread(other_store.writing.wait, WAIT_SEEN_TIMEOUT_SECONDS)
+    indexing = build_registry(store_settings, FakeEmbedder()).services_for(sample_project).indexing
+    run = asyncio.create_task(indexing.index(sample_project, force=False, progress=NO_PROGRESS))
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(asyncio.shield(run), RETRIES_SEEN_SECONDS)
+    other_store.release.set()
+    await other_run
+    report = await run
+
+    status = await indexing.status(sample_project)
+    assert (report.files_indexed, status.chunks_count) == (0, 6)
+
+
+async def test_a_run_cancelled_while_it_waits_leaves_the_index_free(
+    store_settings: Settings,
+    sample_project: Path,
+    store_class: StoreClass,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A client that hangs up while its search waits for another session's build."""
     monkeypatch.setattr(indexing_module, "RUN_RETRY_SECONDS", SHORT_WAIT_SECONDS)
     project_directory = get_index_path(store_settings, sample_project)
     other_session = open_store(store_class, project_directory, IDENTITY)
@@ -291,24 +321,14 @@ async def test_a_run_waits_while_another_session_builds_the_index_then_finds_it_
     run = asyncio.create_task(
         indexing.index(sample_project, force=False, progress=ProgressReporter(watcher))
     )
-
     await asyncio.wait_for(watcher.first_report.wait(), WAIT_SEEN_TIMEOUT_SECONDS)
-    await indexing_service(other_session, store_settings, build_chunker()).index(
-        sample_project, force=False, progress=NO_PROGRESS
-    )
-    other_session.release_run()
-    report = await run
 
-    status = await indexing.status(sample_project)
-    assert (
-        report.files_indexed,
-        status.chunks_count,
-        ANOTHER_SESSION_BUILDS in watcher.messages[0],
-    ) == (
-        0,
-        6,
-        True,
-    )
+    run.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await run
+    other_session.release_run()
+
+    assert open_store(store_class, project_directory, IDENTITY).try_hold_for_run()
 
 
 async def test_two_runs_at_once_store_each_chunk_once(

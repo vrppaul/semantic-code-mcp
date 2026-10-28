@@ -51,7 +51,7 @@ log = structlog.get_logger()
 DURATION_DECIMALS = 3
 # The fewest chunks a write holds, but the last of a run: a report comes before each
 WRITE_SLICE_SIZE = 256
-# How often a run that finds another holding the index tries again, a report before each:
+# How often a run that finds another holding the index tries again, saying so once:
 # the other's build takes seconds, under load a minute and more, and has no limit (ADR 009, D3)
 RUN_RETRY_SECONDS = 1.0
 # What a run waiting for another session's tells the client
@@ -126,9 +126,12 @@ class IndexingService:
         """Hold the index for a run, trying again while another run holds it. Each try is a
         lock taken without waiting, on the event loop's own thread, so a cancelled run never
         leaves a worker thread to take the lock after it."""
-        while not self._store.try_hold_for_run():
+        if not self._store.try_hold_for_run():
+            # Reported once: a client's progress must only move on
             await progress.report(PROGRESS_START, ANOTHER_SESSION_BUILDS)
-            await asyncio.sleep(RUN_RETRY_SECONDS)
+            # Another process's file lock sends no event to wait for: it is tried again
+            while not self._store.try_hold_for_run():  # noqa: ASYNC110
+                await asyncio.sleep(RUN_RETRY_SECONDS)
         try:
             yield
         finally:

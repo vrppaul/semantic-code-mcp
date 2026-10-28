@@ -420,7 +420,9 @@ class SqliteIndexStore(DirectoryStore):
 
     @override
     def write(self, update: IndexUpdate) -> None:
-        with self._directory.writing():
+        # A whole build's database is in place, for a manifest to name, after its last write
+        records_manifest = not self._building_whole or update.last_of_run
+        with self._directory.writing(records_manifest=records_manifest):
             try:
                 if self._building_whole:
                     self._write_whole_build(update)
@@ -570,7 +572,7 @@ class SqliteIndexStore(DirectoryStore):
         if not self._database().is_file():
             yield None
             return
-        with self._directory.writing():
+        with self._directory.writing(records_manifest=True):
             try:
                 with closing(self._connect()) as connection, connection:
                     connection.execute(BEGIN_WRITE)

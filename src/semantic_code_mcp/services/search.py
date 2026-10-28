@@ -73,16 +73,25 @@ class SimilarityFloors(BaseModel):
     words_match: float
 
 
+class QualifiedName(BaseModel):
+    """A query read as a qualified name: what is defined, and the parent it is defined in."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    parent: str
+
+
 class NameAsked(BaseModel):
     """A query read as the name of a chunk, its case and the blanks around it aside: the
-    whole of it, and where it holds a separator of a qualified name, the name after the last
-    one and the parent before it."""
+    whole of it, and for each separator of a qualified name it holds, the name after that
+    separator's last place and the parent before it, as `Setup > config.json` is a section
+    under a heading, not `json` under `setup > config`."""
 
     model_config = ConfigDict(frozen=True)
 
     whole: str
-    name: str | None
-    parent: str | None
+    qualified: list[QualifiedName]
 
 
 class SearchService:
@@ -132,7 +141,9 @@ class SearchService:
             )
 
         if query.by_meaning:
-            await self._prepare_meaning(progress)
+            await self._prepare_meaning(
+                progress, embed_first=counts.chunks_with_vectors < counts.chunks
+            )
             await progress.report(SearchPhase.searching.value, "Searching...")
             report = await asyncio.to_thread(self._search_by_meaning, query, index_report)
         else:
@@ -141,12 +152,17 @@ class SearchService:
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
 
-    async def _prepare_meaning(self, progress: ProgressReporter) -> None:
-        """Embed the chunks without the model's vectors, then load the model for the query
-        if embedding did not."""
-        await self._vectors.embed_missing(
-            progress=progress.within(SearchPhase.embedding.value, SearchPhase.loading_model.value)
-        )
+    async def _prepare_meaning(self, progress: ProgressReporter, *, embed_first: bool) -> None:
+        """Embed the chunks without the model's vectors, where some lack them, then load the
+        model for the query if embedding did not. A vector never outlives its chunk, as a
+        write drops it with the chunk, so as many vectors as chunks leave none to embed, and
+        listing them costs a search at 88k chunks 124 ms on SQLite and 610 on LanceDB."""
+        if embed_first:
+            await self._vectors.embed_missing(
+                progress=progress.within(
+                    SearchPhase.embedding.value, SearchPhase.loading_model.value
+                )
+            )
         if not self._embedder.is_loaded:
             await progress.report(SearchPhase.loading_model.value, "Loading the embedding model...")
             await asyncio.to_thread(self._embedder.load)
@@ -216,36 +232,37 @@ def is_relevant(hit: SearchHit, floors: SimilarityFloors, asked_name: str) -> bo
 
 
 def name_asked(query_text: str) -> NameAsked:
-    """The query as a name a chunk could have: whole, and split at the last separator of a
-    qualified name any language writes, its case and the blanks around it aside."""
+    """The query as a name a chunk could have: whole, and split at the last place of each
+    separator of a qualified name any language writes, its case and the blanks around it
+    aside."""
     whole = query_text.strip().casefold()
-    split_at = max(
-        (
-            (whole.rfind(separator), separator)
-            for separator in PARENT_SEPARATORS.values()
-            if separator in whole
-        ),
-        default=None,
-    )
-    if split_at is None:
-        return NameAsked(whole=whole, name=None, parent=None)
-    position, separator = split_at
     return NameAsked(
         whole=whole,
-        name=whole[position + len(separator) :].strip(),
-        parent=whole[:position].strip(),
+        qualified=[
+            split_at_last(whole, separator)
+            for separator in PARENT_SEPARATORS.values()
+            if separator in whole
+        ],
+    )
+
+
+def split_at_last(whole: str, separator: str) -> QualifiedName:
+    """A qualified name split at the separator's last place, which it holds."""
+    position = whole.rfind(separator)
+    return QualifiedName(
+        name=whole[position + len(separator) :].strip(), parent=whole[:position].strip()
     )
 
 
 def chunks_of_name(store: IndexStore, asked: NameAsked, query: SearchQuery) -> list[Chunk]:
-    """The chunks of the query's scope named as the query, whole or as a parent and a name,
-    each once."""
+    """The chunks of the query's scope named as the query, whole or as a parent and a name
+    by any separator, each once."""
     named = store.chunks_named(asked.whole, query.scope)
-    if asked.name is not None:
+    for qualified in asked.qualified:
         named += [
             chunk
-            for chunk in store.chunks_named(asked.name, query.scope)
-            if chunk.parent is not None and chunk.parent.casefold() == asked.parent
+            for chunk in store.chunks_named(qualified.name, query.scope)
+            if chunk.parent is not None and chunk.parent.casefold() == qualified.parent
         ]
     return list({chunk.chunk_id: chunk for chunk in named}.values())
 

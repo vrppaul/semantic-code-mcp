@@ -35,6 +35,8 @@ BETWEEN_THE_FLOORS = (FLOORS.meaning_only + FLOORS.words_match) / 2
 BELOW_BOTH_FLOORS = FLOORS.words_match / 2
 # A file no project of these tests holds
 ELSEWHERE = "nowhere/old.py"
+# The parent the chunk of `push` sits in, as each query of it names that parent
+STACK_PARENT = {"Stack.push": "Stack", "stack::push": "Stack", "outer.Stack.push": "outer.Stack"}
 
 
 def candidate(
@@ -135,6 +137,7 @@ async def test_the_chunks_named_as_the_query_come_first_then_the_rest_by_words(
     [
         pytest.param("Stack.push", id="as Python writes it"),
         pytest.param("stack::push", id="as Rust writes it, in another case"),
+        pytest.param("outer.Stack.push", id="under a parent qualified itself"),
     ],
 )
 async def test_a_qualified_name_brings_the_chunks_of_that_name_under_that_parent_first(
@@ -146,7 +149,7 @@ async def test_a_qualified_name_brings_the_chunks_of_that_name_under_that_parent
             by_keyword=[
                 candidate("push", CLOSE, "queue.py", parent="Queue"),
                 candidate("caller", CLOSE, "caller.py"),
-                candidate("push", CLOSE, "stack.py", parent="Stack"),
+                candidate("push", CLOSE, "stack.py", parent=STACK_PARENT[query]),
             ],
         )
     )
@@ -159,6 +162,28 @@ async def test_a_qualified_name_brings_the_chunks_of_that_name_under_that_parent
         "queue.py",
         "caller.py",
     ]
+
+
+async def test_a_name_holding_one_separator_under_a_parent_of_another_is_read_by_each(
+    test_settings: Settings, sample_project: Path
+):
+    """`Setup > config.json` is a section named for a file under a heading."""
+    store = FakeIndexStore(
+        SearchCandidates(
+            by_vector=[],
+            by_keyword=[
+                candidate("caller", CLOSE, "caller.py"),
+                candidate("config.json", CLOSE, "guide.md", parent="Setup"),
+            ],
+        )
+    )
+    service = search_service(store, test_settings, FakeEmbedder())
+
+    report = await service.search(
+        words_query("Setup > config.json"), sample_project, progress=NO_PROGRESS
+    )
+
+    assert names_of(report.results) == ["config.json", "caller"]
 
 
 @pytest.mark.parametrize(

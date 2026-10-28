@@ -117,10 +117,13 @@ class IndexDirectory:
         self._layout = layout
         self._path = project_directory / index_directory_name(identity, layout)
         self._lock_timeout_seconds = lock_timeout_seconds
-        # Taken and freed by the thread of a run's event loop, never waited for
+        # Taken and freed by the thread of a run's event loop, never waited for; held by one
+        # run of this directory's session at a time, as a file lock lets its holder take it
+        # again
         self._run_lock = FileLock(
             self._path.with_name(self._path.name + RUN_LOCK_SUFFIX), timeout=NO_WAIT_SECONDS
         )
+        self._run_held = False
 
     @property
     def path(self) -> Path:
@@ -142,34 +145,39 @@ class IndexDirectory:
         return self._path.is_dir()
 
     def try_hold_for_run(self) -> bool:
-        """Take the run's lock if no other run holds it, the project's directory made for the
-        lock file that lies in it; whether it was taken. A file lock: its holder's process
-        ending frees it."""
+        """Take the run's lock if no other run, of this session or another, holds it, the
+        project's directory made for the lock file that lies in it; whether it was taken. A
+        file lock: its holder's process ending frees it."""
+        if self._run_held:
+            return False
         self._project_directory.mkdir(parents=True, exist_ok=True)
         try:
             self._run_lock.acquire()
         except Timeout:
             return False
+        self._run_held = True
         return True
 
     def release_run(self) -> None:
         """Free the run's lock."""
+        self._run_held = False
         self._run_lock.release()
 
     @contextmanager
-    def writing(self) -> Generator[None]:
+    def writing(self, *, records_manifest: bool) -> Generator[None]:
         """Hold the index for one write: marked as used, the project's directory made for the
         write lock that lies in it, the lock taken within the timeout the directory was given,
         so two server processes on one index never write side by side, and the index's own
         directory made under it, as a removal renames an index only under that lock. A write
         that ends without an error records what built the index in its manifest, under the
-        lock still."""
+        lock still, where it says it leaves an index a reader finds."""
         self.note_use()
         self._project_directory.mkdir(parents=True, exist_ok=True)
         with FileLock(self.write_lock, timeout=self._lock_timeout_seconds):
             self._create()
             yield
-            self._write_manifest()
+            if records_manifest:
+                self._write_manifest()
 
     def _create(self) -> None:
         """Make the directory and the project's `.gitignore`, and mark the index as used, as

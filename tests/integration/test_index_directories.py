@@ -49,7 +49,7 @@ def directory_of(
 
 def write_into(directory: IndexDirectory) -> None:
     """One write of a store into the directory: a file of its tables."""
-    with directory.writing():
+    with directory.writing(records_manifest=True):
         (directory.path / TABLE_FILE).write_text("rows")
 
 
@@ -90,7 +90,7 @@ def test_a_write_records_what_built_the_index(tmp_path: Path):
 def test_a_write_that_fails_records_nothing(tmp_path: Path):
     directory = directory_of(tmp_path)
 
-    with pytest.raises(FailedWriteError), directory.writing():
+    with pytest.raises(FailedWriteError), directory.writing(records_manifest=True):
         raise FailedWriteError
 
     assert directory.manifest() is None

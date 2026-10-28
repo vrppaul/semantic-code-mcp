@@ -479,6 +479,17 @@ def test_a_run_another_session_holds_keeps_this_one_waiting_until_it_ends(
     assert (taken_while_held, taken_once_released) == (False, True)
 
 
+def test_a_run_held_keeps_the_same_session_s_second_run_out_too(store: IndexStore):
+    """Within one session the run is held once: a second hold would start a build its first
+    is already writing."""
+    first = store.try_hold_for_run()
+
+    second = store.try_hold_for_run()
+    store.release_run()
+
+    assert (first, second, store.try_hold_for_run()) == (True, False, True)
+
+
 def test_a_run_held_writes_and_another_session_adds_vectors_meanwhile(
     store_class: StoreClass, tmp_path: Path
 ):

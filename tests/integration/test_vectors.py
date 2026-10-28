@@ -2,19 +2,24 @@
 it searches: what is embedded, when the model loads, and what an edit, a forced run or a
 model of another width leaves to embed."""
 
+import asyncio
 import threading
 from pathlib import Path
+from typing import override
 
 import numpy
 import pytest
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
+from semantic_code_mcp.domain.interfaces import VectorMatrix
+from semantic_code_mcp.domain.models import VectorIdentity
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.vectors import EMBEDDING_SLICE_SIZE
 from tests.fakes import (
     EMBEDDING_DIMENSION,
     FAKE_MODEL,
+    DelegatingStore,
     EmbedderWatchingRecorder,
     FakeEmbedder,
     FakeIndexStore,
@@ -28,6 +33,18 @@ from tests.stores import NO_CANDIDATES, StoreClass, open_store
 TWO_AND_A_PART_SLICES = 2 * EMBEDDING_SLICE_SIZE + 10
 # A vector width other than the fake model's
 WIDE = 16
+
+
+class StoreCancelledAfterItsVectors(DelegatingStore):
+    """Another store, whose search by meaning is cancelled as soon as an addition of vectors
+    lands: a client that hung up while the project embedded."""
+
+    @override
+    def add_vectors(
+        self, model: VectorIdentity, chunk_ids: list[str], vectors: VectorMatrix
+    ) -> None:
+        super().add_vectors(model, chunk_ids, vectors)
+        raise asyncio.CancelledError
 
 
 def many_functions_project(root: Path, functions: int) -> Path:
@@ -179,3 +196,21 @@ async def test_after_a_model_of_another_width_took_its_name_every_chunk_is_embed
         second.chunks_embedded,
         store.counts(FAKE_MODEL).chunks_with_vectors,
     ) == (1, 6, 7)
+
+
+async def test_a_search_by_meaning_cancelled_midway_keeps_the_slices_it_added(
+    test_settings: Settings, tmp_path: Path, store_class: StoreClass
+):
+    """The next search by meaning embeds only the rest."""
+    project = many_functions_project(tmp_path, TWO_AND_A_PART_SLICES)
+    store = open_store(store_class, tmp_path / "index", IDENTITY)
+    await indexing_service(store, test_settings, build_chunker()).index(
+        project, force=False, progress=NO_PROGRESS
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await vector_service(StoreCancelledAfterItsVectors(store), FakeEmbedder()).embed_missing(
+            progress=NO_PROGRESS
+        )
+
+    assert store.counts(FAKE_MODEL).chunks_with_vectors == EMBEDDING_SLICE_SIZE

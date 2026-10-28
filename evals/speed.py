@@ -1,20 +1,21 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own, every search by words, the default,
-but the model's: a full index from scratch, warm search latency, plain and narrowed to
-functions and methods outside every tests directory (a narrowing every corpus takes, which
-both filters read), an `index_status` call (each search makes one first), how much the
-index grows with each edit of a file other than the last (the copies upkeep keeps for a few
+Measured per corpus, in server processes of its own, every search by words, the default, but
+the model's: a full index from scratch, warm search latency, plain and narrowed to functions
+and methods outside every tests directory (a narrowing every corpus takes, which both
+filters read), an `index_status` call (each search makes one first), how much the index
+grows with each edit of a file other than the last (the copies upkeep keeps for a few
 seconds included) and how long the search after it takes, at the median and at the slowest
 (it re-indexes the edited file first; one in twenty compacts a LanceDB index), the server's
 peak memory and what it still holds once its work is done, as a session's idle server keeps
 it, with no model loaded; the model load, a search by meaning of a one-file project in a
-server of its own; the first answer of a freshly started server on an up-to-date index —
-the process start an agent waits for — and, last, the first answer on a repository never
-indexed: a server started on an empty index directory, until its first search answers, the
-whole index built inside it.
-Memory is read from `/proc`, so it is reported on Linux only. With 15 to 20 questions per
-corpus, p95 is close to the slowest search: read it as that.
+server of its own, then in that server the corpus's first search by meaning, which embeds
+every chunk, and the warm searches by meaning after it; the first answer of a freshly
+started server on an up-to-date index — the process start an agent waits for — and, last,
+the first answer on a repository never indexed: a server started on an empty index
+directory, until its first search answers, the whole index built inside it. Memory is read
+from `/proc`, so it is reported on Linux only. With 15 to 20 questions per corpus, p95 is
+close to the slowest search: read it as that.
 """
 
 import os
@@ -98,6 +99,9 @@ class CorpusSpeed(BaseModel):
     peak_memory_megabytes: float | None
     resident_memory_megabytes: float | None
     model_load_seconds: float
+    # The first search by meaning of the corpus, which embeds every chunk inside the call
+    first_search_by_meaning_seconds: float
+    warm_search_by_meaning_p50_milliseconds: float
     first_search_seconds: float
 
 
@@ -154,6 +158,13 @@ async def measure_speed(
 
     async with servers.connect(index_directory) as connection:
         model_load_seconds = await timed_model_load_seconds(connection)
+        first_by_meaning_seconds = await timed_search_seconds(
+            connection, working_tree, queries[0], None, by_meaning=True
+        )
+        latencies_by_meaning = [
+            await timed_search_seconds(connection, working_tree, query, None, by_meaning=True)
+            for query in queries
+        ]
 
     started = time.perf_counter()
     async with servers.connect(index_directory) as connection:
@@ -186,6 +197,10 @@ async def measure_speed(
         peak_memory_megabytes=peak_memory,
         resident_memory_megabytes=resident_memory,
         model_load_seconds=rounded(model_load_seconds),
+        first_search_by_meaning_seconds=rounded(first_by_meaning_seconds),
+        warm_search_by_meaning_p50_milliseconds=percentile_milliseconds(
+            latencies_by_meaning, MEDIAN_CUT
+        ),
         first_search_seconds=rounded(first_search_seconds),
     )
 
@@ -230,10 +245,15 @@ async def timed_search_seconds(
     working_tree: Path,
     query: str,
     narrowing: SearchNarrowing | None,
+    *,
+    by_meaning: bool = False,
 ) -> float:
-    """How long one search takes, seen from the client, narrowed where a narrowing is given."""
+    """How long one search takes, seen from the client, narrowed where a narrowing is given,
+    by meaning where asked."""
     started = time.perf_counter()
-    await connection.search(working_tree, query, RESULTS_PER_QUERY, narrowing)
+    await connection.search(
+        working_tree, query, RESULTS_PER_QUERY, narrowing, by_meaning=by_meaning
+    )
     return time.perf_counter() - started
 
 

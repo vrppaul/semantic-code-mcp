@@ -153,14 +153,17 @@ async def index_codebase(
     project_path: Annotated[str | None, Field(description=PROJECT_PATH_DESCRIPTION)] = None,
     force: bool = False,
 ) -> IndexCodebaseResponse:
-    """Index a codebase for semantic search.
+    """Index a codebase's words for search.
 
     Splits Python, Rust and Markdown files into functions, classes, methods, module
-    docstrings and document sections, embeds them, and stores them for search.
-    `search_code` indexes on its own; call this only to re-index everything.
+    docstrings and document sections, and stores them with their words; a search by
+    meaning embeds them. `search_code` indexes on its own; call this only to re-index
+    everything.
 
-    With `force: true`, it re-indexes everything even if files haven't changed.
-    Otherwise, only new and modified files are indexed (incremental).
+    With `force: true`, it re-indexes everything even if files haven't changed, and drops
+    the model's vectors, so the next search by meaning embeds every chunk again, minutes
+    on a large repository. Otherwise, only new and modified files are indexed
+    (incremental).
 
     Args:
         project_path: Absolute path to the project; a directory inside a git repository
@@ -190,9 +193,9 @@ async def index_status(
     """Get the index status for a project.
 
     Returns whether the project is indexed, when it was last updated, how many of its
-    Python, Rust and Markdown files and their chunks are indexed, how many files changed
-    since, and what built the index (each model, embedder version and chunker version
-    keeps an index of its own).
+    Python, Rust and Markdown files and their chunks are indexed, how many chunks have the
+    model's vectors, how many files changed since, and what built the index (each chunker
+    version keeps an index of its own, and each model's vectors are kept apart in it).
 
     Note: search_code automatically re-indexes stale files before searching,
     so there is no need to check or act on staleness manually.
