@@ -18,12 +18,17 @@ another process writes beside it (WAL). A question is matched as words, any of w
 match: each token as FTS5's tokenizer splits text, quoted, the tokens joined by OR, so an
 agent's question is never read as FTS5's own syntax (ADR 007, D7).
 
-The vector channel reads the vectors of the search's scope at each search: no matrix is held
-between calls yet (ADR 009, D8).
+The vector channel searches a matrix of every chunk's vector the store holds between
+searches (ADR 009, D8), which the search's read transaction checks is of the state it reads:
+a chunk's row id is never given twice and a stored vector never changes, so the last row id
+the table gave and its count of rows tell whether any write, of this process or another,
+changed the chunks since. A later state refreshes the matrix by its rows, the deleted
+dropped and the new read, and both channels take their similarities from it.
 """
 
 import re
 import sqlite3
+import threading
 from collections.abc import Generator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -31,6 +36,7 @@ from typing import ClassVar, override
 
 import numpy
 import structlog
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.globs import PATH_SEPARATOR
@@ -53,7 +59,12 @@ from semantic_code_mcp.domain.models import (
 from semantic_code_mcp.storage.globs import glob_pattern
 from semantic_code_mcp.storage.index_directories import IndexDirectory, IndexLayout
 from semantic_code_mcp.storage.search_text import search_text
-from semantic_code_mcp.storage.similarity import VECTOR_LENGTH_AXIS, cosine_similarities
+from semantic_code_mcp.storage.similarity import (
+    VECTOR_LENGTH_AXIS,
+    unit_rows,
+    unit_similarities,
+    unit_vector,
+)
 
 log = structlog.get_logger()
 
@@ -69,6 +80,10 @@ QUOTE = '"'
 EITHER_WORD = " OR "
 VECTOR_TYPE = numpy.float32
 VECTOR_COMPONENT_BYTES = numpy.dtype(VECTOR_TYPE).itemsize
+ROW_ID_TYPE = numpy.int64
+# What the vectors are read after for a matrix read whole: before every row id SQLite gives
+BEFORE_EVERY_ROW = 0
+NO_CHUNKS = 0
 # The function SQLite's REGEXP operator calls, with its pattern and the text, in that order
 REGEXP_FUNCTION = "regexp"
 REGEXP_ARGUMENTS = 2
@@ -86,12 +101,15 @@ NEXT_ROW_ID_STEP = 1
 
 CREATE_CHUNKS = (
     "CREATE TABLE chunks ("
-    "row_id INTEGER PRIMARY KEY, chunk_id TEXT NOT NULL UNIQUE, path TEXT NOT NULL, "
+    "row_id INTEGER PRIMARY KEY AUTOINCREMENT, chunk_id TEXT NOT NULL UNIQUE, "
+    "path TEXT NOT NULL, "
     "language TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, parent TEXT, "
     "line_start INTEGER NOT NULL, line_end INTEGER NOT NULL, content TEXT NOT NULL, "
     "vector BLOB NOT NULL)"
 )
-CREATE_CHUNKS_BY_PATH = "CREATE INDEX chunks_by_path ON chunks (path)"
+# Finds a file's chunks for a write, and gives a search's scope from its narrow entries
+# rather than from the chunks' rows, which their text and vector make wide
+CREATE_CHUNKS_BY_PATH = "CREATE INDEX chunks_by_path ON chunks (path, kind, language)"
 CREATE_FILES = (
     "CREATE TABLE files ("
     "path TEXT PRIMARY KEY, mtime_ns INTEGER NOT NULL, size_bytes INTEGER NOT NULL)"
@@ -105,9 +123,9 @@ WRITE_AHEAD_LOG = "PRAGMA journal_mode=WAL"
 FULL_TEXT_COMPILED_IN = "SELECT sqlite_compileoption_used('ENABLE_FTS5')"
 BEGIN_READ = "BEGIN"
 BEGIN_WRITE = "BEGIN IMMEDIATE"
-# The columns of a chunk a search returns, which `candidate_of` reads by name, and its vector
+# The columns of a chunk a search returns, which `candidate_of` reads by name
 CANDIDATE_COLUMNS = (
-    "chunk_id, path, language, kind, name, parent, line_start, line_end, content, vector"
+    "row_id, chunk_id, path, language, kind, name, parent, line_start, line_end, content"
 )
 INSERT_CHUNK = (
     "INSERT INTO chunks (row_id, chunk_id, path, language, kind, name, parent, line_start, "
@@ -127,10 +145,16 @@ DELETE_EVERY_WORD = "INSERT INTO words (words) VALUES ('delete-all')"
 DELETE_EVERY_CHUNK = "DELETE FROM chunks"
 DELETE_EVERY_RECORD = "DELETE FROM files"
 STORED_WIDTH = "SELECT length(vector) FROM chunks LIMIT 1"
-LAST_ROW_ID = "SELECT coalesce(max(row_id), 0) FROM chunks"
+# The last row id the chunks table ever gave, which AUTOINCREMENT never gives again
+LAST_ROW_ID = "SELECT coalesce(max(seq), 0) FROM sqlite_sequence WHERE name = 'chunks'"
+SELECT_ROW_IDS = "SELECT row_id FROM chunks"
+# The chunks whose words best match a question, best first, when the scope keeps every chunk
+BEST_MATCHES = "SELECT rowid FROM words WHERE words MATCH ? ORDER BY bm25(words) LIMIT ?"
+VECTORS_AFTER = "SELECT row_id, vector FROM chunks WHERE row_id > ? ORDER BY row_id"
 SELECT_RECORDS = "SELECT path, mtime_ns, size_bytes FROM files"
 COUNT_RECORDS = "SELECT count(*) FROM files"
 COUNT_CHUNKS = "SELECT count(*) FROM chunks"
+CHUNKS_STATE = f"SELECT ({LAST_ROW_ID}), ({COUNT_CHUNKS})"  # nosec B608: constants alone
 # What a search finds when the index holds no chunks yet
 NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 
@@ -148,6 +172,78 @@ class ScopeCondition(BaseModel):
     sql: str
     values: list[str | int]
 
+    @property
+    def keeps_every_chunk(self) -> bool:
+        return self.sql == NO_CONDITION
+
+
+class ChunksState(BaseModel):
+    """Where the chunks table stands: the last row id it ever gave, and how many rows it
+    holds. A write that changes the chunks gives new row ids or deletes rows alone, so a later
+    state has a later last row id, or the same one and fewer rows."""
+
+    model_config = ConfigDict(frozen=True)
+
+    last_row_id: int
+    chunks: int
+
+    def precedes(self, later: ChunksState) -> bool:
+        """Whether this state came before the later one, whose rows are then this one's
+        less those deleted since, and those past this one's last row id."""
+        return self.last_row_id < later.last_row_id or (
+            self.last_row_id == later.last_row_id and self.chunks > later.chunks
+        )
+
+
+class RowSimilarities(BaseModel):
+    """How close the vector of each chunk is to a query's, by the chunks' row ids in their
+    ascending order."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    row_ids: NDArray[numpy.int64]
+    similarities: NDArray[numpy.float32]
+
+    def of(self, row_ids: Sequence[int]) -> list[float]:
+        """The similarities of the chunks of these row ids, in their order."""
+        return self.similarities[numpy.searchsorted(self.row_ids, row_ids)].tolist()
+
+    def among(self, row_ids: NDArray[numpy.int64]) -> RowSimilarities:
+        """Those of the chunks of these row ids alone."""
+        kept = numpy.isin(self.row_ids, row_ids)
+        return RowSimilarities(row_ids=self.row_ids[kept], similarities=self.similarities[kept])
+
+    def nearest(self, limit: int) -> list[int]:
+        """The row ids of the `limit` chunks nearest the query, nearest first; of two as
+        near, the earlier row first. Only the chunks at least as near as the `limit`-th are
+        sorted, which a partition finds without sorting them all."""
+        if limit < len(self.similarities):
+            cut = len(self.similarities) - limit
+            least_kept = numpy.partition(self.similarities, cut)[cut]
+            positions = numpy.flatnonzero(self.similarities >= least_kept)
+        else:
+            positions = numpy.arange(len(self.similarities))
+        order = numpy.argsort(-self.similarities[positions], kind="stable")[:limit]
+        return self.row_ids[positions[order]].tolist()
+
+
+class HeldVectors(BaseModel):
+    """The vectors of an index's chunks in one state, held by the store between searches:
+    each scaled to length one, a row each, in the order of the chunks' row ids."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    state: ChunksState
+    row_ids: NDArray[numpy.int64]
+    unit_vectors: VectorMatrix
+
+    def similarities_to(self, query_vector: Vector) -> RowSimilarities:
+        """How close each chunk's vector is to the query's."""
+        return RowSimilarities(
+            row_ids=self.row_ids,
+            similarities=unit_similarities(self.unit_vectors, unit_vector(query_vector)),
+        )
+
 
 class SqliteIndexStore(IndexStore):
     """One project's index of one identity, in a SQLite database in the index's directory.
@@ -156,11 +252,16 @@ class SqliteIndexStore(IndexStore):
     """
 
     # The schema's version is bumped by any change to the tables or to what one is made from,
-    # its full-text index among them
-    LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.sqlite, schema_version=1)
+    # its full-text index among them (2: a row id never given twice, which the held vectors
+    # rest on)
+    LAYOUT: ClassVar[IndexLayout] = IndexLayout(store_kind=StoreKind.sqlite, schema_version=2)
 
     def __init__(self, directory: IndexDirectory) -> None:
         self._directory = directory
+        # The vectors of the latest state a search read, kept for the next; searches run in
+        # worker threads, so they take and replace them under a lock
+        self._holding = threading.Lock()
+        self._held: HeldVectors | None = None
 
     @override
     def manifest(self) -> IndexManifest | None:
@@ -235,12 +336,33 @@ class SqliteIndexStore(IndexStore):
         with self._snapshot() as connection:
             if connection is None:
                 return NO_CANDIDATES
+            state = chunks_state(connection)
+            if state.chunks == NO_CHUNKS:
+                return NO_CANDIDATES
+            similarities = self._held_vectors(connection, state).similarities_to(query_vector)
             return SearchCandidates(
-                by_vector=nearest_candidates(connection, query_vector, condition, per_channel),
+                by_vector=nearest_candidates(connection, similarities, condition, per_channel),
                 by_keyword=keyword_candidates(
-                    connection, query.text, query_vector, condition, per_channel
+                    connection, query.text, similarities, condition, per_channel
                 ),
             )
+
+    def _held_vectors(self, connection: sqlite3.Connection, state: ChunksState) -> HeldVectors:
+        """The vectors of the chunks in the state the connection reads: those the store
+        holds, refreshed by rows when they are of an earlier state, read whole when it holds
+        none or holds a later state's, as another thread's search may have left. The latest
+        state read is kept for the next search."""
+        with self._holding:
+            held = self._held
+            if held is not None and held.state == state:
+                return held
+            if held is not None and held.state.precedes(state):
+                current = refreshed_vectors(connection, held, state)
+            else:
+                current = vectors_read_whole(connection, state)
+            if held is None or held.state.precedes(state):
+                self._held = current
+            return current
 
     def _fit_width(self, connection: sqlite3.Connection, width: int) -> None:
         """Start the index again when it holds vectors of another width than this write's,
@@ -360,35 +482,80 @@ def replace_records(connection: sqlite3.Connection, update: IndexUpdate) -> None
     )
 
 
+def chunks_state(connection: sqlite3.Connection) -> ChunksState:
+    """Where the chunks table stands in the state the connection reads."""
+    last_row_id, chunks = connection.execute(CHUNKS_STATE).fetchone()
+    return ChunksState(last_row_id=last_row_id, chunks=chunks)
+
+
+def vectors_read_whole(connection: sqlite3.Connection, state: ChunksState) -> HeldVectors:
+    """Every chunk's vector, as of the state the connection reads, which holds chunks."""
+    rows = connection.execute(VECTORS_AFTER, [BEFORE_EVERY_ROW]).fetchall()
+    width = len(rows[0]["vector"]) // VECTOR_COMPONENT_BYTES
+    return HeldVectors(
+        state=state,
+        row_ids=numpy.array([row["row_id"] for row in rows], dtype=ROW_ID_TYPE),
+        unit_vectors=unit_rows(matrix_of([row["vector"] for row in rows], width)),
+    )
+
+
+def refreshed_vectors(
+    connection: sqlite3.Connection, held: HeldVectors, state: ChunksState
+) -> HeldVectors:
+    """Vectors held of an earlier state brought to the one the connection reads: those of
+    the chunks deleted since dropped, those of the chunks written since read. Read whole when
+    none of the held is left, as when vectors of another width replaced every chunk."""
+    present = numpy.fromiter(
+        (row_id for (row_id,) in connection.execute(SELECT_ROW_IDS)), dtype=ROW_ID_TYPE
+    )
+    kept = numpy.isin(held.row_ids, present)
+    if not kept.any():
+        return vectors_read_whole(connection, state)
+    rows = connection.execute(VECTORS_AFTER, [held.state.last_row_id]).fetchall()
+    width = held.unit_vectors.shape[VECTOR_LENGTH_AXIS]
+    written = unit_rows(matrix_of([row["vector"] for row in rows], width))
+    return HeldVectors(
+        state=state,
+        row_ids=numpy.concatenate(
+            [held.row_ids[kept], numpy.array([row["row_id"] for row in rows], dtype=ROW_ID_TYPE)]
+        ),
+        unit_vectors=numpy.concatenate([held.unit_vectors[kept], written]),
+    )
+
+
+def matrix_of(blobs: list[bytes], width: int) -> VectorMatrix:
+    """Stored vectors of one width as a matrix, a row each, read as one buffer."""
+    return numpy.frombuffer(b"".join(blobs), dtype=VECTOR_TYPE).reshape(len(blobs), width)
+
+
 def nearest_candidates(
-    connection: sqlite3.Connection, query_vector: Vector, condition: ScopeCondition, limit: int
+    connection: sqlite3.Connection,
+    similarities: RowSimilarities,
+    condition: ScopeCondition,
+    limit: int,
 ) -> list[Candidate]:
     """The chunks of the scope nearest the query's vector, nearest first."""
+    in_scope = (
+        similarities
+        if condition.keeps_every_chunk
+        else similarities.among(row_ids_in(connection, condition))
+    )
+    return candidates_of(connection, in_scope.nearest(limit), similarities)
+
+
+def row_ids_in(connection: sqlite3.Connection, condition: ScopeCondition) -> NDArray[numpy.int64]:
+    """The row ids of the chunks a scope keeps."""
     rows = connection.execute(
-        f"SELECT row_id, vector FROM chunks WHERE {condition.sql}",  # nosec B608: bound values
+        f"SELECT row_id FROM chunks WHERE {condition.sql}",  # nosec B608: bound values
         condition.values,
-    ).fetchall()
-    if not rows:
-        return []
-    matrix = numpy.stack([vector_of(blob) for _, blob in rows])
-    similarities = cosine_similarities(matrix, query_vector)
-    nearest = numpy.argsort(-similarities, kind="stable")[:limit]
-    row_ids = [rows[position][0] for position in nearest]
-    chunks_by_row_id = {
-        row["row_id"]: row
-        for row in connection.execute(
-            f"SELECT row_id, {CANDIDATE_COLUMNS} FROM chunks "  # nosec B608: placeholders alone
-            f"WHERE row_id IN ({placeholders(row_ids)})",
-            row_ids,
-        )
-    }
-    return [candidate_of(chunks_by_row_id[row_id], query_vector) for row_id in row_ids]
+    )
+    return numpy.fromiter((row_id for (row_id,) in rows), dtype=ROW_ID_TYPE)
 
 
 def keyword_candidates(
     connection: sqlite3.Connection,
     question: str,
-    query_vector: Vector,
+    similarities: RowSimilarities,
     condition: ScopeCondition,
     limit: int,
 ) -> list[Candidate]:
@@ -398,19 +565,45 @@ def keyword_candidates(
     if not tokens:
         return []
     expression = EITHER_WORD.join(QUOTE + token + QUOTE for token in tokens)
-    rows = connection.execute(
-        f"SELECT {CANDIDATE_COLUMNS} FROM words JOIN chunks ON chunks.row_id = words.rowid "
-        f"WHERE words MATCH ? AND {condition.sql} ORDER BY bm25(words) LIMIT ?",  # nosec B608: bound values
-        [expression, *condition.values, limit],
-    ).fetchall()
-    return [candidate_of(row, query_vector) for row in rows]
+    # The scope's chunks are listed once, from the index of their narrow columns; the unary
+    # plus keeps SQLite from handing the list to FTS5 as one lookup a row id, a full-text
+    # query each (21 s against 24 ms at 88k chunks)
+    ranked = (
+        connection.execute(BEST_MATCHES, [expression, limit])
+        if condition.keeps_every_chunk
+        else connection.execute(
+            "SELECT rowid FROM words WHERE words MATCH ? "  # nosec B608: bound values
+            f"AND +rowid IN (SELECT row_id FROM chunks WHERE {condition.sql}) "
+            "ORDER BY bm25(words) LIMIT ?",
+            [expression, *condition.values, limit],
+        )
+    )
+    return candidates_of(connection, [row_id for (row_id,) in ranked], similarities)
 
 
-def candidate_of(row: sqlite3.Row, query_vector: Vector) -> Candidate:
+def candidates_of(
+    connection: sqlite3.Connection, row_ids: list[int], similarities: RowSimilarities
+) -> list[Candidate]:
+    """The chunks of these row ids, in their order, each with its similarity to the query:
+    a channel ranks row ids alone and reads the columns of those it keeps, as reading them
+    for every chunk a question's words match cost a search at 88k chunks 140 ms."""
+    chunks_by_row_id = {
+        row["row_id"]: row
+        for row in connection.execute(
+            f"SELECT {CANDIDATE_COLUMNS} FROM chunks "  # nosec B608: placeholders alone
+            f"WHERE row_id IN ({placeholders(row_ids)})",
+            row_ids,
+        )
+    }
+    return [
+        candidate_of(chunks_by_row_id[row_id], similarity)
+        for row_id, similarity in zip(row_ids, similarities.of(row_ids), strict=True)
+    ]
+
+
+def candidate_of(row: sqlite3.Row, similarity: float) -> Candidate:
     """A row of CANDIDATE_COLUMNS as a chunk a search found, with its vector's similarity to
     the query's."""
-    vector = vector_of(row["vector"])
-    similarity = cosine_similarities(vector[numpy.newaxis, :], query_vector)[0]
     chunk = Chunk(
         chunk_id=row["chunk_id"],
         path=Path(row["path"]),
@@ -422,7 +615,7 @@ def candidate_of(row: sqlite3.Row, query_vector: Vector) -> Candidate:
         line_end=row["line_end"],
         content=row["content"],
     )
-    return Candidate(chunk=chunk, similarity=float(similarity))
+    return Candidate(chunk=chunk, similarity=similarity)
 
 
 def scope_condition(scope: SearchScope) -> ScopeCondition:
@@ -435,11 +628,12 @@ def scope_condition(scope: SearchScope) -> ScopeCondition:
     if scope.languages:
         clauses.append(f"language IN ({placeholders(scope.languages)})")
         values.extend(scope.languages)
+    # A glob is matched once a file, against the files' records, not once a chunk
     if scope.path_glob is not None:
-        clauses.append("path REGEXP ?")
+        clauses.append("path IN (SELECT path FROM files WHERE path REGEXP ?)")
         values.append(glob_pattern(scope.path_glob, scope.directory))
     if scope.exclude_glob is not None:
-        clauses.append("NOT (path REGEXP ?)")
+        clauses.append("path NOT IN (SELECT path FROM files WHERE path REGEXP ?)")
         values.append(glob_pattern(scope.exclude_glob, scope.directory))
     if scope.directory is not None:
         prefix = scope.directory.as_posix() + PATH_SEPARATOR

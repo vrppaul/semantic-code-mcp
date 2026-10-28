@@ -32,6 +32,7 @@ from tests.stores import (
     IDENTITY,
     LIMIT,
     NO_CANDIDATES,
+    NO_WORDS_MATCH,
     OTHER_IDENTITY,
     QUERY,
     TOWARD_QUERY,
@@ -89,6 +90,32 @@ def test_vector_search_ranks_the_nearest_chunk_first(filled_store: IndexStore):
         "near",
         "keyword",
         "far",
+    ]
+
+
+# How many of the chunks below a channel takes, fewer than there are
+FEWER_THAN_STORED = 3
+
+
+def test_vector_search_brings_the_nearest_chunks_of_more_than_it_takes(store: IndexStore):
+    """Written in an order unlike their nearness: each chunk's vector agrees with the query
+    in as many components as its number says, the rest opposed."""
+    agreeing_components = [3, 7, 1, 8, 5, 2, 6, 4]
+    chunks = [
+        function_chunk(f"agrees_in_{count}", f"agrees_in_{count}.py", "def f(): pass")
+        for count in agreeing_components
+    ]
+    vectors = vectors_of(
+        *([1.0] * count + [-1.0] * (EMBEDDING_DIMENSION - count) for count in agreeing_components)
+    )
+    store.write(update_of(chunks, removed_paths=[]), vectors)
+
+    candidates = store.search_candidates(QUERY, query_of(NO_WORDS_MATCH), FEWER_THAN_STORED)
+
+    assert [candidate.chunk.name for candidate in candidates.by_vector] == [
+        "agrees_in_8",
+        "agrees_in_7",
+        "agrees_in_6",
     ]
 
 
@@ -407,11 +434,56 @@ def test_a_store_sees_what_another_store_on_its_directory_wrote(
     assert (before, reader.counts().chunks) == (1, 2)
 
 
+# Nearer the query than every filled chunk but the nearest
+PARTLY_TOWARD_QUERY = [0.9] * (EMBEDDING_DIMENSION // 2) + [0.1] * (EMBEDDING_DIMENSION // 2)
+
+
+def a_file_added_and_the_last_written_removed(writer: IndexStore) -> None:
+    """The file whose chunk was written last goes, so a store that gave its row's id again
+    would give it to the chunk added."""
+    added = function_chunk("added", "added.py", "def added(): pass")
+    writer.write(
+        update_of([added], removed_paths=[Path("far.py")]), vectors_of(PARTLY_TOWARD_QUERY)
+    )
+
+
+def a_file_removed_alone(writer: IndexStore) -> None:
+    writer.write(
+        update_of([], removed_paths=[Path("near.py")]), numpy.empty((0, 0), dtype=numpy.float32)
+    )
+
+
+@pytest.mark.parametrize(
+    ("edit", "found"),
+    [
+        pytest.param(
+            a_file_added_and_the_last_written_removed, ["near", "added", "keyword"], id="added"
+        ),
+        pytest.param(a_file_removed_alone, ["keyword", "far"], id="removed alone"),
+    ],
+)
+def test_a_search_sees_what_another_store_on_its_directory_wrote_since_its_last_search(
+    store_class: StoreClass,
+    index_directory: IndexDirectory,
+    filled_store: IndexStore,
+    edit: Callable[[IndexStore], None],
+    found: list[str],
+):
+    """Another session's server writes the same index: what a reader keeps of it between
+    searches never hides the change."""
+    nearest(filled_store)
+
+    edit(store_class(index_directory))
+
+    assert [candidate.chunk.name for candidate in nearest(filled_store)] == found
+
+
 def test_vectors_of_another_width_replace_the_index_and_leave_the_other_files_unrecorded(
     filled_store: IndexStore,
 ):
     """A model replaced under a name nothing pins gives vectors of another width: the index starts
     again from the files written, and the next run indexes the others, unrecorded now."""
+    nearest(filled_store)
     edited = function_chunk("near", "near.py", "def near(): return elapsed_time()")
 
     filled_store.write(update_of([edited], removed_paths=[]), vectors_of(TOWARD_QUERY * 2))
