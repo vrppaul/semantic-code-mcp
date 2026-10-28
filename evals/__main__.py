@@ -1,8 +1,9 @@
 """Measure search quality, speed, or search as agents use it, on the pinned corpora.
 
-    uv run python -m evals quality [--corpus NAME ...] [--save-baseline] [--held-out]
-    uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--edits N]
-        [--save-baseline]
+    uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--save-baseline]
+        [--held-out]
+    uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--store STORE]
+        [--edits N] [--save-baseline]
     uv run python -m evals agents [--corpus NAME ...] [--corpus-file PATH ...] [--arm ARM ...]
         [--repeats N] [--model MODEL]
 
@@ -10,7 +11,8 @@ Each run indexes into a fresh temporary directory; checkouts of the corpora are 
 under ~/.cache/semantic-code-mcp-evals and reused. Prints one line per corpus next to the
 saved baseline, writes the whole report as JSON to `evals/results/`, and with
 --save-baseline makes it the new baseline; a corpus kept outside the repository
-(`--corpus-file`, as a large or a private one is) is never saved to it. `agents` asks
+(`--corpus-file`, as a large or a private one is) is never saved to it, nor a run in a store
+other than the server's default (`--store`, as when two stores are compared in turns). `agents` asks
 Claude Code headless each question in each arm (`evals/agents.py`), spending the owner's
 subscription; it prints each session as it ends and each arm's sums, and keeps no baseline,
 as its sessions hold the questions of private corpora; its indexes are kept between runs.
@@ -58,8 +60,9 @@ from evals.quality import (
     WordingScores,
     measure_quality,
 )
-from evals.server import ToolCallFailedError, connect
+from evals.server import ServerStarter, ToolCallFailedError
 from evals.speed import CorpusSpeed, Machine, current_machine, measure_speed
+from semantic_code_mcp.domain.models import StoreKind
 from semantic_code_mcp.logging import configure_logging
 
 CHECKOUTS_ROOT = Path.home() / ".cache" / "semantic-code-mcp-evals"
@@ -83,6 +86,8 @@ SERVER_LOG_FILE = "server.log"
 # edit's; a unit test holds the two together, as evals import no store
 DEFAULT_EDITS = 20
 JSON_INDENT = 2
+# The commands that keep a baseline, which holds the default store's figures alone
+BASELINE_COMMANDS = frozenset({"quality", "speed"})
 EXIT_OK = 0
 EXIT_FAILED = 1
 
@@ -123,12 +128,14 @@ def main() -> int:
             case "quality":
                 run_quality(
                     load_corpora(arguments.corpus),
+                    index_store=arguments.store,
                     save_baseline=arguments.save_baseline,
                     held_out=arguments.held_out,
                 )
             case "speed":
                 run_speed(
                     chosen_corpora(arguments.corpus, arguments.corpus_file),
+                    index_store=arguments.store,
                     edits=arguments.edits,
                     save_baseline=arguments.save_baseline,
                 )
@@ -160,6 +167,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         command.add_argument(
             "--corpus", action="append", default=[], choices=available_corpus_names()
         )
+        # A store other than the server's default, never saved to the baseline
+        command.add_argument("--store", type=StoreKind, choices=list(StoreKind))
     quality.add_argument("--save-baseline", action="store_true")
     # A corpus kept outside the repository, never saved to the baseline the repository keeps
     speed_corpora = speed.add_mutually_exclusive_group()
@@ -175,7 +184,11 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     agents.add_argument("--arm", action="append", default=[], choices=list(AgentArm))
     agents.add_argument("--repeats", type=positive_integer, default=1)
     agents.add_argument("--model", default=DEFAULT_MODEL)
-    return parser.parse_args(argv)
+    arguments = parser.parse_args(argv)
+    keeps_a_baseline = arguments.command in BASELINE_COMMANDS
+    if keeps_a_baseline and arguments.save_baseline and arguments.store is not None:
+        parser.error("--save-baseline keeps the default store's figures: leave --store out")
+    return arguments
 
 
 def positive_integer(text: str) -> int:
@@ -187,8 +200,10 @@ def positive_integer(text: str) -> int:
     return value
 
 
-def run_quality(corpora: list[Corpus], *, save_baseline: bool, held_out: bool) -> None:
-    report = QualityReport(corpora=tuple(asyncio.run(collect_quality(corpora))))
+def run_quality(
+    corpora: list[Corpus], *, index_store: StoreKind | None, save_baseline: bool, held_out: bool
+) -> None:
+    report = QualityReport(corpora=tuple(asyncio.run(collect_quality(corpora, index_store))))
     baseline = read_report(BASELINE_DIRECTORY / QUALITY_FILE, QualityReport)
     baseline_by_corpus: dict[str, CorpusQuality] = {}
     if baseline is not None:
@@ -198,9 +213,12 @@ def run_quality(corpora: list[Corpus], *, save_baseline: bool, held_out: bool) -
     write_report(report, QUALITY_FILE, save_baseline=save_baseline)
 
 
-def run_speed(corpora: list[Corpus], *, edits: int, save_baseline: bool) -> None:
+def run_speed(
+    corpora: list[Corpus], *, index_store: StoreKind | None, edits: int, save_baseline: bool
+) -> None:
     report = SpeedReport(
-        machine=current_machine(), corpora=tuple(asyncio.run(collect_speed(corpora, edits)))
+        machine=current_machine(),
+        corpora=tuple(asyncio.run(collect_speed(corpora, index_store, edits))),
     )
     baseline = read_report(BASELINE_DIRECTORY / SPEED_FILE, SpeedReport)
     # Speeds compare only on the machine they were measured on
@@ -246,9 +264,9 @@ async def collect_agents(
         )
         with (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log:
             server_log.write(log_header("agents", corpus))
-            measured.append(
-                await measure_agents(corpus, working_tree, run, server_log, print_session)
-            )
+            # The agents' own servers take the default store, so this one does too
+            servers = ServerStarter(server_log, index_store=None)
+            measured.append(await measure_agents(corpus, working_tree, run, servers, print_session))
     return measured
 
 
@@ -281,7 +299,9 @@ def describe_arm(summary: ArmSummary) -> str:
     )
 
 
-async def collect_quality(corpora: list[Corpus]) -> list[CorpusQuality]:
+async def collect_quality(
+    corpora: list[Corpus], index_store: StoreKind | None
+) -> list[CorpusQuality]:
     measured: list[CorpusQuality] = []
     off_topic = load_off_topic_questions()
     for corpus in corpora:
@@ -291,12 +311,15 @@ async def collect_quality(corpora: list[Corpus]) -> list[CorpusQuality]:
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
             server_log.write(log_header("quality", corpus))
-            async with connect(Path(index_directory), server_log) as connection:
+            servers = ServerStarter(server_log, index_store)
+            async with servers.connect(Path(index_directory)) as connection:
                 measured.append(await measure_quality(corpus, working_tree, off_topic, connection))
     return measured
 
 
-async def collect_speed(corpora: list[Corpus], edits: int) -> list[CorpusSpeed]:
+async def collect_speed(
+    corpora: list[Corpus], index_store: StoreKind | None, edits: int
+) -> list[CorpusSpeed]:
     measured: list[CorpusSpeed] = []
     for corpus in corpora:
         working_tree = checkout(corpus.corpus, CHECKOUTS_ROOT)
@@ -305,8 +328,9 @@ async def collect_speed(corpora: list[Corpus], edits: int) -> list[CorpusSpeed]:
             (RESULTS_DIRECTORY / SERVER_LOG_FILE).open("a") as server_log,
         ):
             server_log.write(log_header("speed", corpus))
+            servers = ServerStarter(server_log, index_store)
             measured.append(
-                await measure_speed(corpus, working_tree, Path(index_directory), edits, server_log)
+                await measure_speed(corpus, working_tree, Path(index_directory), edits, servers)
             )
     return measured
 

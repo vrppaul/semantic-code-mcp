@@ -23,13 +23,12 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TextIO
 
 from pydantic import BaseModel, ConfigDict
 
 from evals.corpus import Corpus, Query, restore
 from evals.quality import RESULTS_PER_QUERY
-from evals.server import SearchNarrowing, ServerConnection, connect
+from evals.server import SearchNarrowing, ServerConnection, ServerStarter
 
 MILLISECONDS_PER_SECOND = 1000
 BYTES_PER_MEGABYTE = 1024 * 1024
@@ -128,12 +127,12 @@ def processor_model() -> str:
 
 
 async def measure_speed(
-    corpus: Corpus, working_tree: Path, index_directory: Path, edits: int, server_log: TextIO
+    corpus: Corpus, working_tree: Path, index_directory: Path, edits: int, servers: ServerStarter
 ) -> CorpusSpeed:
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
 
-    async with connect(index_directory, server_log) as connection:
+    async with servers.connect(index_directory) as connection:
         model_load_seconds = await timed_model_load_seconds(connection)
         report = await connection.index(working_tree)
         latencies = [
@@ -154,14 +153,14 @@ async def measure_speed(
         resident_memory = server_memory_megabytes(RESIDENT_FIELD)
 
     started = time.perf_counter()
-    async with connect(index_directory, server_log) as connection:
+    async with servers.connect(index_directory) as connection:
         await connection.search(working_tree, queries[0], RESULTS_PER_QUERY)
         first_search_seconds = time.perf_counter() - started
 
     # Last: a cold index keeps every core busy for minutes while the model embeds, and the
     # machine it leaves warm would slow what is measured after it
     cold_first_answer_seconds = await timed_cold_first_answer_seconds(
-        working_tree, queries[0], server_log
+        working_tree, queries[0], servers
     )
 
     return CorpusSpeed(
@@ -189,13 +188,13 @@ async def measure_speed(
 
 
 async def timed_cold_first_answer_seconds(
-    working_tree: Path, query: str, server_log: TextIO
+    working_tree: Path, query: str, servers: ServerStarter
 ) -> float:
     """What an agent waits for on first contact with a repository: a server started fresh on
     an index directory of its own, empty, until its first search answers."""
     with tempfile.TemporaryDirectory() as empty_index_directory:
         started = time.perf_counter()
-        async with connect(Path(empty_index_directory), server_log) as connection:
+        async with servers.connect(Path(empty_index_directory)) as connection:
             await connection.search(working_tree, query, RESULTS_PER_QUERY)
             return time.perf_counter() - started
 

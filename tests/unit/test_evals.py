@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from evals.__main__ import DEFAULT_EDITS
+from evals.__main__ import DEFAULT_EDITS, parse_arguments
 from evals.corpus import TOP_LEVEL, Answer, Corpus, CorpusSource, Query, QuestionKind
 from evals.quality import (
     Hit,
@@ -22,11 +22,11 @@ from evals.quality import (
     scores_by_kind,
     shares_answer_words,
 )
-from evals.server import SearchHit
+from evals.server import INDEX_STORE_VARIABLE, SearchHit, server_environment
 from evals.speed import Edit, edit_text, edits_in_turn
 
 from semantic_code_mcp.app import build_chunker
-from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language
+from semantic_code_mcp.domain.models import Chunk, ChunkKind, Language, StoreKind
 from semantic_code_mcp.storage.lancedb import UPKEEPS_PER_COMPACTION
 
 
@@ -362,3 +362,30 @@ def test_the_speed_run_edits_the_files_that_answer_its_questions_in_turn():
 def test_the_speed_run_edits_enough_for_its_last_edit_to_meet_a_compaction():
     """The slowest search after an edit shows LanceDB's compaction only if the run reaches it."""
     assert DEFAULT_EDITS == UPKEEPS_PER_COMPACTION
+
+
+@pytest.mark.parametrize(
+    ("index_store", "store_given"),
+    [
+        pytest.param(None, None, id="the server's default"),
+        pytest.param(StoreKind.sqlite, "sqlite", id="a store the run names"),
+    ],
+)
+def test_a_server_of_the_harness_keeps_its_indexes_in_the_store_a_run_names(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    index_store: StoreKind | None,
+    store_given: str | None,
+):
+    """The caller's own setting never reaches it."""
+    monkeypatch.setenv(INDEX_STORE_VARIABLE, StoreKind.lancedb)
+
+    environment = server_environment(tmp_path, index_store)
+
+    assert environment.get(INDEX_STORE_VARIABLE) == store_given
+
+
+@pytest.mark.parametrize("command", ["quality", "speed"])
+def test_a_run_in_a_store_of_its_own_is_never_saved_as_the_baseline(command: str):
+    with pytest.raises(SystemExit):
+        parse_arguments([command, "--store", StoreKind.sqlite, "--save-baseline"])

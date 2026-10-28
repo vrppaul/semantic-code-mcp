@@ -17,8 +17,11 @@ from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult
 from pydantic import BaseModel, ConfigDict
 
+from semantic_code_mcp.domain.models import StoreKind
+
 SETTINGS_PREFIX = "SEMANTIC_CODE_MCP_"
 CACHE_DIR_VARIABLE = f"{SETTINGS_PREFIX}CACHE_DIR"
+INDEX_STORE_VARIABLE = f"{SETTINGS_PREFIX}INDEX_STORE"
 SERVER_MODULE = "semantic_code_mcp"
 # Long enough for a full index of the largest corpus with a cold model download: `agents`
 # indexes corpora kept outside the repository, and one of Sentry's 87,694 chunks took about
@@ -108,28 +111,46 @@ class ServerConnection:
         return SearchAnswer.model_validate(tool_payload(result))
 
 
-@asynccontextmanager
-async def connect(index_directory: Path, server_log: TextIO) -> AsyncGenerator[ServerConnection]:
-    """Start a server whose indexes live in index_directory, its log written to server_log.
+class ServerStarter:
+    """Starts the server processes of a run, their logs written to one file, their indexes
+    kept in the store the run names, or in the server's default store where it names none.
 
     Settings of the caller's environment (`SEMANTIC_CODE_MCP_*`) are left out, so a
-    measurement depends on the defaults and the index directory alone.
+    measurement depends on the defaults, the store and the index directory alone.
     """
+
+    def __init__(self, server_log: TextIO, index_store: StoreKind | None) -> None:
+        self._server_log = server_log
+        self._index_store = index_store
+
+    @asynccontextmanager
+    async def connect(self, index_directory: Path) -> AsyncGenerator[ServerConnection]:
+        """Start a server whose indexes live in index_directory."""
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", SERVER_MODULE],
+            env=server_environment(index_directory, self._index_store),
+        )
+        async with (
+            stdio_client(parameters, errlog=self._server_log) as (read_stream, write_stream),
+            ClientSession(
+                read_stream, write_stream, read_timeout_seconds=READ_TIMEOUT_SECONDS
+            ) as session,
+        ):
+            await session.initialize()
+            yield ServerConnection(session)
+
+
+def server_environment(index_directory: Path, index_store: StoreKind | None) -> dict[str, str]:
+    """The environment a server of the harness runs in: the caller's without its settings,
+    the index directory, and the store a run names, where it names one."""
     environment = {
         name: value for name, value in os.environ.items() if not name.startswith(SETTINGS_PREFIX)
     }
     environment[CACHE_DIR_VARIABLE] = str(index_directory)
-    parameters = StdioServerParameters(
-        command=sys.executable, args=["-m", SERVER_MODULE], env=environment
-    )
-    async with (
-        stdio_client(parameters, errlog=server_log) as (read_stream, write_stream),
-        ClientSession(
-            read_stream, write_stream, read_timeout_seconds=READ_TIMEOUT_SECONDS
-        ) as session,
-    ):
-        await session.initialize()
-        yield ServerConnection(session)
+    if index_store is not None:
+        environment[INDEX_STORE_VARIABLE] = index_store
+    return environment
 
 
 def tool_payload(result: CallToolResult) -> object:

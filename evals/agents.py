@@ -26,12 +26,11 @@ from collections.abc import Callable
 from enum import StrEnum, auto
 from pathlib import Path
 from statistics import mean
-from typing import TextIO
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from evals.corpus import Answer, Corpus, Query, QuestionKind
-from evals.server import CACHE_DIR_VARIABLE, SERVER_MODULE, connect
+from evals.server import CACHE_DIR_VARIABLE, SERVER_MODULE, ServerStarter
 
 CLAUDE_COMMAND = "claude"
 # The model most sessions of Claude Code run on
@@ -461,12 +460,12 @@ async def measure_agents(
     corpus: Corpus,
     working_tree: Path,
     run: AgentsRun,
-    server_log: TextIO,
+    servers: ServerStarter,
     report_session: Callable[[SessionRecord], None],
 ) -> CorpusAgents:
     """Ask every chosen question of a corpus in each arm, the arms in turn, as often as the
     run says, once the kept index is up to date; each session is reported as it ends."""
-    async with connect(run.index_directory, server_log) as connection:
+    async with servers.connect(run.index_directory) as connection:
         await connection.index(working_tree)
     config_directory = prepare_config_directory(run.run_directory / CONFIG_DIRECTORY_NAME)
     settings = [
