@@ -1,8 +1,6 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own: the first answer on a repository never
-indexed (a server started on an empty index directory, until its first search answers, the
-whole index built inside it), the model load (a search of a
+Measured per corpus, in server processes of its own: the model load (a search of a
 one-file project), a full index from scratch with the model already loaded, warm search
 latency, plain and narrowed to functions and methods outside every tests directory (a
 narrowing every corpus takes, which both filters read), an `index_status` call (each
@@ -12,7 +10,8 @@ after it takes, at the median and at the slowest (it re-indexes the edited file 
 one in twenty compacts the index), the server's peak memory and what it still holds once
 its work is done, as a session's idle server keeps it, and the first answer of a freshly
 started server on an up-to-date index — the process start and model load an agent waits
-for.
+for — and, last, the first answer on a repository never indexed: a server started on an
+empty index directory, until its first search answers, the whole index built inside it.
 Memory is read from `/proc`, so it is reported on Linux only. With 15 to 20 questions per
 corpus, p95 is close to the slowest search: read it as that.
 """
@@ -133,9 +132,6 @@ async def measure_speed(
 ) -> CorpusSpeed:
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
-    cold_first_answer_seconds = await timed_cold_first_answer_seconds(
-        working_tree, queries[0], server_log
-    )
 
     async with connect(index_directory, server_log) as connection:
         model_load_seconds = await timed_model_load_seconds(connection)
@@ -161,6 +157,12 @@ async def measure_speed(
     async with connect(index_directory, server_log) as connection:
         await connection.search(working_tree, queries[0], RESULTS_PER_QUERY)
         first_search_seconds = time.perf_counter() - started
+
+    # Last: a cold index keeps every core busy for minutes while the model embeds, and the
+    # machine it leaves warm would slow what is measured after it
+    cold_first_answer_seconds = await timed_cold_first_answer_seconds(
+        working_tree, queries[0], server_log
+    )
 
     return CorpusSpeed(
         corpus=corpus.corpus.name,
