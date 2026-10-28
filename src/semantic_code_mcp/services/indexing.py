@@ -154,6 +154,7 @@ class IndexingService:
             chunks_with_vectors_count=counts.chunks_with_vectors,
             stale_files_count=len(delta.to_index) + len(delta.to_delete),
             manifest=self._store.manifest(),
+            being_built=self._store.run_held(),
         )
 
     async def _index(

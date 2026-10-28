@@ -15,6 +15,7 @@ from semantic_code_mcp.server.responses import (
     IndexingSummaryView,
     IndexManifestView,
     IndexStatusResponse,
+    ModelView,
     SearchCodeResponse,
     SearchDebugView,
     SearchResultView,
@@ -115,20 +116,25 @@ def present_status(status: IndexStatus, project_root: Path) -> IndexStatusRespon
         files_count=status.files_count,
         chunks_count=status.chunks_count,
         embedded_chunks_count=status.chunks_with_vectors_count,
+        model=present_model(status.model),
         stale_files_count=status.stale_files_count,
-        manifest=None
-        if status.manifest is None
-        else present_manifest(status.manifest, status.model),
+        manifest=None if status.manifest is None else present_manifest(status.manifest),
+        being_built=status.being_built,
     )
 
 
-def present_manifest(manifest: IndexManifest, model: VectorIdentity) -> IndexManifestView:
-    """What built an index, and the model whose vectors in it the status counts, as
-    `index_status` tells them."""
+def present_manifest(manifest: IndexManifest) -> IndexManifestView:
+    """What built an index, as `index_status` tells it."""
     return IndexManifestView(
+        chunker_version=manifest.identity.chunker_version,
+        schema_version=manifest.schema_version,
+    )
+
+
+def present_model(model: VectorIdentity) -> ModelView:
+    """The model whose vectors the status counts, as `index_status` tells it."""
+    return ModelView(
         model_name=model.model_name,
         model_revision=model.model_revision,
         embedder_version=model.embedder_version,
-        chunker_version=manifest.identity.chunker_version,
-        schema_version=manifest.schema_version,
     )

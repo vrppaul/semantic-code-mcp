@@ -91,6 +91,11 @@ class IndexStore(ABC):
         """Free the index a run held."""
 
     @abstractmethod
+    def run_held(self) -> bool:
+        """Whether a run holds the index now, this session's or another's; never waits, and
+        leaves every run's hold as it was."""
+
+    @abstractmethod
     def indexed_files(self) -> IndexedFiles:
         """The record of every file the index holds, and the paths it holds chunks of with
         no record."""

@@ -123,7 +123,7 @@ Check indexing status for a project.
 |-----------|------|---------|-------------|
 | `project_path` | `str` | the client's workspace root, inside a git repository | Absolute path to the project, or to a directory inside its git repository: the repository is indexed once, and a search keeps to the directory; not a repository that ignores the directory or holds the user's home directory, where the directory is a project of its own |
 
-Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `embedded_chunks_count` (the chunks with the server's model's vectors, which a server set to search by meaning reads without embedding first), `stale_files_count` and `manifest` (the chunker and storage versions that built the index, and the model, its revision and the embedder version whose vectors `embedded_chunks_count` counts).
+Returns `project_root` (a directory inside a repository reports the repository's root), `is_indexed`, `last_updated`, `files_count`, `chunks_count`, `embedded_chunks_count` (the chunks with the server's model's vectors, which a server set to search by meaning reads without embedding first), `model` (the model, its revision and the embedder version whose vectors `embedded_chunks_count` counts), `stale_files_count`, `manifest` (the chunker and storage versions that built the index) and `being_built` (a run, this session's or another's, is building the index now: until it ends the counts are what it has written so far, none during a first build).
 
 ## Configuration
 

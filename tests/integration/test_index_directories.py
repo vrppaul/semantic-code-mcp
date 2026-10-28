@@ -255,3 +255,25 @@ def set_mtime_of_tree(directory: Path, seconds: int) -> None:
     """Set the modification time of a directory and of everything under it."""
     for path in [directory, *directory.rglob("*")]:
         os.utime(path, (seconds, seconds))
+
+
+def test_a_status_sees_a_run_hold_the_index_from_its_own_session_and_another_s(
+    tmp_path: Path,
+):
+    """Another session's build shows its index as not yet written: the status says a run
+    holds it, so an agent waits rather than taking the index for broken."""
+    session = directory_of(tmp_path, IDENTITY, LAYOUT)
+    another_session = directory_of(tmp_path, IDENTITY, LAYOUT)
+    before = another_session.run_held()
+    session.try_hold_for_run()
+
+    held = (session.run_held(), another_session.run_held())
+    session.release_run()
+
+    assert (before, held, another_session.run_held()) == (False, (True, True), False)
+
+
+def test_asking_whether_a_run_holds_an_index_never_made_makes_nothing(tmp_path: Path):
+    directory = directory_of(tmp_path / "project", IDENTITY, LAYOUT)
+
+    assert (directory.run_held(), (tmp_path / "project").exists()) == (False, False)

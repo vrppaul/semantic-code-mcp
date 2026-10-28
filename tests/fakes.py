@@ -137,6 +137,11 @@ class FakeIndexStore(IndexStore):
         pass
 
     @override
+    def run_held(self) -> bool:
+        # Its runs are its own service's, which no status of another session reads
+        return False
+
+    @override
     def indexed_files(self) -> IndexedFiles:
         # Its write records chunks and files together: no chunk is left without its record
         return IndexedFiles(records=list(self.files_by_path.values()), unrecorded_paths=[])
@@ -272,6 +277,10 @@ class DelegatingStore(IndexStore):
     @override
     def release_run(self) -> None:
         self._inner.release_run()
+
+    @override
+    def run_held(self) -> bool:
+        return self._inner.run_held()
 
     @override
     def indexed_files(self) -> IndexedFiles:

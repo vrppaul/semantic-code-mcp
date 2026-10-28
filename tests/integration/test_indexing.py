@@ -370,6 +370,33 @@ async def test_a_run_waits_while_another_session_builds_the_index_then_finds_it_
     assert (report.files_indexed, status.chunks_count) == (0, 6)
 
 
+async def test_a_status_says_another_session_builds_the_index_while_it_does(
+    store_settings: Settings, sample_project: Path, store_class: StoreClass
+):
+    """During another session's first build the index shows nothing yet: the status says a
+    run builds it, so an agent waits rather than taking the index for broken."""
+    project_directory = get_index_path(store_settings, sample_project)
+    other_store = StoreHeldInItsWrite(open_store(store_class, project_directory, IDENTITY))
+    other_run = asyncio.create_task(
+        indexing_service(other_store, store_settings, build_chunker()).index(
+            sample_project, force=False, progress=NO_PROGRESS
+        )
+    )
+    await asyncio.to_thread(other_store.writing.wait, WAIT_SEEN_TIMEOUT_SECONDS)
+    indexing = (
+        build_registry(store_settings, FakeEmbedder(), store_opener(store_settings))
+        .services_for(sample_project)
+        .indexing
+    )
+
+    during = await indexing.status(sample_project)
+    other_store.release.set()
+    await other_run
+    after = await indexing.status(sample_project)
+
+    assert (during.being_built, after.being_built) == (True, False)
+
+
 async def test_a_run_cancelled_while_it_waits_leaves_the_index_free(
     store_settings: Settings,
     sample_project: Path,

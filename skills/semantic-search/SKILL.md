@@ -106,8 +106,11 @@ searched (`files_indexed`, `chunks_indexed`).
 - Call `index_status` to see which root a directory belongs to and what built its index,
   not before every search. It answers `project_root`, `is_indexed`, `last_updated`,
   `files_count`, `chunks_count`, `embedded_chunks_count` (the chunks a server set to search
-  by meaning too reads without embedding first), `stale_files_count` and the `manifest`: `model_name`,
-  `model_revision`, `embedder_version`, `chunker_version`, `schema_version`.
+  by meaning too reads without embedding first) and the `model` whose vectors it counts
+  (`model_name`, `model_revision`, `embedder_version`), `stale_files_count`, the `manifest`
+  of what built the index (`chunker_version`, `schema_version`), and `being_built`: a run,
+  this session's or another's, is building the index now, so the counts are what it has
+  written so far; a search waits for it, so do not take the index for broken.
 - Each chunker version keeps an index of its own, built once on the first search after a
   change, and each model's vectors are kept apart in it; an index no session used for a
   week is removed.

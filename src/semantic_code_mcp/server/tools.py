@@ -179,8 +179,10 @@ async def index_status(
 
     Returns whether the project is indexed, when it was last updated, how many of its
     Python, Rust and Markdown files and their chunks are indexed, how many chunks have the
-    model's vectors, how many files changed since, and what built the index (each chunker
-    version keeps an index of its own, and each model's vectors are kept apart in it).
+    model's vectors, how many files changed since, what built the index (each chunker
+    version keeps an index of its own, and each model's vectors are kept apart in it), and
+    whether a run, this session's or another's, is building it now, so its counts are what
+    the run has written so far.
 
     Note: search_code automatically re-indexes stale files before searching,
     so there is no need to check or act on staleness manually.

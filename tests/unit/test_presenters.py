@@ -78,7 +78,7 @@ def test_debug_details_only_when_asked():
     assert present_search(report, AT_THE_ROOT, include_debug=True).debug is not None
 
 
-def test_a_status_names_the_chunker_that_built_the_index_and_the_model_of_its_vectors():
+def test_a_status_names_what_built_the_index_the_model_of_its_vectors_apart_and_a_run_on_it():
     manifest = IndexManifest(
         identity=IndexIdentity(chunker_version=3),
         store_kind=StoreKind.sqlite,
@@ -92,14 +92,17 @@ def test_a_status_names_the_chunker_that_built_the_index_and_the_model_of_its_ve
         chunks_with_vectors_count=1,
         stale_files_count=0,
         manifest=manifest,
+        being_built=True,
     )
 
     view = present_status(status, PROJECT_ROOT)
 
     assert (
-        view.manifest.model_name,
-        view.manifest.model_revision,
-        view.manifest.embedder_version,
+        view.model.model_name,
+        view.model.model_revision,
+        view.model.embedder_version,
         view.manifest.chunker_version,
+        view.manifest.schema_version,
         view.embedded_chunks_count,
-    ) == ("model", "revision", 4, 3, 1)
+        view.being_built,
+    ) == ("model", "revision", 4, 3, 2, 1, True)

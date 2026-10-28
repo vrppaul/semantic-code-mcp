@@ -19,6 +19,11 @@ EMBEDDED_CHUNKS_DESCRIPTION = (
     "How many of the chunks have the server's model's vectors; a server set to search by"
     " meaning too embeds the rest before it answers."
 )
+# What an agent reads of an index another session, or this one, is building as it asks
+BEING_BUILT_DESCRIPTION = (
+    "A run is building the index now, this session's or another's: until it ends, the counts"
+    " are what it has written so far, none during a first build; a search waits for it."
+)
 SEARCHED_DIRECTORY_DESCRIPTION = (
     "The directory the search kept to: project_root, or a directory under it; the search did"
     " not look outside it."
@@ -109,8 +114,17 @@ class IndexCodebaseResponse(BaseModel):
 
 class IndexManifestView(BaseModel):
     """What built an index: its chunker and the store's schema, each of whose versions keeps
-    an index of its own; and the model whose vectors `embedded_chunks_count` counts, which
-    the index keeps apart from other models'."""
+    an index of its own."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunker_version: int
+    schema_version: int
+
+
+class ModelView(BaseModel):
+    """The model a search by meaning embeds with, whose vectors `embedded_chunks_count`
+    counts: the index keeps each model's vectors apart."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -119,8 +133,6 @@ class IndexManifestView(BaseModel):
     model_revision: str | None
     # How the embedder reads the model: another reading embeds the chunks again
     embedder_version: int
-    chunker_version: int
-    schema_version: int
 
 
 class IndexStatusResponse(BaseModel):
@@ -134,5 +146,7 @@ class IndexStatusResponse(BaseModel):
     files_count: int
     chunks_count: int
     embedded_chunks_count: int = Field(description=EMBEDDED_CHUNKS_DESCRIPTION)
+    model: ModelView
     stale_files_count: int
     manifest: IndexManifestView | None
+    being_built: bool = Field(description=BEING_BUILT_DESCRIPTION)

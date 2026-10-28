@@ -163,6 +163,21 @@ class IndexDirectory:
         self._run_held = False
         self._run_lock.release()
 
+    def run_held(self) -> bool:
+        """Whether a run holds the index, this session's or another's, as a status reports
+        it: tried without waiting and freed at once, and nothing made where no run ever took
+        the lock."""
+        if self._run_held:
+            return True
+        if not Path(self._run_lock.lock_file).is_file():
+            return False
+        try:
+            self._run_lock.acquire()
+        except Timeout:
+            return True
+        self._run_lock.release()
+        return False
+
     @contextmanager
     def writing(self, *, records_manifest: bool) -> Generator[None]:
         """Hold the index for one write: marked as used, the project's directory made for the
@@ -250,6 +265,10 @@ class DirectoryStore(IndexStore):
     @override
     def release_run(self) -> None:
         self._directory.release_run()
+
+    @override
+    def run_held(self) -> bool:
+        return self._directory.run_held()
 
 
 def index_directory_name(identity: IndexIdentity, layout: IndexLayout) -> str:

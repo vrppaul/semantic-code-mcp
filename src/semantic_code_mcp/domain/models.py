@@ -341,6 +341,9 @@ class IndexStatus(BaseModel):
     # Files the index no longer matches: new, modified or deleted since it was written
     stale_files_count: int
     manifest: IndexManifest | None
+    # Whether a run is building the index as the status is read, so its counts are what the
+    # run has written so far, and none during a first build
+    being_built: bool
 
     @property
     def is_indexed(self) -> bool:
