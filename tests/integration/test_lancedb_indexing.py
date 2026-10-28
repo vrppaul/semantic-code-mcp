@@ -1,7 +1,8 @@
 """Tests of what an index run leaves in the LanceDB store of its own, beside what it leaves in
 every store (`test_indexing.py`): the run's chunks folded into the full-text index, a run
-cancelled as its last write lands included, and the chunks a write stopped before their
-records left behind, which a store writing in one transaction never leaves."""
+cancelled as its last write lands included, the files a cancelled first index wrote, which
+SQLite's whole first build does not keep, and the chunks a write stopped before their records
+left behind, which a store writing in one transaction never leaves."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -16,7 +17,7 @@ from semantic_code_mcp.domain.models import IndexCounts
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.storage.index_directories import IndexDirectory
 from semantic_code_mcp.storage.lancedb import FILES_TABLE, LanceDBIndexStore
-from tests.fakes import FAKE_MODEL, StoreHeldInItsWrite
+from tests.fakes import FAKE_MODEL, StoreCancelledAfterItsWrite, StoreHeldInItsWrite
 from tests.helpers import indexing_service
 from tests.indexing import (
     ADDED_FUNCTION,
@@ -163,4 +164,19 @@ async def test_a_run_cancelled_while_its_last_write_lands_leaves_every_chunk_in_
         True,
         True,
         0,
+    )
+
+
+async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
+    test_settings: Settings, tmp_path: Path, store: LanceDBIndexStore
+):
+    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
+    cancelled = StoreCancelledAfterItsWrite(store)
+    indexing = indexing_service(cancelled, test_settings, build_chunker())
+
+    with pytest.raises(asyncio.CancelledError):
+        await indexing.index(project, force=False, progress=NO_PROGRESS)
+
+    assert store.counts(FAKE_MODEL) == IndexCounts(
+        files=2, chunks=2 * FUNCTIONS_PER_FILE, chunks_with_vectors=0
     )

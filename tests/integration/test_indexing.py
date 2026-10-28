@@ -17,7 +17,7 @@ from semantic_code_mcp.app import (
 )
 from semantic_code_mcp.chunkers.composite import CHUNKER_VERSION
 from semantic_code_mcp.config import LOCAL_INDEX_DIRECTORY, Settings, get_index_path
-from semantic_code_mcp.domain.models import IndexCounts, StoreKind
+from semantic_code_mcp.domain.models import StoreKind
 from semantic_code_mcp.embedding import OnnxEmbedder
 from semantic_code_mcp.services import indexing as indexing_module
 from semantic_code_mcp.services.indexing import ANOTHER_SESSION_BUILDS, IndexingService
@@ -32,7 +32,6 @@ from tests.fakes import (
     FakeEmbedder,
     FakeIndexStore,
     ProgressRecorder,
-    StoreCancelledAfterItsWrite,
     VersionedChunker,
 )
 from tests.helpers import (
@@ -44,7 +43,6 @@ from tests.helpers import (
 )
 from tests.indexing import (
     ADDED_FUNCTION,
-    FILES_OF_FUNCTIONS,
     FUNCTIONS_PER_FILE,
     IDENTITY,
     NO_PROGRESS,
@@ -457,21 +455,6 @@ def test_one_project_has_one_set_of_services(test_settings: Settings, sample_pro
     registry = build_registry(test_settings, FakeEmbedder())
 
     assert registry.services_for(sample_project) is registry.services_for(sample_project)
-
-
-async def test_a_cancelled_first_index_keeps_the_files_it_wrote(
-    test_settings: Settings, tmp_path: Path, store_class: StoreClass
-):
-    project = functions_in_files(tmp_path, FILES_OF_FUNCTIONS, FUNCTIONS_PER_FILE)
-    store = StoreCancelledAfterItsWrite(open_store(store_class, tmp_path / "index", IDENTITY))
-    indexing = indexing_service(store, test_settings, build_chunker())
-
-    with pytest.raises(asyncio.CancelledError):
-        await indexing.index(project, force=False, progress=NO_PROGRESS)
-
-    assert store.counts(FAKE_MODEL) == IndexCounts(
-        files=2, chunks=2 * FUNCTIONS_PER_FILE, chunks_with_vectors=0
-    )
 
 
 # Files of FUNCTIONS_PER_FILE chunks enough for three slices: two of two files, one of one

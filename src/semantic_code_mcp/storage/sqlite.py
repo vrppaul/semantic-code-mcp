@@ -12,6 +12,12 @@ the index as it was, and no chunk is ever left without its record. The full-text
 FTS5's, kept exact row by row, so nothing is folded at a run's end; it holds no copy of the
 text (`content=''`), only what finds it.
 
+A run that finds no database builds it whole (ADR 009, D12): its writes go to a database of
+their own beside the index's, without a journal or a wait for the disk, and its last write
+switches it to WAL and renames it into place, so no reader sees it before it is whole, and a
+build stopped midway leaves only a file the next build deletes. Its writes put chunks in a
+database that holds none of their files' yet, so they delete nothing first.
+
 Vectors live in a table of their own, keyed by the digest of the model's identity and the
 chunk's id, which digests the chunk's path, occurrence and text: a vector stored under the
 two is that text's vector of that model for as long as both live. So a write of words keeps
@@ -158,6 +164,10 @@ SELECT_DATABASE_ID = "SELECT id FROM database"
 # rather than leave an empty file a write would take for a made database
 EXISTING_DATABASE = "?mode=rw"
 WRITE_AHEAD_LOG = "PRAGMA journal_mode=WAL"
+# A whole build's database keeps no journal and does not wait for the disk: nobody reads it
+# before its last write, and a build stopped midway is thrown away
+NO_JOURNAL = "PRAGMA journal_mode=OFF"
+NO_WAIT_FOR_THE_DISK = "PRAGMA synchronous=OFF"
 FULL_TEXT_COMPILED_IN = "SELECT sqlite_compileoption_used('ENABLE_FTS5')"
 BEGIN_READ = "BEGIN"
 BEGIN_WRITE = "BEGIN IMMEDIATE"
@@ -368,6 +378,24 @@ class SqliteIndexStore(DirectoryStore):
         # worker threads, so they take and replace them under a lock
         self._holding = threading.Lock()
         self._held: HeldVectors | None = None
+        # Whether the run this store holds builds the database whole, and whether that build
+        # has made its database yet
+        self._building_whole = False
+        self._whole_build_made = False
+
+    @override
+    def try_hold_for_run(self) -> bool:
+        held = super().try_hold_for_run()
+        # A run that finds no database builds it whole, out of every reader's sight
+        self._building_whole = held and not self._database().is_file()
+        self._whole_build_made = False
+        return held
+
+    @override
+    def release_run(self) -> None:
+        # A build stopped before its last write leaves its file for the next build to delete
+        self._building_whole = False
+        super().release_run()
 
     @override
     def indexed_files(self) -> IndexedFiles:
@@ -394,6 +422,9 @@ class SqliteIndexStore(DirectoryStore):
     def write(self, update: IndexUpdate) -> None:
         with self._directory.writing():
             try:
+                if self._building_whole:
+                    self._write_whole_build(update)
+                    return
                 self._make_database()
                 with closing(self._connect()) as connection, connection:
                     # The connection commits the transaction, or rolls it back on any error
@@ -548,6 +579,28 @@ class SqliteIndexStore(DirectoryStore):
                 message = f"SQLite could not write the index in {self._directory.path}: {error}"
                 raise SqliteStoreError(message) from error
 
+    def _write_whole_build(self, update: IndexUpdate) -> None:
+        """One write of a whole build, into its own database, made by its first write; the
+        last switches it to WAL and renames it into place. Called under the write lock."""
+        unfinished = self._unfinished_database()
+        if not self._whole_build_made:
+            unfinished.unlink(missing_ok=True)
+            with closing(sqlite3.connect(unfinished, isolation_level=None)) as connection:
+                make_tables(connection)
+            self._whole_build_made = True
+        with closing(sqlite3.connect(unfinished, isolation_level=None)) as connection:
+            connection.execute(NO_JOURNAL)
+            connection.execute(NO_WAIT_FOR_THE_DISK)
+            with connection:
+                connection.execute(BEGIN_WRITE)
+                insert_chunks(connection, update)
+                replace_records(connection, update)
+            if update.last_of_run:
+                connection.execute(WRITE_AHEAD_LOG)
+        if update.last_of_run:
+            unfinished.replace(self._database())
+            self._building_whole = False
+
     def _make_database(self) -> None:
         """Make the database, its tables and its full-text index, if there is none: under a
         temporary name, renamed into place whole, so a reader finds no database or one it
@@ -555,17 +608,16 @@ class SqliteIndexStore(DirectoryStore):
         database = self._database()
         if database.is_file():
             return
-        unfinished = database.with_name(DATABASE_FILE + UNFINISHED_SUFFIX)
+        unfinished = self._unfinished_database()
         unfinished.unlink(missing_ok=True)
         with closing(sqlite3.connect(unfinished, isolation_level=None)) as connection:
-            if not connection.execute(FULL_TEXT_COMPILED_IN).fetchone()[0]:
-                message = "this Python's SQLite lacks FTS5, which the index's words need"
-                raise SqliteStoreError(message)
             connection.execute(WRITE_AHEAD_LOG)
-            for statement in CREATE_TABLES:
-                connection.execute(statement)
-            connection.execute(INSERT_DATABASE_ID, [uuid.uuid4().hex])
+            make_tables(connection)
         unfinished.replace(database)
+
+    def _unfinished_database(self) -> Path:
+        """Where a database is made before it is renamed into place."""
+        return self._database().with_name(DATABASE_FILE + UNFINISHED_SUFFIX)
 
     @contextmanager
     def _snapshot(self) -> Generator[sqlite3.Connection | None]:
@@ -606,10 +658,28 @@ class SqliteIndexStore(DirectoryStore):
         return connection
 
 
+def make_tables(connection: sqlite3.Connection) -> None:
+    """Make a new database's tables, its full-text index and its id; refused where this
+    Python's SQLite lacks FTS5."""
+    if not connection.execute(FULL_TEXT_COMPILED_IN).fetchone()[0]:
+        message = "this Python's SQLite lacks FTS5, which the index's words need"
+        raise SqliteStoreError(message)
+    for statement in CREATE_TABLES:
+        connection.execute(statement)
+    connection.execute(INSERT_DATABASE_ID, [uuid.uuid4().hex])
+
+
 def replace_chunks(connection: sqlite3.Connection, update: IndexUpdate) -> None:
     """Put the write's chunks, with their words, in place of what the index held of the files
     written and removed: the vectors of the chunks it keeps by id stay, those of the chunks it
     drops go. A chunk's id digests its path, so no other file holds one of the write's ids."""
+    drop_replaced(connection, update)
+    insert_chunks(connection, update)
+
+
+def drop_replaced(connection: sqlite3.Connection, update: IndexUpdate) -> None:
+    """Drop what the index holds of the files a write replaces and removes, and the vectors of
+    the chunks it does not keep by id."""
     replaced_paths = [
         *(file.path.as_posix() for file in update.files),
         *(path.as_posix() for path in update.removed_paths),
@@ -624,6 +694,10 @@ def replace_chunks(connection: sqlite3.Connection, update: IndexUpdate) -> None:
     connection.executemany(DELETE_VECTORS_OF_CHUNK, [(chunk_id,) for chunk_id in dropped_ids])
     connection.executemany(DELETE_WORDS_OF_PATH, [(path,) for path in replaced_paths])
     connection.executemany(DELETE_CHUNKS_OF_PATH, [(path,) for path in replaced_paths])
+
+
+def insert_chunks(connection: sqlite3.Connection, update: IndexUpdate) -> None:
+    """Store a write's chunks with their words, under row ids past every one the table gave."""
     first_row_id = connection.execute(LAST_ROW_ID).fetchone()[0] + NEXT_ROW_ID_STEP
     row_ids = range(first_row_id, first_row_id + len(update.chunks))
     connection.executemany(

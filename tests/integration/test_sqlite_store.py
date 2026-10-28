@@ -1,6 +1,6 @@
 """Tests of what the SQLite store does of its own, beside the contract every store holds
-(`test_index_store.py`): a write applied whole or not at all, and what its schema's version
-names."""
+(`test_index_store.py`): a write applied whole or not at all, a first build out of every
+reader's sight until it ends, and what its schema's version names."""
 
 import sqlite3
 import tempfile
@@ -30,6 +30,9 @@ from tests.stores import (
 CHUNKS_RECORD = Path(__file__).parent.parent / "data" / "schema_outputs.json"
 RECORDED_SCHEMA = Path(__file__).parent.parent / "data" / "sqlite_schema_outputs.json"
 RECORD_INDENT = 2
+# What SQLite answers for a database whose readers read beside its writer
+WRITE_AHEAD_LOG_MODE = "wal"
+JOURNAL_MODE = "PRAGMA journal_mode"
 # Every table, index and full-text index of a database, by name, with the statement that
 # made it; FTS5's shadow tables follow from its own
 SCHEMA_STATEMENTS = (
@@ -126,3 +129,58 @@ def test_a_write_that_fails_midway_leaves_the_index_as_it_was(tmp_path: Path):
         [chunk.name for chunk in matching(store, "kept")],
         store.counts(MODEL).chunks_with_vectors,
     ) == ([record_of("kept.py")], ["kept"], 1)
+
+
+def session_store(project_directory: Path) -> SqliteIndexStore:
+    """A store of the index, as a session's process opens it, with a directory of its own."""
+    return SqliteIndexStore(index_directory_of(SqliteIndexStore, project_directory, IDENTITY))
+
+
+def within_the_run(chunk: Chunk) -> IndexUpdate:
+    """A write of a run that more writes follow."""
+    return IndexUpdate(
+        files=[record_of(chunk.path.as_posix())],
+        chunks=[chunk],
+        removed_paths=[],
+        last_of_run=False,
+    )
+
+
+def test_a_first_build_shows_nothing_until_its_last_write_then_everything(tmp_path: Path):
+    """A first index of words is built in a database of its own, without a journal, and
+    renamed into place whole, readers beside its writer from then on (ADR 009, D12)."""
+    builder = session_store(tmp_path / "index")
+    reader = session_store(tmp_path / "index")
+    builder.try_hold_for_run()
+    builder.write(within_the_run(function_chunk("first", "first.py", "def first(): pass")))
+    during = reader.counts(MODEL).chunks
+
+    builder.write(update_of([function_chunk("last", "last.py", "def last(): pass")], []))
+    builder.release_run()
+
+    with sqlite3.connect(builder_database(tmp_path / "index")) as connection:
+        mode = connection.execute(JOURNAL_MODE).fetchone()[0]
+    assert (during, reader.counts(MODEL).chunks, mode) == (0, 2, WRITE_AHEAD_LOG_MODE)
+
+
+def test_a_first_build_stopped_midway_leaves_no_index_and_the_next_builds_whole(
+    tmp_path: Path,
+):
+    """A cancelled first index, or a crash, leaves only its file, which the next deletes."""
+    stopped = session_store(tmp_path / "index")
+    stopped.try_hold_for_run()
+    stopped.write(within_the_run(function_chunk("first", "first.py", "def first(): pass")))
+    stopped.release_run()
+    left = stopped.counts(MODEL).chunks
+    next_build = session_store(tmp_path / "index")
+    next_build.try_hold_for_run()
+
+    next_build.write(update_of([function_chunk("last", "last.py", "def last(): pass")], []))
+    next_build.release_run()
+
+    assert (left, [chunk.name for chunk in matching(next_build, "def")]) == (0, ["last"])
+
+
+def builder_database(project_directory: Path) -> Path:
+    """The database file of the index in a project's index directory."""
+    return index_directory_of(SqliteIndexStore, project_directory, IDENTITY).path / DATABASE_FILE
