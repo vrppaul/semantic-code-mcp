@@ -226,10 +226,16 @@ source_modules = [
 forbidden_modules = ["mcp"]
 
 [[tool.importlinter.contracts]]
-name = "LanceDB and its write lock stay in the store"
+name = "Each store is a module of its own"
+type = "independence"
+# A store is added or dropped as a module and an optional extra, and what stores share
+# lives in modules of storage that neither is
+modules = ["semantic_code_mcp.storage.lancedb", "semantic_code_mcp.storage.sqlite"]
+
+[[tool.importlinter.contracts]]
+name = "The stores' databases and their write lock stay in storage"
 type = "forbidden"
-# Replacing the vector database, or how its writers keep out of each other's way,
-# touches one part
+# Replacing a database, or how its writers keep out of each other's way, touches one part
 source_modules = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.cli",
@@ -243,7 +249,7 @@ source_modules = [
     "semantic_code_mcp.logging",
     "semantic_code_mcp.domain",
 ]
-forbidden_modules = ["lancedb", "lance", "pyarrow", "filelock"]
+forbidden_modules = ["lancedb", "lance", "pyarrow", "sqlite3", "filelock"]
 # Through the part that wraps it, a library is meant to be reached
 allow_indirect_imports = true
 
@@ -326,6 +332,9 @@ ignore_names = [
     "python",
     "columns",
     "search_texts",
+    "statements",
+    # What sqlite3 reads of a connection to make its rows: by name, not by position
+    "row_factory",
     # Kept in an agents run's results, to read a session's cost by hand
     "cache_creation_tokens",
     # The recorders of what each version made, which the version tests compare: run by hand

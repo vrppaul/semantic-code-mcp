@@ -21,13 +21,17 @@ from semantic_code_mcp.domain.models import (
     SourceFile,
 )
 from semantic_code_mcp.storage.lancedb import LanceDBIndexStore
+from semantic_code_mcp.storage.sqlite import SqliteIndexStore
 from tests.fakes import EMBEDDING_DIMENSION
 
 # A store built on a project's index directory, for an identity, as each store's class builds
 # one: `store_factory(project_directory, identity, lock_timeout_seconds=...)`
 type StoreFactory = Callable[..., IndexStore]
 # Every store the contract's tests run over
-STORE_CLASSES = [pytest.param(LanceDBIndexStore, id="lancedb")]
+STORE_CLASSES = [
+    pytest.param(LanceDBIndexStore, id="lancedb"),
+    pytest.param(SqliteIndexStore, id="sqlite"),
+]
 # What a search finds in an index that holds no chunks
 NO_CANDIDATES = SearchCandidates(by_vector=[], by_keyword=[])
 

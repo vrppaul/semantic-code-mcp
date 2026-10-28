@@ -110,13 +110,15 @@ class IndexDirectory:
         return FileLock(self.write_lock, timeout=self._lock_timeout_seconds)
 
     def create(self) -> None:
-        """Make the directory and the project's `.gitignore`, for a writer. Called under the
-        write lock: a removal renames an index only under that lock, so it cannot take the
-        directory between its making and the write."""
+        """Make the directory and the project's `.gitignore`, for a writer, and mark the index
+        as used, as a first write would leave the project's unused indexes for its first read
+        otherwise. Called under the write lock: a removal renames an index only under that
+        lock, so it cannot take the directory between its making and the write."""
         self._path.mkdir(parents=True, exist_ok=True)
         ignore_file = self._project_directory / GITIGNORE_FILE
         if not ignore_file.exists():
             ignore_file.write_text(IGNORE_EVERYTHING)
+        self.note_use()
 
     def prepare_for_writing(self) -> None:
         """Mark the index as used and make the project's directory, before the write lock,

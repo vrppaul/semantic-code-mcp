@@ -1,0 +1,17 @@
+{
+  "schemas": {
+    "1": {
+      "search_texts": [
+        "class HTTPServerError(RuntimeError):\n    \"\"\"A 5xx answer, kept with its retryAfter header.\"\"\"\n\n    def __init__(self, status_code: int, retry_after: float | None) -> None:\n        self.status_code = status_code\n        self.retry_after = retry_after\n\nHTTPServerError\nHTTP Server Error",
+        "pub fn distance(&self, other: &Point) -> f64 {\n    ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()\n}\ndistance\ngeometry Point",
+        "### On Linux\n\nRun `pipx install semantic-code-mcp`, then the server's `--help`.\nOn Linux\nGuide Install"
+      ],
+      "statements": [
+        "CREATE TABLE chunks (row_id INTEGER PRIMARY KEY, chunk_id TEXT NOT NULL UNIQUE, path TEXT NOT NULL, language TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, parent TEXT, line_start INTEGER NOT NULL, line_end INTEGER NOT NULL, content TEXT NOT NULL, vector BLOB NOT NULL)",
+        "CREATE INDEX chunks_by_path ON chunks (path)",
+        "CREATE TABLE files (path TEXT PRIMARY KEY, mtime_ns INTEGER NOT NULL, size_bytes INTEGER NOT NULL)",
+        "CREATE VIRTUAL TABLE words USING fts5(search_text, tokenize='porter unicode61', content='', contentless_delete=1)"
+      ]
+    }
+  }
+}
