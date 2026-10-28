@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end tests drive the three MCP tools through a client
 
 ### Changed
-- A search finds what changed since the index at a fraction of the cost: discovery judges and resolves each directory once for all its files and matches the ignore patterns as one expression, so on Sentry (8,546 files) `index_status` takes 0.30 s instead of 1.13 s and a warm search 0.44 s instead of 1.18 s
+- A search finds what changed since the index at a fraction of the cost: discovery judges and resolves each directory once for all its files and matches the ignore patterns as one expression, so on Sentry (8,546 files) `index_status` takes 0.30 to 0.40 s instead of 1.13 s and a warm search about 0.45 s instead of 1.18 s
 - `search_code` asks Claude Code to load it with the prompt rather than behind its tool search (`_meta` `anthropic/alwaysLoad`), so an agent no longer spends a turn looking it up before it searches; on a repository the agent did not know, it took the search unprompted in every session where it had taken it in two of three; `index_codebase` and `index_status`, seldom needed as every search indexes first, still wait behind tool search
 - The server hands back the embedder's working memory after each batch of documents: once it has indexed, a session's server holds about 550-700 MB, by project, instead of keeping its peak of about 1.1-1.3 GB for as long as the session runs, and its peak is about 800-860 MB
 - The server's stderr holds its own JSON log lines alone: the libraries' records below WARNING (httpx's request of each model file, sentence-transformers' lines and progress bar) no longer land among them
