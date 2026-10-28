@@ -76,6 +76,9 @@ class StatusReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     files_count: int
+    chunks_count: int
+    embedded_chunks_count: int
+    stale_files_count: int
 
 
 class ServerConnection:

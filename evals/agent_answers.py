@@ -8,27 +8,30 @@ chunks of its file it names, as the server chunks that file, and those chunks ar
 with the keys as `evals quality` matches a hit, by the parent where a key names one. A
 member of a keyed class, or the class of a keyed method, counts as right and is counted
 apart. What the chunks cannot settle, a bare name of several parents that the keys tell
-apart or a name no chunk has, is left to a judge, whose verdict goes into the corpus's keys,
-and a kept run is scored again without new sessions.
+apart, a name no chunk has, a chunk no key names, is left to a judge, whose verdict goes
+into the question's judged answers as the agent wrote the answer, read before the chunks;
+a kept run is then scored again without new sessions.
 """
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from enum import StrEnum, auto
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from evals.corpus import Answer
+from evals.corpus import JudgedAnswer, Query
 from evals.quality import chunk_hit, hit_answers
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.domain.models import PARENT_SEPARATORS, Chunk
 from semantic_code_mcp.services.search import name_asked
 
 # What an answer may wrap its name in: a fence's backticks, a call's parentheses, the marks
-# of a Markdown heading
+# of a Markdown heading; and a note in parentheses after a blank, `Event.group (setter)`
 CODE_FENCE = "`"
 CALL_PARENTHESES = "()"
 HEADING_MARK = "#"
+TRAILING_NOTE = re.compile(r"\s+\([^()]*\)$")
 # What prefixes a path written from the repository's root
 CURRENT_DIRECTORY_PREFIX = "./"
 
@@ -55,10 +58,13 @@ class AnswerVerdict(StrEnum):
     ambiguous = auto()
     # No chunk of the answer's file, as the server chunks it, has the answer's name
     unresolved = auto()
+    # A judge settled the answer as the agent wrote it, right or wrong
+    judged_right = auto()
+    judged_wrong = auto()
 
 
 # The verdicts a run counts as right answers
-RIGHT_VERDICTS = frozenset({AnswerVerdict.right, AnswerVerdict.member})
+RIGHT_VERDICTS = frozenset({AnswerVerdict.right, AnswerVerdict.member, AnswerVerdict.judged_right})
 # The verdicts a judge settles, as no key does
 VERDICTS_TO_JUDGE = frozenset(
     {AnswerVerdict.other_chunk, AnswerVerdict.ambiguous, AnswerVerdict.unresolved}
@@ -85,10 +91,10 @@ class AnswerScorer:
         self._chunker = build_chunker()
         self._chunks_by_path: dict[str, list[Chunk]] = {}
 
-    def score(self, answer: SessionAnswer, keys: Sequence[Answer]) -> AnswerScore:
-        """An answer scored against a question's keys."""
-        paths = [answered_path(answer, self._working_tree), *(key.path for key in keys)]
-        return score_answer(answer, keys, self._chunks_of(paths), self._working_tree)
+    def score(self, answer: SessionAnswer, query: Query) -> AnswerScore:
+        """An answer scored against a question's keys and judged answers."""
+        paths = [answered_path(answer, self._working_tree), *(key.path for key in query.answers)]
+        return score_answer(answer, query, self._chunks_of(paths), self._working_tree)
 
     def _chunks_of(self, paths: Iterable[str]) -> dict[str, list[Chunk]]:
         for path in paths:
@@ -108,25 +114,35 @@ class AnswerScorer:
 
 def score_answer(
     answer: SessionAnswer,
-    keys: Sequence[Answer],
+    query: Query,
     chunks_by_path: Mapping[str, Sequence[Chunk]],
     working_tree: Path,
 ) -> AnswerScore:
-    """An answer scored against a question's keys, through the chunks of the files it and the
-    keys name."""
+    """An answer scored against a question: by the judge's verdict where one settled it as
+    written, else through the chunks of the files it and the keys name."""
     path = answered_path(answer, working_tree)
+    file_right = any(key.path == path for key in query.answers)
+    judged = judged_verdict(path, answer.symbol, query.judged)
+    if judged is not None:
+        return AnswerScore(path=path, file_right=file_right, verdict=judged)
     named = chunks_named(answer.symbol, chunks_by_path.get(path, ()))
     keyed = [
         chunk
-        for key in keys
+        for key in query.answers
         for chunk in chunks_by_path.get(key.path, ())
         if hit_answers(chunk_hit(chunk), key)
     ]
-    return AnswerScore(
-        path=path,
-        file_right=any(key.path == path for key in keys),
-        verdict=verdict_of(named, keyed),
-    )
+    return AnswerScore(path=path, file_right=file_right, verdict=verdict_of(named, keyed))
+
+
+def judged_verdict(path: str, symbol: str, judged: Sequence[JudgedAnswer]) -> AnswerVerdict | None:
+    """The judge's verdict on an answer as written, its name read alike on both sides; None
+    where no judge settled it."""
+    name = written_name(symbol).casefold()
+    for answer in judged:
+        if answer.path == path and written_name(answer.symbol).casefold() == name:
+            return AnswerVerdict.judged_right if answer.right else AnswerVerdict.judged_wrong
+    return None
 
 
 def answered_path(answer: SessionAnswer, working_tree: Path) -> str:
@@ -138,11 +154,22 @@ def answered_path(answer: SessionAnswer, working_tree: Path) -> str:
 
 
 def chunks_named(symbol: str, chunks: Sequence[Chunk]) -> list[Chunk]:
-    """The chunks of a file an answer's symbol names: those of its whole name, as a heading
-    with dots is one; else, split at the last separator a language qualifies a name by, those
-    of the name whose parent the qualifier ends with, or, where no chunk of the name sits in
-    it, those of the name at the top of the file, the qualifier read as the module's path."""
-    asked = name_asked(written_name(symbol))
+    """The chunks of a file an answer's symbol names, read as written, or where no chunk has
+    that name, without the note in parentheses it ends with: a heading may hold parentheses,
+    `Engines (and their speed)`, as an agent's note does, `Event.group (setter)`."""
+    for name in (written_name(symbol), written_name(TRAILING_NOTE.sub("", symbol.strip()))):
+        named = chunks_of_name(name, chunks)
+        if named:
+            return named
+    return []
+
+
+def chunks_of_name(name: str, chunks: Sequence[Chunk]) -> list[Chunk]:
+    """The chunks of a file a name names: those of the whole name, as a heading with dots is
+    one; else, split at the last separator a language qualifies a name by, those of the name
+    whose parent the qualifier ends with, or, where no chunk of the name sits in it, those of
+    the name at the top of the file, the qualifier read as the module's path."""
+    asked = name_asked(name)
     whole = [chunk for chunk in chunks if chunk.name.casefold() == asked.whole]
     if whole:
         return whole

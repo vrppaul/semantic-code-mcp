@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from evals.agent_answers import AnswerVerdict, SessionAnswer, score_answer
-from evals.corpus import Answer
+from evals.corpus import Answer, JudgedAnswer, Query, QuestionKind
 
 from semantic_code_mcp.chunkers.markdown import MarkdownChunker
 from semantic_code_mcp.chunkers.python import PythonChunker
@@ -61,6 +61,10 @@ Who wrote what.
 ## 11. Glossary
 
 The words used above.
+
+## 12. Engines (and their speed)
+
+How fast each one runs.
 """
 CHUNKS_BY_PATH = {
     TERMUI: PythonChunker().chunk_string(TERMUI_CODE, Path(TERMUI)),
@@ -75,7 +79,15 @@ KEYS = (
     Answer(path=TYPES, symbol="convert", parent="_NumberRangeBase"),
     Answer(path=TYPES, symbol="put_if_absent"),
     Answer(path=ATTRIBUTION, symbol="11. Glossary"),
+    Answer(path=ATTRIBUTION, symbol="12. Engines (and their speed)"),
 )
+JUDGED = (
+    JudgedAnswer(
+        path="frontend/termui.ts", symbol="progressbar", right=True, why="the same bar, drawn"
+    ),
+    JudgedAnswer(path=UTILS, symbol="make_str", right=False, why="turns a value into text"),
+)
+QUERY = Query(text="show a progress bar", kind=QuestionKind.code, answers=KEYS, judged=JUDGED)
 
 
 def answer(path: str, symbol: str) -> SessionAnswer:
@@ -103,6 +115,12 @@ def answer(path: str, symbol: str) -> SessionAnswer:
         ),
         pytest.param(answer(TYPES, "put_if_absent()"), AnswerVerdict.right, True, id="as a call"),
         pytest.param(
+            answer(TYPES, "`_NumberRangeBase.convert` (its override)"),
+            AnswerVerdict.right,
+            True,
+            id="with a note after it",
+        ),
+        pytest.param(
             answer(TYPES, "`_NumberRangeBase.convert`"),
             AnswerVerdict.right,
             True,
@@ -110,6 +128,12 @@ def answer(path: str, symbol: str) -> SessionAnswer:
         ),
         pytest.param(
             answer(ATTRIBUTION, "11. Glossary"), AnswerVerdict.right, True, id="a heading with dots"
+        ),
+        pytest.param(
+            answer(ATTRIBUTION, "12. Engines (and their speed)"),
+            AnswerVerdict.right,
+            True,
+            id="a heading that holds parentheses",
         ),
         pytest.param(
             answer(ATTRIBUTION, "## 11. Glossary"),
@@ -166,7 +190,22 @@ def answer(path: str, symbol: str) -> SessionAnswer:
             id="another chunk of a keyed file",
         ),
         pytest.param(
-            answer(UTILS, "make_str"), AnswerVerdict.other_chunk, False, id="another file"
+            answer("frontend/termui.ts", "progressbar"),
+            AnswerVerdict.judged_right,
+            False,
+            id="judged right where no chunk names it",
+        ),
+        pytest.param(
+            answer("./frontend/termui.ts", "`progressbar`"),
+            AnswerVerdict.judged_right,
+            False,
+            id="judged right, written in a fence",
+        ),
+        pytest.param(
+            answer(UTILS, "make_str"),
+            AnswerVerdict.judged_wrong,
+            False,
+            id="judged wrong",
         ),
         pytest.param(
             answer(TYPES, "convert"),
@@ -184,7 +223,7 @@ def answer(path: str, symbol: str) -> SessionAnswer:
             id="a class the file lacks",
         ),
         pytest.param(
-            answer("frontend/termui.ts", "progressbar"),
+            answer("frontend/bar.ts", "progressbar"),
             AnswerVerdict.unresolved,
             False,
             id="a file the server does not chunk",
@@ -194,6 +233,6 @@ def answer(path: str, symbol: str) -> SessionAnswer:
 def test_an_answer_s_verdict_is_how_the_chunks_it_names_in_its_file_meet_the_keys(
     given: SessionAnswer, verdict: AnswerVerdict, file_right: bool
 ):
-    score = score_answer(given, KEYS, CHUNKS_BY_PATH, WORKING_TREE)
+    score = score_answer(given, QUERY, CHUNKS_BY_PATH, WORKING_TREE)
 
     assert (score.verdict, score.file_right) == (verdict, file_right)

@@ -40,7 +40,6 @@ from pathlib import Path
 from mcp.shared.exceptions import MCPError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from evals.agent_answers import AnswerScorer
 from evals.agent_summary import (
     AgentsReport,
     AnswerToJudge,
@@ -49,6 +48,7 @@ from evals.agent_summary import (
     CorpusAgents,
     PairedDifference,
     agents_report,
+    rescore_corpus,
     summarize_corpus,
 )
 from evals.agents import (
@@ -59,11 +59,13 @@ from evals.agents import (
     AgentSessionError,
     AgentsRun,
     CorpusCheckout,
+    CorpusNameSharedError,
     QuestionNotAskedError,
     RunDirectory,
+    RunNotKeptError,
     ScoredSession,
     measure_agents,
-    rescored,
+    refuse_shared_names,
 )
 from evals.corpus import (
     COMMIT_PREFIX_LENGTH,
@@ -96,10 +98,10 @@ QUALITY_FILE = "quality.json"
 SPEED_FILE = "speed.json"
 # Where `agents` keeps each corpus's index between runs, as one of a large corpus takes an
 # hour; each run's own directory, by its name, outside the repository, as its streams hold
-# a private corpus's code; and the config directory every run's sessions share
+# a private corpus's code; and the home every run's sessions share
 INDEXES_ROOT = CHECKOUTS_ROOT / "indexes"
 AGENTS_RUNS_ROOT = CHECKOUTS_ROOT / "agents" / "runs"
-AGENTS_CONFIG_DIRECTORY = CHECKOUTS_ROOT / "agents" / "claude-config"
+AGENTS_SESSIONS_HOME = CHECKOUTS_ROOT / "agents" / "home"
 # A run's name: the moment it started, in UTC
 RUN_NAME_FORMAT = "%Y%m%dT%H%M%SZ"
 TOKENS_PER_THOUSAND = 1000
@@ -190,6 +192,8 @@ def main() -> int:
         AgentSessionError,
         AgentRunStoppedError,
         QuestionNotAskedError,
+        CorpusNameSharedError,
+        RunNotKeptError,
         subprocess.CalledProcessError,
     ) as error:
         print(error, file=sys.stderr)
@@ -329,7 +333,7 @@ def corpus_files(names: list[str], files: list[Path]) -> tuple[Path, ...]:
 
 
 def run_directory(name: str) -> RunDirectory:
-    return RunDirectory(AGENTS_RUNS_ROOT / name, AGENTS_CONFIG_DIRECTORY)
+    return RunDirectory(AGENTS_RUNS_ROOT / name, AGENTS_SESSIONS_HOME)
 
 
 def corpus_checkout(corpus_file: Path) -> CorpusCheckout:
@@ -344,6 +348,7 @@ def corpus_checkout(corpus_file: Path) -> CorpusCheckout:
 
 
 def run_agents(run: AgentsRun) -> None:
+    refuse_shared_names([load_corpus_file(corpus_file) for corpus_file in run.corpus_files])
     directory = run_directory(run.name)
     directory.start(run)
     print(f"agents run {run.name}, kept in {directory.root}", flush=True)
@@ -370,16 +375,9 @@ def rescore_agents(name: str) -> None:
     directory = run_directory(name)
     run = directory.run()
     kept = directory.sessions()
-    arms = [arm.name for arm in run.arms]
-    measured: list[CorpusAgents] = []
-    for corpus_file in run.corpus_files:
-        corpus = corpus_checkout(corpus_file)
-        sessions = rescored(
-            [session for session in kept if session.corpus == corpus.name],
-            corpus.corpus,
-            AnswerScorer(corpus.working_tree),
-        )
-        measured.append(summarize_corpus(corpus.name, arms, sessions))
+    measured = [
+        rescore_corpus(corpus_checkout(corpus_file), run, kept) for corpus_file in run.corpus_files
+    ]
     finish_agents(run, directory, measured)
 
 
@@ -426,10 +424,13 @@ def describe_agents(report: AgentsReport) -> str:
 
 def describe_arm(summary: ArmSummary) -> str:
     """A line of one arm's sums over its sessions."""
+    if not summary.sessions:
+        return f"  {summary.arm}: no sessions"
     outcomes = ", ".join(f"{outcome} {count}" for outcome, count in summary.outcomes.items())
     return (
         f"  {summary.arm}: right {summary.right_answers}/{summary.sessions} "
-        f"({summary.answers_as_members} as members; file {summary.right_files}), "
+        f"({summary.answers_as_members} as members, {summary.answers_judged_right} judged; "
+        f"file {summary.right_files}), "
         f"to judge {summary.answers_to_judge}; {outcomes}; turns {summary.mean_turns}, "
         f"prompt {summary.mean_prompt_tokens}, output {summary.mean_output_tokens}, "
         f"{summary.mean_duration_seconds}s; searched {summary.sessions_that_searched}, "
@@ -440,7 +441,8 @@ def describe_arm(summary: ArmSummary) -> str:
 def describe_comparison(comparison: ArmComparison) -> str:
     return (
         f"  {comparison.arm} against {comparison.against} over {comparison.questions} "
-        f"questions: turns {describe_difference(comparison.turns)}; "
+        f"questions, {comparison.sessions_left_out} sessions left out: "
+        f"turns {describe_difference(comparison.turns)}; "
         f"prompt tokens {describe_difference(comparison.prompt_tokens)}"
     )
 

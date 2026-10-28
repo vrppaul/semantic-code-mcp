@@ -4,7 +4,9 @@ Each corpus is a TOML file under `evals/corpora/`. A question says what it asks 
 or its documentation, and names every answer that counts — a file, the chunk name inside
 it, and its parent where chunks of several parents share that name — so a score never
 depends on taste. The questions under `held_out` are asked and reported apart, and never
-looked at while a weight or a floor is chosen.
+looked at while a weight or a floor is chosen. A question may also hold the answers agents
+gave that a judge settled, right or wrong, as the agents wrote them: what no key names, such
+as the same rule in a file the server does not chunk.
 """
 
 import shutil
@@ -44,6 +46,18 @@ class Answer(BaseModel):
     parent: str | None = None
 
 
+class JudgedAnswer(BaseModel):
+    """An agent's answer a judge settled where no key does: its file and its symbol as the
+    agent wrote them, whether it is right, and why."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    symbol: str
+    right: bool
+    why: str
+
+
 class QuestionKind(StrEnum):
     """What a question asks for: the code that does a thing, or the documentation of it."""
 
@@ -59,6 +73,8 @@ class Query(BaseModel):
     text: str
     kind: QuestionKind
     answers: tuple[Answer, ...]
+    # Agents' answers a judge settled; none in a corpus no agent has been asked
+    judged: tuple[JudgedAnswer, ...] = ()
 
 
 class CorpusSource(BaseModel):

@@ -13,6 +13,7 @@ from evals.agents import (
     OWN_TOOLS_ARM,
     SEARCH_TOOL,
     AgentArm,
+    CorpusNameSharedError,
     QuestionNotAskedError,
     SessionClosing,
     SessionOutcome,
@@ -26,6 +27,7 @@ from evals.agents import (
     mcp_config,
     outcome_of,
     read_transcript,
+    refuse_shared_names,
     rescored,
     score_session,
     session_environment,
@@ -173,38 +175,91 @@ def session_run(stream: str, exit_code: int | None) -> SessionRun:
     return SessionRun(output=stream, exit_code=exit_code, duration_seconds=10.0)
 
 
+def started(*events: dict) -> str:
+    """A stream that opens with the init of a session on the login, its server connected."""
+    return "\n".join(stream_line(event) for event in (init_event(LOGIN, CONNECTED), *events))
+
+
 @pytest.mark.parametrize(
-    ("stream", "exit_code", "outcome"),
+    ("stream", "exit_code", "arm", "outcome"),
     [
-        pytest.param(TRANSCRIPT, 0, SessionOutcome.answered, id="answered"),
+        pytest.param(TRANSCRIPT, 0, WORDS_ARM, SessionOutcome.answered, id="answered"),
         pytest.param(
-            stream_line(result_event("I could not find it.", is_error=False)),
+            started(result_event("I could not find it.", is_error=False)),
             0,
+            WORDS_ARM,
             SessionOutcome.no_answer,
             id="closed without an answer",
         ),
         pytest.param(
-            stream_line(result_event(ANSWERED_REPLY, is_error=True)),
+            started(result_event(ANSWERED_REPLY, is_error=True)),
             0,
+            WORDS_ARM,
             SessionOutcome.failed,
             id="an error result",
         ),
-        pytest.param(TRANSCRIPT, 1, SessionOutcome.failed, id="an exit other than 0"),
-        pytest.param(stream_line(tool_use_event("Grep")), 0, SessionOutcome.failed, id="no result"),
+        pytest.param(TRANSCRIPT, 1, WORDS_ARM, SessionOutcome.failed, id="an exit other than 0"),
         pytest.param(
-            stream_line(tool_use_event("Grep")),
+            started(tool_use_event("Grep")), 0, WORDS_ARM, SessionOutcome.failed, id="no result"
+        ),
+        pytest.param(
+            stream_line(result_event(ANSWERED_REPLY, is_error=False)),
+            0,
+            WORDS_ARM,
+            SessionOutcome.failed,
+            id="no init",
+        ),
+        pytest.param(
+            started(tool_use_event("Grep")),
             None,
+            WORDS_ARM,
             SessionOutcome.timed_out,
             id="stopped at its timeout",
         ),
+        pytest.param(
+            "\n".join(
+                [
+                    stream_line(init_event("ANTHROPIC_API_KEY", CONNECTED)),
+                    stream_line(result_event(ANSWERED_REPLY, is_error=False)),
+                ]
+            ),
+            0,
+            WORDS_ARM,
+            SessionOutcome.billed_elsewhere,
+            id="billed to an API key",
+        ),
+        pytest.param(
+            "\n".join(
+                [
+                    stream_line(init_event(LOGIN, "failed")),
+                    stream_line(result_event(ANSWERED_REPLY, is_error=False)),
+                ]
+            ),
+            0,
+            WORDS_ARM,
+            SessionOutcome.server_not_connected,
+            id="its server down",
+        ),
+        pytest.param(
+            "\n".join(
+                [
+                    stream_line(init_event(LOGIN, "failed")),
+                    stream_line(result_event(ANSWERED_REPLY, is_error=False)),
+                ]
+            ),
+            0,
+            OWN_TOOLS_ARM,
+            SessionOutcome.answered,
+            id="own tools, whatever a server did",
+        ),
     ],
 )
-def test_a_session_s_outcome_is_what_its_result_and_its_exit_say(
-    stream: str, exit_code: int | None, outcome: SessionOutcome
+def test_a_session_s_outcome_is_what_its_init_its_result_and_its_exit_say(
+    stream: str, exit_code: int | None, arm: AgentArm, outcome: SessionOutcome
 ):
     run = session_run(stream, exit_code)
 
-    assert outcome_of(run, read_transcript(stream)) == outcome
+    assert outcome_of(run, read_transcript(stream), arm) == outcome
 
 
 def record(
@@ -237,57 +292,30 @@ def record(
 
 
 @pytest.mark.parametrize(
-    ("session", "arm", "stops"),
+    ("outcome", "stops"),
     [
-        pytest.param(
-            record(WORDS_ARM, SessionOutcome.answered, LOGIN, CONNECTED),
-            WORDS_ARM,
-            False,
-            id="on the login, its server connected",
-        ),
-        pytest.param(
-            record(OWN_TOOLS_ARM, SessionOutcome.no_answer, LOGIN, None),
-            OWN_TOOLS_ARM,
-            False,
-            id="own tools, no server",
-        ),
-        pytest.param(
-            record(WORDS_ARM, SessionOutcome.timed_out, LOGIN, CONNECTED),
-            WORDS_ARM,
-            False,
-            id="timed out, the agent's own",
-        ),
-        pytest.param(
-            record(OWN_TOOLS_ARM, SessionOutcome.answered, "ANTHROPIC_API_KEY", None),
-            OWN_TOOLS_ARM,
-            True,
-            id="billed to an API key",
-        ),
-        pytest.param(
-            record(WORDS_ARM, SessionOutcome.answered, LOGIN, "failed"),
-            WORDS_ARM,
-            True,
-            id="its server down",
-        ),
-        pytest.param(
-            record(WORDS_ARM, SessionOutcome.failed, None, None),
-            WORDS_ARM,
-            True,
-            id="failed",
-        ),
+        pytest.param(SessionOutcome.answered, False, id="answered"),
+        pytest.param(SessionOutcome.no_answer, False, id="no answer"),
+        pytest.param(SessionOutcome.timed_out, False, id="timed out, the agent's own"),
+        pytest.param(SessionOutcome.billed_elsewhere, True, id="billed to an API key"),
+        pytest.param(SessionOutcome.server_not_connected, True, id="its server down"),
+        pytest.param(SessionOutcome.failed, True, id="failed"),
     ],
 )
 def test_a_run_stops_on_a_session_billed_elsewhere_without_its_server_or_failed(
-    session: SessionRecord, arm: AgentArm, stops: bool
+    outcome: SessionOutcome, stops: bool
 ):
-    assert (stop_reason(session, arm) is not None) is stops
+    session = record(WORDS_ARM, outcome, LOGIN, CONNECTED)
+
+    assert (stop_reason(session) is not None) is stops
 
 
 def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the_login(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    """An API key would bill an account, the caller's effort and thinking budget would change
-    how the agent works, and the server's settings would reach the arms' servers."""
+    """An API key would bill an account, the caller's effort and thinking budget and the
+    shell its home sets up would change how the agent works, and the server's settings would
+    reach the arms' servers."""
     caller = {
         "PATH": "/usr/bin",
         "HOME": "/home/owner",
@@ -302,8 +330,8 @@ def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the
 
     assert environment == {
         "PATH": "/usr/bin",
-        "HOME": "/home/owner",
-        CONFIG_DIRECTORY_VARIABLE: str(tmp_path),
+        "HOME": str(tmp_path),
+        CONFIG_DIRECTORY_VARIABLE: str(tmp_path / ".claude"),
     }
 
 
@@ -317,6 +345,7 @@ def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the
                 "semantic-code": {
                     CACHE_DIR_VARIABLE: str(INDEX_DIRECTORY),
                     SEARCH_MODE_VARIABLE: SearchMode.words,
+                    "HOME": "/home/owner",
                 }
             },
             id="words",
@@ -327,6 +356,7 @@ def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the
                 "semantic-code": {
                     CACHE_DIR_VARIABLE: str(INDEX_DIRECTORY),
                     SEARCH_MODE_VARIABLE: SearchMode.words_and_meaning,
+                    "HOME": "/home/owner",
                 }
             },
             id="words and meaning",
@@ -334,8 +364,12 @@ def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the
     ],
 )
 def test_an_arm_s_server_searches_the_kept_index_in_the_mode_the_arm_is_named_by(
-    arm: AgentArm, settings_by_server: dict[str, dict[str, str]]
+    monkeypatch: pytest.MonkeyPatch, arm: AgentArm, settings_by_server: dict[str, dict[str, str]]
 ):
+    """In the owner's home, as a user's server runs in the user's, with the model's weights
+    cached there."""
+    monkeypatch.setenv("HOME", "/home/owner")
+
     servers = mcp_config(arm, INDEX_DIRECTORY).mcp_servers
 
     assert {name: server.env for name, server in servers.items()} == settings_by_server
@@ -418,12 +452,18 @@ def test_only_a_session_that_answered_is_scored(outcome: SessionOutcome, scored:
     assert (given.score is not None) is scored
 
 
-def test_a_kept_run_is_never_scored_against_a_corpus_that_no_longer_asks_its_question():
-    corpus = Corpus(
-        corpus=CorpusSource(name="click", repository="https://example.org/click", commit="0" * 40),
-        queries=(Query(text="echo to the terminal", kind=QuestionKind.code, answers=()),),
+def corpus_of(name: str, *questions: str) -> Corpus:
+    return Corpus(
+        corpus=CorpusSource(name=name, repository="https://example.org/click", commit="0" * 40),
+        queries=tuple(
+            Query(text=question, kind=QuestionKind.code, answers=()) for question in questions
+        ),
         held_out=(),
     )
+
+
+def test_a_kept_run_is_never_scored_against_a_corpus_that_no_longer_asks_its_question():
+    corpus = corpus_of("click", "echo to the terminal")
 
     with pytest.raises(QuestionNotAskedError):
         rescored(
@@ -431,3 +471,12 @@ def test_a_kept_run_is_never_scored_against_a_corpus_that_no_longer_asks_its_que
             corpus,
             AnswerScorer(WORKING_TREE),
         )
+
+
+def test_a_run_never_asks_two_corpus_files_of_one_name():
+    """It keeps and scores its sessions by the corpus's name, so the two would mix: their
+    questions go into one file."""
+    corpora = [corpus_of("click", "show a progress bar"), corpus_of("click", "echo a line")]
+
+    with pytest.raises(CorpusNameSharedError):
+        refuse_shared_names(corpora)

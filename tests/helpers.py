@@ -1,6 +1,7 @@
 """Helpers shared by tests."""
 
 import subprocess
+import sys
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -14,6 +15,10 @@ from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry, vector_identity
 from semantic_code_mcp.services.vectors import VectorService
 from tests.fakes import FAKE_MODEL
+
+# Claude Code faked for the agents harness, which no test may run for real
+FAKE_CLAUDE = Path(__file__).parent / "data" / "fake_claude.py"
+EXECUTABLE_MODE = 0o755
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -143,3 +148,13 @@ def section_named(name: str) -> ChunkSummary:
 def line_ranges(chunks: list[Chunk]) -> list[LineRange]:
     """Each chunk's line range, in order."""
     return [LineRange(line_start=chunk.line_start, line_end=chunk.line_end) for chunk in chunks]
+
+
+def install_fake_claude(directory: Path) -> Path:
+    """The fake Claude Code as `claude` in a directory of its own, run by this interpreter;
+    the directory, to go first on PATH."""
+    directory.mkdir(parents=True)
+    claude = directory / "claude"
+    claude.write_text(f"#!{sys.executable}\n{FAKE_CLAUDE.read_text()}")
+    claude.chmod(EXECUTABLE_MODE)
+    return directory

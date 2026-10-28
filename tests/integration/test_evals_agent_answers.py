@@ -4,9 +4,13 @@ from pathlib import Path
 
 import pytest
 from evals.agent_answers import AnswerScorer, AnswerVerdict, SessionAnswer
-from evals.corpus import Answer
+from evals.corpus import Answer, Query, QuestionKind
 
-KEYS = (Answer(path="src/progress.py", symbol="progressbar"),)
+QUERY = Query(
+    text="show a progress bar",
+    kind=QuestionKind.code,
+    answers=(Answer(path="src/progress.py", symbol="progressbar"),),
+)
 PROGRESS_CODE = "def progressbar(items):\n    return items\n"
 
 
@@ -33,6 +37,6 @@ def test_an_answer_names_only_chunks_of_the_checkout_s_own_files(
     (working_tree / "src" / "progress.py").write_text(PROGRESS_CODE)
     (tmp_path / "outside.py").write_text(PROGRESS_CODE)
 
-    score = AnswerScorer(working_tree).score(given, KEYS)
+    score = AnswerScorer(working_tree).score(given, QUERY)
 
     assert score.verdict == verdict

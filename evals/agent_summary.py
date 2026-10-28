@@ -7,10 +7,11 @@ figure is the mean of its sessions in an arm, and the difference is given as its
 the questions, the 95% interval of that mean by a paired bootstrap over them, and how many
 questions it went down, stayed or went up on. The means hold the sessions that closed,
 answered or not: one that ran out of time or failed has no turns or prompt to count, and is
-counted apart. A session's context is its whole prompt, read from the cache, written to it or
-neither, as what one session reads from the cache another wrote. Cost is never compared:
-most of what Claude Code reports is writing to the cache, which the order of the sessions
-decides.
+counted apart, and each comparison says how many it left out, as leaving out an arm's
+slowest sessions flatters it. A session's context is its whole prompt, read from the cache,
+written to it or neither, as what one session reads from the cache another wrote. Cost is
+never compared: most of what Claude Code reports is writing to the cache, which the order
+of the sessions decides.
 """
 
 from collections import Counter, defaultdict
@@ -21,15 +22,22 @@ from statistics import mean
 import numpy
 from pydantic import BaseModel, ConfigDict
 
-from evals.agent_answers import RIGHT_VERDICTS, VERDICTS_TO_JUDGE, AnswerVerdict
+from evals.agent_answers import (
+    RIGHT_VERDICTS,
+    VERDICTS_TO_JUDGE,
+    AnswerScorer,
+    AnswerVerdict,
+)
 from evals.agents import (
     CLOSED_OUTCOMES,
     READ_TOOL,
     SEARCH_TOOL,
     AgentsRun,
+    CorpusCheckout,
     ScoredSession,
     SessionOutcome,
     SessionRecord,
+    rescored,
 )
 
 # Arms are compared two at a time
@@ -58,8 +66,9 @@ class ArmSummary(BaseModel):
     outcomes: dict[SessionOutcome, int]
     right_answers: int
     # Of the right answers, those naming a member of a keyed chunk or the chunk a keyed one
-    # sits in
+    # sits in, and those a judge settled
     answers_as_members: int
+    answers_judged_right: int
     right_files: int
     answers_to_judge: int
     mean_turns: float | None
@@ -94,6 +103,8 @@ class ArmComparison(BaseModel):
     arm: str
     against: str
     questions: int
+    # The two arms' sessions that did not close, which no question's mean holds
+    sessions_left_out: int
     turns: PairedDifference
     prompt_tokens: PairedDifference
 
@@ -169,6 +180,19 @@ def agents_report(run: AgentsRun, corpora: Sequence[CorpusAgents]) -> AgentsRepo
     )
 
 
+def rescore_corpus(
+    checkout: CorpusCheckout, run: AgentsRun, kept: Sequence[SessionRecord]
+) -> CorpusAgents:
+    """A kept run's sessions of one corpus scored again by its keys and judged answers as they
+    are now, and summed."""
+    sessions = rescored(
+        [session for session in kept if session.corpus == checkout.name],
+        checkout.corpus,
+        AnswerScorer(checkout.working_tree),
+    )
+    return summarize_corpus(checkout.name, [arm.name for arm in run.arms], sessions)
+
+
 def summarize_corpus(
     corpus: str, arms: Sequence[str], sessions: Sequence[ScoredSession]
 ) -> CorpusAgents:
@@ -198,6 +222,7 @@ def summarize_arm(arm: str, sessions: Sequence[ScoredSession]) -> ArmSummary:
         outcomes=dict(Counter(scored.session.outcome for scored in own)),
         right_answers=sum(score.verdict in RIGHT_VERDICTS for score in scores),
         answers_as_members=sum(score.verdict == AnswerVerdict.member for score in scores),
+        answers_judged_right=sum(score.verdict == AnswerVerdict.judged_right for score in scores),
         right_files=sum(score.file_right for score in scores),
         answers_to_judge=sum(score.verdict in VERDICTS_TO_JUDGE for score in scores),
         mean_turns=rounded_mean([session.turns for session in closed]),
@@ -227,6 +252,10 @@ def compare_arms(arm: str, against: str, sessions: Sequence[ScoredSession]) -> A
         arm=arm,
         against=against,
         questions=len(turns),
+        sessions_left_out=sum(
+            scored.session.arm in {arm, against} and scored.session.outcome not in CLOSED_OUTCOMES
+            for scored in sessions
+        ),
         turns=paired_difference(turns),
         prompt_tokens=paired_difference(
             figure_differences(sessions, arm, against, prompt_tokens_of)

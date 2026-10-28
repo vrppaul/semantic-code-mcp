@@ -3,20 +3,24 @@ in arms named by what the agent is given, its own tools alone or with them this 
 search in one of its modes; each session kept, and scored by its answer, its turns, the
 prompt it sent and its tool calls.
 
-A session runs in a config directory of its own, given only a link to the owner's login, so
-none of the owner's own instructions, memory, hooks or MCP servers reach it, as his
-instructions may ask an agent to wait for his word; Claude Code still brings the account's
-synced skills and plugins into it. The corpus's own settings, rules and skills are left out
-too (`--setting-sources user`), and of the caller's environment only what Claude Code needs
-to run: a headless session bills an API key wherever one is set, and the caller's effort or
-thinking budget would change how the agent works. The arm's MCP config is its only one; its
-server is this environment's, over an index kept between runs and brought up to date, by
-meaning too where an arm searches so, before the first session.
+A session runs in a home of its own, whose config directory holds only a link to the owner's
+login, so none of the owner's own instructions, memory, hooks, MCP servers or shell setup
+reach it, as his instructions may ask an agent to wait for his word and his shell's aliases
+change what its commands print; Claude Code still brings the account's synced skills and
+plugins into it. The corpus's own settings, rules and skills are left out too
+(`--setting-sources user`), and of the caller's environment only what Claude Code needs to
+run: a headless session bills an API key wherever one is set, and the caller's effort or
+thinking budget would change how the agent works. The login is the file Claude Code keeps on
+Linux; on macOS it is in the keychain, under a name a config directory of its own does not
+find, so the harness runs on Linux. The arm's MCP config is its only one; its server is this
+environment's, in the owner's home, over an index kept between runs and brought up to date,
+by meaning too where an arm searches so, before the first session.
 
 The arms take turns going first, question by question and repeat by repeat, as what a
 session reads from the cache depends on what the sessions before it wrote. A run stops at
 the first session billed to anything but the login, whose arm's server did not connect, or
-that Claude Code failed: such a session measures something else. Each session is kept as it
+that Claude Code failed: such a session measures something else, and its outcome keeps it
+out of the means when the run is scored again. Each session is kept as it
 ends, its stream beside it, under the run's own name, so a run stopped, or judged later, is
 scored again without new sessions.
 
@@ -85,16 +89,19 @@ ANSWER_FORMAT = (
     'class or documentation section that does it>"}'
 )
 # Where Claude Code keeps its login on Linux, and the variable that moves its config; on
-# macOS the login is in the keychain, which every config directory reads
+# macOS the login is in the keychain, keyed by the config directory, so one of the
+# harness's own finds none
 CONFIG_DIRECTORY_VARIABLE = "CLAUDE_CONFIG_DIR"
-DEFAULT_CONFIG_DIRECTORY = Path.home() / ".claude"
+CONFIG_DIRECTORY_NAME = ".claude"
+DEFAULT_CONFIG_DIRECTORY = Path.home() / CONFIG_DIRECTORY_NAME
 LOGIN_FILE_NAME = ".credentials.json"
+HOME_VARIABLE = "HOME"
 # The settings a session loads: the account's own, its config directory holding none; the
 # corpus's project and local settings, with its rules and skills, are left out
 SETTING_SOURCES = "user"
 # What Claude Code needs of the caller's environment to run on the login and start a server
-# that finds git; nothing else reaches a session
-SESSION_VARIABLES = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TMPDIR")
+# that finds git; nothing else reaches a session, whose home is its own
+SESSION_VARIABLES = ("PATH", "USER", "LOGNAME", "SHELL", "LANG", "TMPDIR")
 JSON_OBJECT_START = "{"
 SYSTEM_EVENT = "system"
 INIT_SUBTYPE = "init"
@@ -104,6 +111,10 @@ TOOL_USE_BLOCK = "tool_use"
 # How a session's init names a session billed to the login, and a server that connected
 LOGIN_KEY_SOURCE = "none"
 CONNECTED_STATUS = "connected"
+# How a stop names an arm's server that the session's init does not list
+UNLISTED_STATUS = "not listed"
+# A corpus's name, which a run keeps and scores its sessions by, held by one file alone
+ONE_FILE = 1
 EXIT_OK = 0
 # How a stream cut short by the timeout is read where it is not text
 STREAM_ENCODING = "utf-8"
@@ -158,8 +169,12 @@ class SessionOutcome(StrEnum):
     no_answer = auto()
     # It ran past SESSION_TIMEOUT_SECONDS and was stopped
     timed_out = auto()
-    # Claude Code failed it: an error result, an exit other than 0, or no result at all
+    # Claude Code failed it: no init, an error result, an exit other than 0, or no result
     failed = auto()
+    # Its init named it billed to anything but the login
+    billed_elsewhere = auto()
+    # Its init named its arm's server anything but connected
+    server_not_connected = auto()
 
 
 # The outcomes of the sessions that closed, whose turns and prompt count
@@ -320,7 +335,7 @@ class SessionSetting(BaseModel):
     arm: AgentArm
     model: str
     working_tree: Path
-    config_directory: Path
+    sessions_home: Path
     mcp_config: Path
 
 
@@ -427,25 +442,37 @@ class QuestionNotAskedError(ValueError):
     """A kept run's session asked a question its corpus no longer asks."""
 
 
+class CorpusNameSharedError(ValueError):
+    """Two corpus files of a run name one corpus, whose sessions would mix."""
+
+
+class RunNotKeptError(FileNotFoundError):
+    """No run is kept under the name given."""
+
+
 class RunDirectory:
     """Where a run keeps, under its own name, what it asked, each session as it ends with its
-    stream, and its report; and the config directory its sessions run in, which the runs
-    share."""
+    stream, and its report; and the home its sessions run in, which the runs share."""
 
-    def __init__(self, root: Path, config_directory: Path) -> None:
+    def __init__(self, root: Path, sessions_home: Path) -> None:
         self.root = root
-        self.config_directory = config_directory
+        self.sessions_home = sessions_home
 
     def start(self, run: AgentsRun) -> None:
-        """Make the directory of a new run, record what it asks, and make the sessions'
-        config directory."""
+        """Make the directory of a new run, record what it asks, and make the sessions' home
+        and its config directory."""
         (self.root / STREAMS_DIRECTORY_NAME).mkdir(parents=True)
         (self.root / RUN_FILE_NAME).write_text(run.model_dump_json(indent=JSON_INDENT))
-        prepare_config_directory(self.config_directory)
+        (self.root / SESSIONS_FILE_NAME).touch()
+        prepare_config_directory(self.sessions_home / CONFIG_DIRECTORY_NAME)
 
     def run(self) -> AgentsRun:
         """What the run asked."""
-        return AgentsRun.model_validate_json((self.root / RUN_FILE_NAME).read_text())
+        path = self.root / RUN_FILE_NAME
+        if not path.is_file():
+            message = f"no run is kept in {self.root}"
+            raise RunNotKeptError(message)
+        return AgentsRun.model_validate_json(path.read_text())
 
     def write_mcp_config(self, corpus: str, arm: AgentArm, index_directory: Path) -> Path:
         """An arm's MCP config for one corpus's sessions."""
@@ -544,8 +571,16 @@ def tool_names(message: StreamMessage) -> list[str]:
     ]
 
 
-def outcome_of(run: SessionRun, reading: TranscriptReading) -> SessionOutcome:
-    """How a session ended, by its exit and its closing result."""
+def outcome_of(run: SessionRun, reading: TranscriptReading, arm: AgentArm) -> SessionOutcome:
+    """How a session ended: by its init, what it was billed to and whether its arm's server
+    connected; then by its exit and its closing result."""
+    start = reading.start
+    if start is None:
+        return SessionOutcome.failed
+    if start.api_key_source != LOGIN_KEY_SOURCE:
+        return SessionOutcome.billed_elsewhere
+    if arm.search_mode is not None and start.servers.get(SERVER_NAME) != CONNECTED_STATUS:
+        return SessionOutcome.server_not_connected
     if run.exit_code is None:
         return SessionOutcome.timed_out
     closing = reading.closing
@@ -556,17 +591,33 @@ def outcome_of(run: SessionRun, reading: TranscriptReading) -> SessionOutcome:
     return SessionOutcome.answered
 
 
-def stop_reason(session: SessionRecord, arm: AgentArm) -> str | None:
+def stop_reason(session: SessionRecord) -> str | None:
     """Why a session shows its run measures something else, or None where it does not: billed
-    to anything but the login, failed by Claude Code, or its arm's server not connected. A
+    to anything but the login, its arm's server not connected, or failed by Claude Code. A
     session that ran out of time is the agent's own."""
-    if session.api_key_source is not None and session.api_key_source != LOGIN_KEY_SOURCE:
-        return f"billed to {session.api_key_source}, not the login"
-    if session.outcome == SessionOutcome.failed:
-        return "Claude Code failed the session"
-    if arm.search_mode is not None and session.server_status != CONNECTED_STATUS:
-        return f"the arm's server was {session.server_status}, not connected"
-    return None
+    match session.outcome:
+        case SessionOutcome.billed_elsewhere:
+            return f"billed to {session.api_key_source}, not the login"
+        case SessionOutcome.server_not_connected:
+            status = session.server_status or UNLISTED_STATUS
+            return f"the arm's server was {status}, not connected"
+        case SessionOutcome.failed:
+            return "Claude Code failed the session"
+        case _:
+            return None
+
+
+def refuse_shared_names(corpora: Sequence[Corpus]) -> None:
+    """Refuse corpora of one name: a run keeps and scores its sessions by the corpus's name,
+    so two files of one repository's questions would mix; they go into one file."""
+    shared = [
+        name
+        for name, files in Counter(corpus.corpus.name for corpus in corpora).items()
+        if files > ONE_FILE
+    ]
+    if shared:
+        message = f"corpus files of one name: {shared}; put each corpus's questions in one file"
+        raise CorpusNameSharedError(message)
 
 
 def arms_in_turn(arms: Sequence[AgentArm], question_number: int, repeat: int) -> list[AgentArm]:
@@ -600,26 +651,30 @@ def session_prompt(query: Query) -> str:
 
 def prepare_config_directory(directory: Path) -> Path:
     """A config directory of Claude Code's that holds only a link to the owner's login,
-    where a file holds it."""
+    where a file holds it; a file written in the link's place gives way to it again, as the
+    owner's login is the one kept up to date."""
     directory.mkdir(parents=True, exist_ok=True)
     owner_directory = Path(os.environ.get(CONFIG_DIRECTORY_VARIABLE, DEFAULT_CONFIG_DIRECTORY))
     login = owner_directory / LOGIN_FILE_NAME
     link = directory / LOGIN_FILE_NAME
     if login.is_file() and not link.is_symlink():
+        link.unlink(missing_ok=True)
         link.symlink_to(login)
     return directory
 
 
 def mcp_config(arm: AgentArm, index_directory: Path) -> McpConfig:
     """An arm's MCP config: no server, or this environment's server over the kept index, set
-    to the arm's search mode."""
+    to the arm's search mode, in the owner's home, as a user's server runs in the user's, the
+    model's weights cached there."""
     if arm.search_mode is None:
         return McpConfig(mcp_servers={})
     options = ServerOptions(index_store=None, search_mode=arm.search_mode)
+    settings = server_settings(index_directory, options)
     server = McpServerEntry(
         command=sys.executable,
         args=("-m", SERVER_MODULE),
-        env=server_settings(index_directory, options),
+        env={**settings, HOME_VARIABLE: str(Path.home())},
     )
     return McpConfig(mcp_servers={SERVER_NAME: server})
 
@@ -630,12 +685,16 @@ def allowed_tools(arm: AgentArm) -> tuple[str, ...]:
     return (*OWN_TOOLS, SEARCH_TOOL, STATUS_TOOL)
 
 
-def session_environment(config_directory: Path) -> dict[str, str]:
-    """The environment a session runs in: what Claude Code needs of the caller's, and the
-    agents' config directory."""
+def session_environment(sessions_home: Path) -> dict[str, str]:
+    """The environment a session runs in: what Claude Code needs of the caller's, the
+    sessions' own home and its config directory."""
     caller = os.environ
     kept = {name: caller[name] for name in SESSION_VARIABLES if name in caller}
-    return {**kept, CONFIG_DIRECTORY_VARIABLE: str(config_directory)}
+    return {
+        **kept,
+        HOME_VARIABLE: str(sessions_home),
+        CONFIG_DIRECTORY_VARIABLE: str(sessions_home / CONFIG_DIRECTORY_NAME),
+    }
 
 
 def session_command(query: Query, setting: SessionSetting) -> list[str]:
@@ -669,7 +728,7 @@ def run_session(query: Query, setting: SessionSetting) -> SessionRun:
         completed = subprocess.run(  # nosec B603, B607
             session_command(query, setting),
             cwd=setting.working_tree,
-            env=session_environment(setting.config_directory),
+            env=session_environment(setting.sessions_home),
             capture_output=True,
             text=True,
             timeout=SESSION_TIMEOUT_SECONDS,
@@ -716,7 +775,7 @@ def session_record(
         arm=turn.arm.name,
         repeat=turn.repeat,
         position=turn.position,
-        outcome=outcome_of(run, reading),
+        outcome=outcome_of(run, reading, turn.arm),
         answer=closing.answer,
         turns=closing.turns,
         tool_calls=reading.tool_calls,
@@ -735,7 +794,7 @@ def score_session(session: SessionRecord, query: Query, scorer: AnswerScorer) ->
     answer."""
     if session.outcome != SessionOutcome.answered or session.answer is None:
         return ScoredSession(session=session, score=None)
-    return ScoredSession(session=session, score=scorer.score(session.answer, query.answers))
+    return ScoredSession(session=session, score=scorer.score(session.answer, query))
 
 
 def rescored(
@@ -782,7 +841,7 @@ async def measure_agents(
             arm=arm,
             model=run.model,
             working_tree=checkout.working_tree,
-            config_directory=directory.config_directory,
+            sessions_home=directory.sessions_home,
             mcp_config=directory.write_mcp_config(corpus, arm, checkout.index_directory),
         )
         for arm in run.arms
@@ -797,7 +856,7 @@ async def measure_agents(
         scored = score_session(session, turn.query, scorer)
         report_session(scored)
         sessions.append(scored)
-        reason = stop_reason(session, turn.arm)
+        reason = stop_reason(session)
         if reason is not None:
             message = f"{stream_file}: {reason}; the run's sessions are kept in {directory.root}"
             raise AgentRunStoppedError(message)
