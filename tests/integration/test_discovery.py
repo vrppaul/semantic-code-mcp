@@ -310,10 +310,12 @@ class TestWalkDiscovery:
 
         assert relative_names(files) == {"code.py"}
 
-    def test_pattern_spellings_follow_gitignore(self, tmp_path: Path):
+    @pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
+    def test_pattern_spellings_follow_gitignore(self, tmp_path: Path, use_gitignore: bool):
         """A leading `/` or `./` anchors at the root, a trailing `/` is dropped, and a
-        leading `**/` matches at the root too."""
-        project = tmp_path / "project"
+        leading `**/` matches at the root too; alike whether git lists the files or the walk
+        finds them, which prunes what git lists whole."""
+        project = make_repository(tmp_path / "project")
         for directory in (
             "build",
             "tools/build",
@@ -328,13 +330,28 @@ class TestWalkDiscovery:
         (project / "keep.py").write_text("x = 1\n")
         patterns = ("/build", "./dist", "docs/", "**/node_modules/**")
 
-        files = make_discovery(ignore_patterns=patterns, use_gitignore=False).discover(project)
+        files = make_discovery(ignore_patterns=patterns, use_gitignore=use_gitignore).discover(
+            project
+        )
 
         assert relative_names(files) == {
             "keep.py",
             "tools/build/module.py",
             "lib/dist/module.py",
         }
+
+
+@pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
+def test_a_name_of_dots_and_an_extension_is_no_source(tmp_path: Path, use_gitignore: bool):
+    """`..py` has no extension to Python, so no chunker reads it: listed, it would be indexed
+    as a file of no chunks."""
+    repository = make_repository(tmp_path / "repo")
+    (repository / "kept.py").write_text("x = 1\n")
+    (repository / "..py").write_text("x = 1\n")
+
+    files = make_discovery(use_gitignore=use_gitignore).discover(repository)
+
+    assert relative_names(files) == {"kept.py"}
 
 
 @pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])

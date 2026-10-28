@@ -76,12 +76,12 @@ def joined_pattern(patterns: Sequence[str]) -> re.Pattern[str]:
 
 
 def extension_of(relative_path: str) -> str:
-    """A file's extension as `Path.suffix` gives it for a name with a stem, read off its path
-    without building a `Path`: from the last dot of its name; none where the name only
-    starts with one, as `.bashrc` does."""
-    name = relative_path.rpartition(PATH_SEPARATOR)[2]
-    stem, dot, extension = name.rpartition(EXTENSION_DOT)
-    return dot + extension if stem else NO_EXTENSION
+    """A file's extension as `Path.suffix` gives it, read off its path without building a
+    `Path`: from the last dot of its name once the dots it starts with are set aside, so
+    `.bashrc` and `..py` have none."""
+    name = relative_path.rpartition(PATH_SEPARATOR)[2].lstrip(EXTENSION_DOT)
+    _, dot, extension = name.rpartition(EXTENSION_DOT)
+    return dot + extension if dot else NO_EXTENSION
 
 
 def joined_path(directory: str, name: str) -> str:
@@ -101,34 +101,53 @@ class FoundFile(BaseModel):
     source: SourceFile
 
 
-class CandidateCheck:
-    """The checks of one discovery's candidates, each given by its path from the project root.
+class IgnoreRules:
+    """The ignore patterns as one discovery reads them (`SourceDiscovery` says how): a file is
+    covered when a pattern covers its name, its path or a directory it lies in, and each
+    directory's verdict is worked out once, for every file and directory under it."""
 
-    What holds for a directory holds for every file in it, so a directory is judged and
-    resolved once: whether an ignore pattern covers it, and where it really lives.
-    """
-
-    def __init__(
-        self, root: Path, component_pattern: re.Pattern[str], path_pattern: re.Pattern[str]
-    ) -> None:
-        self._root = root
-        # The root as text, which a candidate's path joins without a `Path` built per file
-        self._root_text = str(root)
+    def __init__(self, component_pattern: re.Pattern[str], path_pattern: re.Pattern[str]) -> None:
         self._component_pattern = component_pattern
         self._path_pattern = path_pattern
-        self._ignored_directories: dict[str, bool] = {}
-        # Each directory met as it really lives, as text; None for one outside the root
-        self._real_directories: dict[str, str | None] = {}
+        self._directory_verdicts: dict[str, bool] = {}
 
-    def is_ignored(self, relative_path: str) -> bool:
-        """Whether an ignore pattern covers a file: its name, its path, or a directory it lies
-        in."""
+    def covers_file(self, relative_path: str) -> bool:
+        """Whether a pattern covers a file, by its path from the project root."""
         directory, _, name = relative_path.rpartition(PATH_SEPARATOR)
         return (
             self._component_pattern.match(name) is not None
             or self._path_pattern.match(relative_path) is not None
-            or self._is_ignored_directory(directory)
+            or self.covers_directory(directory)
         )
+
+    def covers_directory(self, relative_directory: str) -> bool:
+        """Whether a pattern covers a directory: its name, its path, its path with a slash
+        after it, which `build/**` matches, or a directory it lies in."""
+        if relative_directory == ROOT_DIRECTORY:
+            return False
+        verdict = self._directory_verdicts.get(relative_directory)
+        if verdict is None:
+            parent, _, name = relative_directory.rpartition(PATH_SEPARATOR)
+            verdict = (
+                self._component_pattern.match(name) is not None
+                or self._path_pattern.match(relative_directory) is not None
+                or self._path_pattern.match(relative_directory + PATH_SEPARATOR) is not None
+                or self.covers_directory(parent)
+            )
+            self._directory_verdicts[relative_directory] = verdict
+        return verdict
+
+
+class CandidateCheck:
+    """What one discovery finds of its candidates on disk, each given by its path from the
+    project root: a directory is resolved once, for all the files in it."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+        # The root as text, which a candidate's path joins without a `Path` built per file
+        self._root_text = str(root)
+        # Each directory met as it really lives, as text; None for one outside the root
+        self._real_directories: dict[str, str | None] = {}
 
     def found(self, relative_path: str) -> FoundFile | None:
         """A candidate that is a file and resolves inside the root, with its record as of now."""
@@ -152,21 +171,6 @@ class CandidateCheck:
                 path=Path(relative_path), mtime_ns=status.st_mtime_ns, size_bytes=status.st_size
             ),
         )
-
-    def _is_ignored_directory(self, directory: str) -> bool:
-        """Whether a pattern covers a directory's name or path, or a directory it lies in."""
-        if directory == ROOT_DIRECTORY:
-            return False
-        verdict = self._ignored_directories.get(directory)
-        if verdict is None:
-            parent, _, name = directory.rpartition(PATH_SEPARATOR)
-            verdict = (
-                self._component_pattern.match(name) is not None
-                or self._path_pattern.match(directory) is not None
-                or self._is_ignored_directory(parent)
-            )
-            self._ignored_directories[directory] = verdict
-        return verdict
 
     def _link_target(self, path: str) -> str | None:
         """Where a symlink leads, resolved whole; None outside the root."""
@@ -262,10 +266,11 @@ class SourceDiscovery:
         """The indexable files under a project root, by their paths from it and sorted by
         those paths' text, each with its modification time and size as found now."""
         root = project_root.resolve()
+        rules = IgnoreRules(self._component_pattern, self._path_pattern)
         candidates = self._list_with_git(root) if self._use_gitignore else None
         if candidates is None:
-            candidates = self._walk(root)
-        return self._indexable(candidates, root)
+            candidates = self._walk(root, rules)
+        return self._indexable(candidates, root, rules)
 
     def project_root_of(self, directory: Path) -> ProjectRoot:
         """The root of the project a directory belongs to: of the git work tree it lies
@@ -347,7 +352,7 @@ class SourceDiscovery:
             log.warning("git_unavailable", project=str(root), error=str(error))
             return None
 
-    def _walk(self, root: Path) -> list[str]:
+    def _walk(self, root: Path, rules: IgnoreRules) -> list[str]:
         """The path from root of every file under it, pruning the directories a pattern
         ignores.
 
@@ -361,20 +366,20 @@ class SourceDiscovery:
             subdirectory_names[:] = [
                 name
                 for name in subdirectory_names
-                if not self._is_pruned(joined_path(relative_directory, name))
+                if not rules.covers_directory(joined_path(relative_directory, name))
             ]
             found.extend(joined_path(relative_directory, name) for name in file_names)
         return found
 
-    def _indexable(self, candidates: list[str], root: Path) -> list[SourceFile]:
-        """The candidates worth indexing, each file once, sorted by path.
+    def _indexable(self, candidates: list[str], root: Path, rules: IgnoreRules) -> list[SourceFile]:
+        """The candidates worth indexing, each file once, sorted by their paths' text.
 
         The checks that need no file system run first, over every candidate; only what
         passes them is stat'ed. A file reached both directly and through a symlink keeps
         its direct path.
         """
-        check = CandidateCheck(root, self._component_pattern, self._path_pattern)
-        wanted = sorted(path for path in set(candidates) if self._is_wanted(path, check))
+        check = CandidateCheck(root)
+        wanted = sorted(path for path in set(candidates) if self._is_wanted(path, rules))
         found = [file for file in map(check.found, wanted) if file is not None]
         # Direct paths first, so a file reached both ways keeps its direct path
         kept_by_target: dict[str, FoundFile] = {}
@@ -382,25 +387,14 @@ class SourceDiscovery:
             kept_by_target.setdefault(file.target, file)
         return [file.source for file in found if kept_by_target[file.target] is file]
 
-    def _is_wanted(self, relative_path: str, check: CandidateCheck) -> bool:
+    def _is_wanted(self, relative_path: str, rules: IgnoreRules) -> bool:
         """Whether a candidate has a supported extension, a name the index can hold, and no
         pattern ignores it."""
         if extension_of(relative_path) not in self._extensions:
             return False
-        if check.is_ignored(relative_path):
+        if rules.covers_file(relative_path):
             return False
         if not is_utf8(relative_path):
             log.warning("skipped_file_name_not_utf8", file_path=ascii(relative_path))
             return False
         return True
-
-    def _is_pruned(self, relative_directory: str) -> bool:
-        """Whether the walk skips a directory whole: a pattern covers its name, its path, or
-        its path with a slash after it, which `build/**` matches. Its parents were already
-        checked on the way down."""
-        name = relative_directory.rpartition(PATH_SEPARATOR)[2]
-        return (
-            self._component_pattern.match(name) is not None
-            or self._path_pattern.match(relative_directory) is not None
-            or self._path_pattern.match(relative_directory + PATH_SEPARATOR) is not None
-        )
