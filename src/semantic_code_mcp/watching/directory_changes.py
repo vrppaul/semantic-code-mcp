@@ -160,22 +160,26 @@ def parsed_changes(records: bytes, directory: str) -> list[TreeChange]:
 
 class Read:
     """What the system writes into while a read of a directory's changes waits: the directory's
-    handle, the read's status and event, its buffer, and what it filled."""
+    handle, the read's status and event, its buffer, what it filled, and whether one waits."""
 
     def __init__(self, handle: int, event: int) -> None:
         self.handle = handle
         self.overlapped = Overlapped(event=event)
         self.buffer = ctypes.create_string_buffer(BUFFER_SIZE)
         self.transferred = ctypes.wintypes.DWORD()
+        # Set while the system holds a read asked: one it refused leaves its status pending
+        # with no end to come, which a wait for it would wait on for good
+        self.pending = False
 
 
 def released(kernel: Kernel, read: Read) -> None:
     """Cancel a tree's read and close its handles, once the system writes no more into what the
-    read holds: the read cancelled is waited for."""
-    kernel.cancel(read.handle, ctypes.byref(read.overlapped))
-    kernel.read_result(
-        read.handle, ctypes.byref(read.overlapped), ctypes.byref(read.transferred), WAIT
-    )
+    read holds: a read still pending is cancelled and waited for."""
+    if read.pending:
+        kernel.cancel(read.handle, ctypes.byref(read.overlapped))
+        kernel.read_result(
+            read.handle, ctypes.byref(read.overlapped), ctypes.byref(read.transferred), WAIT
+        )
     kernel.close_handle(read.overlapped.event)
     kernel.close_handle(read.handle)
 
@@ -224,6 +228,7 @@ class DirectoryChangesTree(Tree):
             )
             if not done and ctypes.get_last_error() == READ_NOT_DONE:
                 return changes
+            read.pending = False
             if done and read.transferred.value:
                 records = ctypes.string_at(read.buffer, read.transferred.value)
                 changes += parsed_changes(records, self.directory)
@@ -240,7 +245,7 @@ class DirectoryChangesTree(Tree):
 
     def _ask(self) -> bool:
         """Ask for the next read of the changes; whether the system took it."""
-        return bool(
+        self._read.pending = bool(
             self._kernel.read_changes(
                 self._read.handle,
                 self._read.buffer,
@@ -252,6 +257,7 @@ class DirectoryChangesTree(Tree):
                 None,
             )
         )
+        return self._read.pending
 
 
 class DirectoryChanges(TreeWatcher):

@@ -20,6 +20,7 @@ import ctypes
 import errno
 import itertools
 import os
+import secrets
 import tempfile
 import threading
 import weakref
@@ -52,9 +53,11 @@ LATENCY_SECONDS = 0.001
 QUEUE_NAME = b"semantic-code-mcp.fsevents"
 SERIAL_QUEUE = None
 REFUSED_MESSAGE = "FSEvents refused to watch the directory"
-# The directory a watcher makes its marks in, in the system's temporary one, and their names
+# The directory a watcher makes its marks in, in the system's temporary one, and their names,
+# with a token of the watcher's own, so no file of a project bears one
 MARKS_PREFIX = "semantic-code-mcp-marks-"
-MARK_PREFIX = "mark-"
+MARK_PREFIX = "semantic-code-mcp-mark-"
+MARK_TOKEN_BYTES = 8
 # The name of no mark, which no path's ends with
 NO_MARK = ""
 # How long a look waits for its mark to come back: fseventsd hands it within milliseconds unless
@@ -207,11 +210,12 @@ class Marks:
         self._directory = tempfile.TemporaryDirectory(prefix=MARKS_PREFIX)
         # As FSEvents spells it, past the symlink of /var
         self.directory = str(Path(self._directory.name).resolve())
+        self._token = secrets.token_hex(MARK_TOKEN_BYTES)
         self._numbers = itertools.count()
 
     def next_name(self) -> str:
         """A name no mark of this watcher had."""
-        return f"{MARK_PREFIX}{next(self._numbers)}"
+        return f"{MARK_PREFIX}{self._token}-{next(self._numbers)}"
 
     def close(self) -> None:
         self._directory.cleanup()
@@ -321,14 +325,24 @@ class FSEventsTree(Tree):
 
     @override
     def changes(self) -> list[TreeChange]:
+        came_back = self._mark_came_back()
+        changes = self._delivered.taken()
+        return changes if came_back else [*changes, CHANGES_LOST]
+
+    def _mark_came_back(self) -> bool:
+        """Make a mark, wait for it, remove it; whether it came back in time. One the system will
+        not make or remove, as on a full disk, is as one that did not come back: a following
+        started again makes its marks anew."""
         name = self._marks.next_name()
         mark = Path(self._marks.directory) / name
         self._delivered.await_mark(name)
-        mark.touch()
-        came_back = self._delivered.mark_came_back(MARK_TIMEOUT_SECONDS)
-        mark.unlink()
-        changes = self._delivered.taken()
-        return changes if came_back else [*changes, CHANGES_LOST]
+        try:
+            mark.touch()
+            came_back = self._delivered.mark_came_back(MARK_TIMEOUT_SECONDS)
+            mark.unlink()
+        except OSError:
+            return False
+        return came_back
 
     @override
     def close(self) -> None:
