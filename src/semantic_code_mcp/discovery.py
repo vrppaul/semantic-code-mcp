@@ -140,7 +140,8 @@ class IgnoreRules:
 
 class CandidateCheck:
     """What one discovery finds of its candidates on disk, each given by its path from the
-    project root: a directory is resolved once, for all the files in it."""
+    project root: a directory is resolved once, for all the files in it, from where its parent
+    really lives."""
 
     def __init__(self, root: Path) -> None:
         self._root = root
@@ -182,12 +183,32 @@ class CandidateCheck:
         all its files, as git lists the tracked files of a directory a symlink has since
         replaced; None in a directory that resolves outside the root."""
         directory, _, name = relative_path.rpartition(PATH_SEPARATOR)
+        real_directory = self._real_directory(directory)
+        return None if real_directory is None else f"{real_directory}{os.sep}{name}"
+
+    def _real_directory(self, directory: str) -> str | None:
+        """Where a directory under the root really lives, as text: inside where its parent
+        really lives, resolved whole only where it is a symlink, so a directory costs one
+        `lstat` where resolving its path costs one a component; None outside the root, or
+        where it cannot be read."""
+        if directory == ROOT_DIRECTORY:
+            return self._root_text
         if directory not in self._real_directories:
-            real_directory = (self._root / directory).resolve()
-            inside = real_directory.is_relative_to(self._root)
-            self._real_directories[directory] = str(real_directory) if inside else None
-        real_directory_text = self._real_directories[directory]
-        return None if real_directory_text is None else f"{real_directory_text}{os.sep}{name}"
+            parent, _, name = directory.rpartition(PATH_SEPARATOR)
+            real_parent = self._real_directory(parent)
+            self._real_directories[directory] = (
+                None if real_parent is None else self._real_entry(f"{real_parent}{os.sep}{name}")
+            )
+        return self._real_directories[directory]
+
+    def _real_entry(self, path: str) -> str | None:
+        """Where an entry of a directory that really lives where its path says lives itself:
+        there, unless it is a symlink; None where it leads outside the root or cannot be read."""
+        try:
+            through_link = stat.S_ISLNK(os.lstat(path).st_mode)
+        except OSError:
+            return None
+        return self._link_target(path) if through_link else path
 
 
 class ProjectRoot(BaseModel):

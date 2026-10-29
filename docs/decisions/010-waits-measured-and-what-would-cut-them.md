@@ -36,6 +36,8 @@ The server keeps a watcher of each project's files (`watchfiles`, Rust's notify:
 
 The first scan and the checks O1 keeps: paths as strings rather than `Path`, one `lstat` a file, the files' records not built as pydantic models in the loop, the plan over a dictionary of strings. Expected: 200 ms to 60-80 ms, git 40 of it. It touches `discovery.py`, `plan_delta` and both stores' reading of records.
 
+In part (2026-10-29): a directory is resolved from where its parent really lives, one `lstat` each, where `Path.resolve` took one a component: on Sentry 10,000 `lstat` calls a scan instead of 21,700, and the scan 102 ms instead of 136 at the median of nine in process, the machine at a load of 0.5. Split after it, the stale check takes 183 ms: git 40 (its listing of untracked files 28, as it walks the work tree; the two listings run at once would save 3 ms, so they stay one after another), the extensions and ignore patterns 9, the files' `lstat` and their models 47, the index's records 21 and the plan 60. What is left is a `Path` and a pydantic model a file on either side, the scan's and the index's records, and comparing them: the records as text and numbers, which a domain model and the stores' contract change for, wait for the owner's word.
+
 ### O3. One pass for a search after an edit
 
 The search's stale check hands what it found to the index run, which scans and plans again today: 300 ms less at once, with or without O1. It touches `SearchService` and `IndexingService`.
