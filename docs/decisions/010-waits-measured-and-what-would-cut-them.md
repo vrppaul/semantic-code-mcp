@@ -1,6 +1,6 @@
 # 010: The waits measured after words first, and what would cut them
 
-**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last
+**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O3, O2 and O5 built (2026-10-29); O1 built, rejected by its review and reverted, its construction again waiting for the owner; O4 and O6 to come
 **Date**: 2026-10-28
 **Continues**: 009 (D4, D6, D9, D12, its step 7)
 
@@ -32,6 +32,22 @@ Each change is built with the phases split before and after, on an idle machine,
 
 The server keeps a watcher of each project's files (`watchfiles`, Rust's notify: inotify, FSEvents, Windows' own), and a search's stale check reads its queue of changes: the work of the changes alone, under a millisecond. A full scan stays for the first use, a queue that overflowed, and now and then as a check. Expected: a warm search on Sentry about 40 ms instead of 340, `index_status` about 5 ms, a search after an edit about 100 ms. It costs a dependency (the owner's word first), Linux's limit of inotify watches, and the care missed events, renamed directories and a checkout of thousands of files need. A change of principle: less work, not the same work faster.
 
+Built on watchfiles (`15901da`, 2026-10-29, on the owner's word for the dependency) and reverted (`b183058`) after its review (REJECT). It was faster (Sentry: `index_status` 34-36 ms against 148-152, a warm search 111-116 against 194-243, a fresh server's first answer 0.2 s slower) and wrong:
+- every search failed on a project with one directory name that is not UTF-8 (`RustNotify` raised on its path and nothing caught it);
+- edits were lost when reads filled inotify's queue: notify 8 asks for an event at every file opened (`IN_OPEN`), one `rg` over Sentry queued 27,905 events against a queue of 16,384, and watchfiles drops the overflow, which carries no path, so a read named fewer than 1,000 paths and was trusted (two `rg` at once lost 2 edits of 10, six lost 9);
+- a directory made while the watcher started was never watched, as the directories were listed before the watches existed;
+- `git ls-files --others --ignored --directory` names a directory whose files are all ignored though the directory is not (`git check-ignore` says so), and such a directory went unwatched (the committed property failed with `--hypothesis-seed=1`);
+- a linked worktree's index lies outside `.git`, a file; a link's target outside what is watched was not followed, as the construction said it would be; a root made again and a nested repository's `.git` removed sent nothing the watcher kept;
+- every git command that rewrites the index made the next look a full scan and a new watcher of 3,132 directories, 227 ms against the 91 a scan cost, as `RustNotify` adds no watch to a live watcher;
+- tests could not fail with its 1,000-path rule, the submodule rule or the registry's close broken, and no end-to-end test ran the default setting.
+
+`RustNotify` gives no mask, no overflow and no watch added to a live watcher, so none of the second, third and sixth can be fixed within it. The review's step back, recorded as the construction that would hold, waits for the owner's word, as it drops the dependency he approved and watches on Linux alone:
+- **inotify read directly** (its system calls through `ctypes`, nothing to install): one inotify instance per project, its file descriptor non-blocking, read to its end at each check. The kernel queues an event inside the call that changed the file, so a read at the check holds every change made before it: no thread, no markers, no deadline.
+- **A mask of changes alone** (`IN_CREATE`, `IN_DELETE`, `IN_MODIFY`, `IN_CLOSE_WRITE`, `IN_ATTRIB`, `IN_MOVED_FROM`, `IN_MOVED_TO`, `IN_DELETE_SELF`, `IN_MOVE_SELF`), never `IN_OPEN` or `IN_ACCESS`, so reading files queues nothing; `IN_Q_OVERFLOW` seen, and a full scan follows it.
+- **Watched, then listed**: each directory's watch is added before its entries are read, so what is made meanwhile sends an event; a new directory gets its watch on the live descriptor and is listed, with no restart; `IN_ISDIR` says what is a directory.
+- **What decides git's listing**, found by `git rev-parse --absolute-git-dir` and `--git-common-dir` (a linked worktree's index and excludes); directories pruned only where `git check-ignore` confirms them; a directory name the scan cannot hold (not UTF-8) left out as the scan leaves its files out; a link the scan keeps has its target watched; the root's own going, and a nested repository's directory watched alone for its `.git`.
+- **Elsewhere a scan**: macOS and Windows scan at each search until a watcher there is measured.
+- **Tests that can fail**: the property with the cases the review found, each rule broken and its test seen failing, and an end-to-end search after an edit with the default setting.
 
 ### O2. A lean scan for what scanning stays
 
@@ -59,7 +75,7 @@ The chunks without vectors handed out in pages, not all 87,694 at once, which wo
 
 ### Order
 
-O3 and O2 (done, as O5); then O1 on O2's figures and the owner's word on the dependency; then O4; O6 with ADR 009's step 9.
+O3 and O2 (done, as O5); then O1 on the owner's word for its new construction (above), or O4 first if he puts it after; O6 with ADR 009's step 9.
 
 ## Alternatives Considered
 
