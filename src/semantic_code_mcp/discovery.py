@@ -29,6 +29,8 @@ SUCCESS_EXIT_CODE = 0
 # `git check-ignore` exits 0 when a path it was given is ignored, 1 when none is.
 CHECK_IGNORE_MATCHED_EXIT_CODE = 0
 CHECK_IGNORE_NONE_MATCHED_EXIT_CODE = 1
+# The names of a file whose every change its own directory's events tell
+ONE_NAME = 1
 # What a git call that reads nothing from its standard input is handed, so it never reads the
 # server's own, which carries the protocol
 NO_INPUT = b""
@@ -165,9 +167,10 @@ class CandidateCheck:
         self._root_text = str(root)
         # Each directory met as it really lives, as text; None for one outside the root
         self._real_directories: dict[str, str | None] = {}
-        # The candidates met whose own path is a symlink, found or not: a watcher reads them at
-        # every look, as their target may change where nothing watches
-        self.links_met: set[str] = set()
+        # The candidates met whose changes no event of their own directory tells, found or not:
+        # a symlink, whose target may lie anywhere, and a file of more than one name, edited
+        # through another; a watcher reads them at every look
+        self.changed_elsewhere: set[str] = set()
 
     def found(self, relative_path: str) -> FoundFile | None:
         """A candidate that is a file and resolves inside the root, with its record as of now."""
@@ -176,12 +179,14 @@ class CandidateCheck:
             own_status = os.lstat(path)
             through_link = stat.S_ISLNK(own_status.st_mode)
             if through_link:
-                self.links_met.add(relative_path)
+                self.changed_elsewhere.add(relative_path)
             status = Path(path).stat() if through_link else own_status
         except OSError:
             return None
         if not stat.S_ISREG(status.st_mode):
             return None
+        if status.st_nlink > ONE_NAME:
+            self.changed_elsewhere.add(relative_path)
         target = self._link_target(path) if through_link else self._directory_target(relative_path)
         if target is None:
             log.debug("skipped_file_outside_project", file_path=path, project=self._root_text)

@@ -7,8 +7,8 @@ as Sentry's 87,694; or any. The large ones are timed with `--corpus-file <file> 
 their question files kept outside the repository. Each bound leaves room above the slowest
 corpus of the runs it was set from (2026-10-28, the machine at a load below 1) for this
 machine's spread. Those at 100k chunks that ADR 010's O2, O3 and O1 moved were set again from
-their runs (2026-10-29), 1.3 to 1.5 times Sentry's slowest figure since O1 followed the files,
-so a server that scans them at each search crosses each.
+their runs and a review's (2026-10-29), 1.25 to 1.5 times Sentry's slowest figure since O1
+followed the files, so a server that scans them at each search crosses each.
 """
 
 from enum import StrEnum, auto
@@ -92,9 +92,9 @@ TARGETS = (
     SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=PINNED, most=3.0),
     SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=TWENTY_THOUSAND, most=10.0),
     SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=HUNDRED_THOUSAND, most=60.0),
-    # A warm search by words, at p95 about the slowest question; at 100k chunks 130-148 ms,
-    # and narrowed 101-108 at the median, once ADR 010's O1 followed the files, where a scan at
-    # each search takes 239-343 and 231-311
+    # A warm search by words, at p95 about the slowest question; at 100k chunks 109-155 ms,
+    # and narrowed 95-111 at the median, once ADR 010's O1 followed the files, where a scan at
+    # each search takes 227-343 and 198-311
     SpeedTarget(figure=SpeedFigure.warm_search_p95_milliseconds, size=PINNED, most=150.0),
     SpeedTarget(figure=SpeedFigure.warm_search_p95_milliseconds, size=HUNDRED_THOUSAND, most=200.0),
     SpeedTarget(figure=SpeedFigure.narrowed_search_p50_milliseconds, size=PINNED, most=100.0),
@@ -102,28 +102,28 @@ TARGETS = (
         figure=SpeedFigure.narrowed_search_p50_milliseconds, size=HUNDRED_THOUSAND, most=150.0
     ),
     # One question of 40 words, as an agent writes when it pastes a sentence: each word one
-    # more term the full-text index scores every chunk by; at 100k chunks 162-184 ms, 307-366
+    # more term the full-text index scores every chunk by; at 100k chunks 147-186 ms, 248-366
     # with a scan at each search
     SpeedTarget(figure=SpeedFigure.long_question_p50_milliseconds, size=PINNED, most=150.0),
     SpeedTarget(
-        figure=SpeedFigure.long_question_p50_milliseconds, size=HUNDRED_THOUSAND, most=250.0
+        figure=SpeedFigure.long_question_p50_milliseconds, size=HUNDRED_THOUSAND, most=230.0
     ),
-    # `index_status`: the stale check each search makes first; at 100k chunks 28-33 ms from
-    # the files followed, 149-166 with a scan
+    # `index_status`: the stale check each search makes first; at 100k chunks 27-33 ms from
+    # the files followed, 137-196 with a scan
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=PINNED, most=50.0),
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=HUNDRED_THOUSAND, most=50.0),
     # A search after an edit of one file, its run taking the files its stale check found (ADR
-    # 010, O3): at 100k chunks 172-182 ms, at its slowest 202-238, from the files followed; a
-    # scan at each search takes 287-306 and 327-352, which these bounds catch
+    # 010, O3): at 100k chunks 152-182 ms, at its slowest 199-238, from the files followed; a
+    # scan at each search takes 254-437 and 321-612, which these bounds catch
     SpeedTarget(figure=SpeedFigure.search_after_edit_p50_milliseconds, size=PINNED, most=250.0),
     SpeedTarget(
-        figure=SpeedFigure.search_after_edit_p50_milliseconds, size=HUNDRED_THOUSAND, most=250.0
+        figure=SpeedFigure.search_after_edit_p50_milliseconds, size=HUNDRED_THOUSAND, most=230.0
     ),
     SpeedTarget(figure=SpeedFigure.search_after_edit_slowest_milliseconds, size=PINNED, most=500.0),
     SpeedTarget(
         figure=SpeedFigure.search_after_edit_slowest_milliseconds,
         size=HUNDRED_THOUSAND,
-        most=310.0,
+        most=300.0,
     ),
     # A fresh server's first answer on an indexed project
     SpeedTarget(figure=SpeedFigure.first_search_seconds, size=ANY_SIZE, most=3.0),

@@ -139,7 +139,7 @@ class IndexingService:
         changed."""
         async with self._lock, self._held_run(progress):
             started = time.perf_counter()
-            files = await self._scan(project_root, progress)
+            files = await self._scan(project_root, progress, rescan=force)
             return await self._index(
                 project_root, files, force=force, progress=progress, started=started
             )
@@ -156,15 +156,19 @@ class IndexingService:
             started = time.perf_counter()
             files = check.files
             if await asyncio.to_thread(self._store.manifest) != check.manifest:
-                files = await self._scan(check.project_root, progress)
+                files = await self._scan(check.project_root, progress, rescan=False)
             return await self._index(
                 check.project_root, files, force=False, progress=progress, started=started
             )
 
-    async def _scan(self, project_root: Path, progress: ProgressReporter) -> FileStamps:
-        """The project's files as they are now, found off the event loop."""
+    async def _scan(
+        self, project_root: Path, progress: ProgressReporter, *, rescan: bool
+    ) -> FileStamps:
+        """The project's files as they are now, found off the event loop; by a full scan where
+        asked, what follows them started again."""
         await progress.report(IndexPhase.scanning.value, "Scanning files...")
-        files = await asyncio.to_thread(self._files.current, project_root)
+        read = self._files.rescanned if rescan else self._files.current
+        files = await asyncio.to_thread(read, project_root)
         log.debug("scanned_files", project=str(project_root), count=len(files))
         return files
 

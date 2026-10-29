@@ -2,6 +2,7 @@
 scan finds, a look after an edit reads what changed without asking git, and a project no watch
 can tell is scanned."""
 
+import ctypes
 import os
 import shutil
 import tempfile
@@ -23,11 +24,12 @@ from semantic_code_mcp.app import (
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.models import FileStamps
-from semantic_code_mcp.services.files import WatchedFiles
-from semantic_code_mcp.services.followed_files import MOST_ENTRIES_ASKED_OF_GIT
+from semantic_code_mcp.services.files import CHECK_INTERVAL_SECONDS, WatchedFiles
 from semantic_code_mcp.watching import Inotify, watching_supported
 from tests.fakes import FakeEmbedder
-from tests.helpers import commit_all, discovery_for, make_repository, run_git
+from tests.helpers import commit_all, discovery_for, indexing_service, make_repository, run_git
+from tests.indexing import NO_PROGRESS
+from tests.stores import IDENTITY, StoreClass, open_store
 
 pytestmark = pytest.mark.skipif(not watching_supported(), reason="inotify is Linux's")
 
@@ -40,8 +42,15 @@ OPERATION_EXAMPLES = 30
 MOST_OPERATIONS = 8
 EDITS_LOOKED_AT = 100
 READS_OF_EVERY_FILE = 20_000
-# How many events inotify's queue holds before it overflows
-QUEUE_LIMIT = int(Path("/proc/sys/fs/inotify/max_queued_events").read_text())
+# How many events inotify's queue holds before it overflows, as Linux says it
+QUEUE_LIMIT_FILE = Path("/proc/sys/fs/inotify/max_queued_events")
+# Where the clock of these tests starts
+START_OF_TIME = 0.0
+# More new modules than a look usually meets, made at once
+MANY_MODULES = 150
+# renameat2's flag that swaps two paths, and the directory a relative path is read from
+RENAME_EXCHANGE = 2
+CURRENT_DIRECTORY = -100
 # The error inotify gives at the user's limit of watches
 LIMIT_OF_WATCHES_ERROR = OSError(28, "No space left on device")
 EXECUTE_ONLY = 0o311
@@ -136,6 +145,29 @@ class RecordingInotify(Inotify):
     def watch(self, directory: str) -> int:
         self.watched.add(directory)
         return super().watch(directory)
+
+
+class SetClock:
+    """A clock that reads what the test set it to."""
+
+    def __init__(self) -> None:
+        self.now = START_OF_TIME
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def exchange(first: Path, second: Path) -> int:
+    """Swap two paths in one call, as `mv --exchange` does: each directory's parent sees one
+    leave and the other come under one name. What the call returned, 0 where it swapped."""
+    library = ctypes.CDLL(None, use_errno=True)
+    return library.renameat2(
+        CURRENT_DIRECTORY,
+        os.fsencode(first),
+        CURRENT_DIRECTORY,
+        os.fsencode(second),
+        RENAME_EXCHANGE,
+    )
 
 
 class CountedInotify:
@@ -386,7 +418,7 @@ def looked_at(
     """A project made in a directory of its own and changed by each operation in turn."""
     with tempfile.TemporaryDirectory() as directory:
         project = make_project(Path(directory))
-        files = WatchedFiles(discovery_for(project_settings, build_chunker()), Inotify)
+        files = WatchedFiles(discovery_for(project_settings, build_chunker()), Inotify, SetClock())
         files.current(project)
         looked = LookedAt(kept=[], scanned=[])
         for operation in operations:
@@ -625,6 +657,25 @@ def move_the_main_repository_away(project: Path) -> None:
     (project.parent / "project").replace(project.parent / "moved_away")
 
 
+def repository_with_a_twin_outside(directory: Path) -> Path:
+    """A module that has a second name outside the project, a hard link."""
+    project = committed_repository(directory)
+    os.link(project / "a.py", directory / "twin.py")
+    return project
+
+
+def edit_the_top_module_through_its_twin(project: Path) -> None:
+    """An event goes to the directory of the name written through alone."""
+    with (project.parent / "twin.py").open("a") as twin:
+        twin.write(MORE_SOURCE)
+
+
+def exclude_beside_by_the_repository_s_configuration(project: Path) -> None:
+    excludes = project.parent / "repository-excludes"
+    excludes.write_text("beside.py\n")
+    run_git(project, "config", "core.excludesFile", str(excludes))
+
+
 def edit_the_nested_module(project: Path) -> None:
     with (project / "nested" / "inner.py").open("a") as module:
         module.write(MORE_SOURCE)
@@ -639,7 +690,7 @@ class Case(BaseModel):
 
 def looked_at_case(case: Case, directory: Path) -> LookedAt:
     project = case.make_project(directory)
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), Inotify)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), Inotify, SetClock())
     files.current(project)
     looked = LookedAt(kept=[], scanned=[])
     for step in case.steps:
@@ -798,6 +849,23 @@ def looked_at_case(case: Case, directory: Path) -> LookedAt:
             ),
             id="a link's target written after it",
         ),
+        pytest.param(
+            Case(
+                make_project=repository_with_a_twin_outside,
+                steps=[edit_the_top_module_through_its_twin],
+            ),
+            id="a module edited through its other name",
+        ),
+        pytest.param(
+            Case(
+                make_project=committed_repository,
+                steps=[
+                    write_an_untracked_module_beside,
+                    exclude_beside_by_the_repository_s_configuration,
+                ],
+            ),
+            id="an excludes file named in the repository's configuration",
+        ),
     ],
 )
 def test_what_git_and_the_file_system_decide_the_files_followed_follow(case: Case, tmp_path: Path):
@@ -811,7 +879,7 @@ def test_what_git_and_the_file_system_decide_the_files_followed_follow(case: Cas
 def test_a_look_after_an_edit_reads_what_changed_without_asking_git(tmp_path: Path):
     project = committed_repository(tmp_path)
     discovery = RecordingDiscovery(Settings())
-    files = WatchedFiles(discovery, Inotify)
+    files = WatchedFiles(discovery, Inotify, SetClock())
     files.current(project)
     asked_at_start = list(discovery.checked)
 
@@ -833,7 +901,7 @@ def test_git_rewriting_its_index_lists_the_files_again_without_watching_them_aga
     project = committed_repository(tmp_path)
     discovery = RecordingDiscovery(Settings())
     instances = CountedInotify()
-    files = WatchedFiles(discovery, instances)
+    files = WatchedFiles(discovery, instances, SetClock())
     files.current(project)
 
     write_skipped_module(project)
@@ -844,41 +912,19 @@ def test_git_rewriting_its_index_lists_the_files_again_without_watching_them_aga
     assert (instances.opened, discovery.listings, kept) == (1, 2, scan_of(project, Settings()))
 
 
-def test_a_new_module_is_asked_of_git_alone(tmp_path: Path):
+def test_new_modules_at_once_are_told_by_git_s_listing_again_once(tmp_path: Path):
+    """However many: git's listing is never patched one path at a time."""
     project = committed_repository(tmp_path)
     discovery = RecordingDiscovery(Settings())
-    files = WatchedFiles(discovery, Inotify)
+    files = WatchedFiles(discovery, Inotify, SetClock())
     files.current(project)
-    asked_at_start = list(discovery.checked)
 
-    write_skipped_module(project)
-    kept = files.current(project)
-    files.close()
-
-    assert (discovery.listings, discovery.checked, kept) == (
-        1,
-        [*asked_at_start, "skipped.py"],
-        scan_of(project, Settings()),
-    )
-
-
-def test_many_new_modules_at_once_are_told_by_git_s_listing_again(tmp_path: Path):
-    project = committed_repository(tmp_path)
-    discovery = RecordingDiscovery(Settings())
-    files = WatchedFiles(discovery, Inotify)
-    files.current(project)
-    asked_at_start = list(discovery.checked)
-
-    for number in range(MOST_ENTRIES_ASKED_OF_GIT + 1):
+    for number in range(MANY_MODULES):
         write_source(project / f"generated_{number}.py")
     kept = files.current(project)
     files.close()
 
-    assert (discovery.listings, discovery.checked, kept) == (
-        2,
-        asked_at_start,
-        scan_of(project, Settings()),
-    )
+    assert (discovery.listings, kept) == (2, scan_of(project, Settings()))
 
 
 def test_what_git_ignores_changed_as_the_following_starts_is_followed(tmp_path: Path):
@@ -886,7 +932,9 @@ def test_what_git_ignores_changed_as_the_following_starts_is_followed(tmp_path: 
     project = committed_repository(tmp_path)
     (project / ".gitignore").write_text("generated/\n")
     write_source(project / "generated" / "old.py")
-    files = WatchedFiles(IgnoreRulesChangedAsAsked(Settings(), project / ".gitignore"), Inotify)
+    files = WatchedFiles(
+        IgnoreRulesChangedAsAsked(Settings(), project / ".gitignore"), Inotify, SetClock()
+    )
     files.current(project)
     files.current(project)
 
@@ -901,7 +949,7 @@ def test_a_walked_project_s_root_made_again_is_followed_again(tmp_path: Path):
     """Where no git directory goes with it, the root's own going is all there is."""
     project = plain_directory(tmp_path)
     write_top_module(project)
-    files = WatchedFiles(discovery_for(WALKED, build_chunker()), Inotify)
+    files = WatchedFiles(discovery_for(WALKED, build_chunker()), Inotify, SetClock())
     files.current(project)
 
     make_the_root_again(project)
@@ -913,28 +961,135 @@ def test_a_walked_project_s_root_made_again_is_followed_again(tmp_path: Path):
     assert kept == scan_of(project, WALKED)
 
 
-def test_a_link_git_ignores_is_asked_of_git_once(tmp_path: Path):
+def test_a_walked_project_s_directory_moved_out_keeps_none_of_its_files(tmp_path: Path):
+    """Its files send nothing once it is gone: only its going tells."""
+    project = plain_directory(tmp_path)
+    write_deep_module(project)
+    files = WatchedFiles(discovery_for(WALKED, build_chunker()), Inotify, SetClock())
+    files.current(project)
+
+    move_a_directory_out(project)
+    kept = files.current(project)
+    files.close()
+
+    assert kept == scan_of(project, WALKED)
+
+
+def test_a_link_git_ignores_is_listed_once(tmp_path: Path):
     """Not at every look, as a link git lists is read."""
     project = committed_repository(tmp_path)
     (project / ".gitignore").write_text("hidden.py\n")
     discovery = RecordingDiscovery(Settings())
-    files = WatchedFiles(discovery, Inotify)
+    files = WatchedFiles(discovery, Inotify, SetClock())
     files.current(project)
     (project / "hidden.py").symlink_to("a.py")
     files.current(project)
-    asked = list(discovery.checked)
 
     edit_top_module(project)
     files.current(project)
     files.close()
 
-    assert discovery.checked == asked
+    assert discovery.listings == 2
+
+
+def test_two_directories_swapped_are_followed_where_they_lie(tmp_path: Path):
+    """Each one's going and the other's coming arrive under one name at once."""
+    project = committed_repository(tmp_path)
+    write_deep_module(project)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), Inotify, SetClock())
+    files.current(project)
+
+    swapped = exchange(project / "lib", project / "src")
+    files.current(project)
+    write_source(project / "lib" / "after.py")
+    write_source(project / "src" / "after.py")
+    kept = files.current(project)
+    files.close()
+
+    assert (swapped, kept) == (0, scan_of(project, Settings()))
+
+
+def test_a_renamed_directory_is_watched_no_more_once_followed_where_it_lies(tmp_path: Path):
+    """Its old watch is forgotten with its record, so no later look watches anything again."""
+    project = committed_repository(tmp_path)
+    inotify = RecordingInotify()
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), lambda: inotify, SetClock())
+    files.current(project)
+    (project / "lib").replace(project / "library")
+    files.current(project)
+    inotify.watched.clear()
+
+    for _ in range(EDITS_LOOKED_AT):
+        files.current(project)
+    files.close()
+
+    assert inotify.watched == set()
+
+
+def test_files_no_event_tells_of_are_found_by_the_check_against_a_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """As the user's global excludes, changed: the follower sees it once the interval passed."""
+    excludes = exclude_by_the_global_configuration(tmp_path, monkeypatch)
+    project = committed_repository(tmp_path)
+    write_source(project / "beside.py")
+    clock = SetClock()
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), Inotify, clock)
+    files.current(project)
+
+    excludes.write_text("beside.py\n")
+    clock.now = START_OF_TIME + CHECK_INTERVAL_SECONDS
+    kept = files.current(project)
+    files.close()
+
+    assert kept == scan_of(project, Settings())
+
+
+def exclude_by_the_global_configuration(directory: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The user's global excludes file, empty for now, named by a configuration of their own:
+    outside every project, no event of it reaches a following."""
+    excludes = directory / "global-excludes"
+    excludes.write_text("")
+    configuration = directory / "global-configuration"
+    configuration.write_text(f"[core]\n\texcludesFile = {excludes}\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(configuration))
+    return excludes
+
+
+async def test_a_forced_index_run_reads_the_files_by_a_full_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, store_class: StoreClass
+):
+    excludes = exclude_by_the_global_configuration(tmp_path, monkeypatch)
+    project = committed_repository(tmp_path)
+    write_source(project / "beside.py")
+    indexing = indexing_service(
+        open_store(store_class, tmp_path / "index", IDENTITY), Settings(), build_chunker()
+    )
+    await indexing.index(project, force=False, progress=NO_PROGRESS)
+
+    excludes.write_text("beside.py\n")
+    report = await indexing.index(project, force=True, progress=NO_PROGRESS)
+
+    assert report.files_deleted == 1
+
+
+def test_a_rescan_starts_the_following_again(tmp_path: Path):
+    """As a forced index run asks, for what no event tells."""
+    project = committed_repository(tmp_path)
+    instances = CountedInotify()
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
+    files.current(project)
+
+    kept = files.rescanned(project)
+    files.close()
+
+    assert (instances.opened, kept) == (2, scan_of(project, Settings()))
 
 
 def test_every_edit_made_before_a_look_is_in_it(tmp_path: Path):
     """However soon the look comes, as a search right after an edit does."""
     project = committed_repository(tmp_path)
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), Inotify)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), Inotify, SetClock())
     files.current(project)
 
     looks = []
@@ -961,13 +1116,19 @@ def test_reading_every_file_queues_nothing(tmp_path: Path):
 
 
 def test_a_queue_that_overflowed_starts_the_following_again(tmp_path: Path):
+    """Filled by writes to two files in turn, which inotify cannot fold into one event each,
+    then a module made, whose event the full queue drops."""
     project = committed_repository(tmp_path)
     instances = CountedInotify()
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
     files.current(project)
 
-    for number in range(QUEUE_LIMIT + 1):
-        (project / f"module_{number}.py").touch()
+    with (project / "a.py").open("a") as first, (project / "lib" / "c.py").open("a") as second:
+        for _ in range(int(QUEUE_LIMIT_FILE.read_text())):
+            for module in (first, second):
+                module.write(MORE_SOURCE)
+                module.flush()
+    write_source(project / "after_the_flood.py")
     kept = files.current(project)
     files.close()
 
@@ -977,7 +1138,7 @@ def test_a_queue_that_overflowed_starts_the_following_again(tmp_path: Path):
 def test_a_directory_made_as_the_following_starts_is_followed(tmp_path: Path):
     """Made after the walk listed its parent, before the files were listed."""
     project = committed_repository(tmp_path)
-    files = WatchedFiles(DirectoryMadeAsListed(Settings(), project / "late"), Inotify)
+    files = WatchedFiles(DirectoryMadeAsListed(Settings(), project / "late"), Inotify, SetClock())
     files.current(project)
 
     write_source(project / "late" / "new.py")
@@ -994,6 +1155,7 @@ def test_a_directory_made_as_its_parent_is_watched_is_followed(tmp_path: Path):
     files = WatchedFiles(
         discovery_for(Settings(), build_chunker()),
         partial(DirectoryMadeAsWatched, {str(project.resolve()): [late]}),
+        SetClock(),
     )
     files.current(project)
 
@@ -1021,7 +1183,7 @@ def test_only_the_directories_a_scan_reads_and_git_s_own_are_watched(tmp_path: P
     nest_a_repository(project)
     (project / "nested" / "inside").mkdir()
     inotify = RecordingInotify()
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), lambda: inotify)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), lambda: inotify, SetClock())
     files.current(project)
 
     write_source(project / "src" / "cache" / "entries" / "entry.py")
@@ -1039,7 +1201,7 @@ def test_only_the_directories_a_scan_reads_and_git_s_own_are_watched(tmp_path: P
 def test_a_project_past_the_limit_of_watches_is_scanned_without_trying_again(tmp_path: Path):
     project = committed_repository(tmp_path)
     instances = CountedInotifyAtItsLimit()
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
     files.current(project)
 
     edit_top_module(project)
@@ -1074,7 +1236,7 @@ def test_a_project_no_watch_can_tell_is_scanned_at_each_look(
 ):
     project = make_project(tmp_path)
     instances = CountedInotify()
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances)
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
     files.current(project)
 
     write_source(project / "new.py")

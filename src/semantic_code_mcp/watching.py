@@ -250,28 +250,51 @@ def lies_within(path: str, mount_point: str) -> bool:
     )
 
 
-def file_system_type(path: str, mount_info: str) -> str | None:
-    """The type of the file system a real, absolute path lies on, by the mounts' table of
-    /proc/self/mountinfo: the deepest mount point holding it, the last one mounted there where
-    several are; None where none holds it."""
-    deepest_point: str | None = None
-    found_type: str | None = None
+class Mount(BaseModel):
+    """A file system mounted: where, and its type."""
+
+    model_config = ConfigDict(frozen=True)
+
+    point: str
+    file_system: str
+
+
+def mounts_of(mount_info: str) -> list[Mount]:
+    """The mounts of /proc/self/mountinfo's table, in its order."""
+    mounts: list[Mount] = []
     for line in mount_info.splitlines():
         fields = line.split(FIELD_SEPARATOR)
-        mount_point = unescaped(fields[MOUNT_POINT_FIELD])
-        if lies_within(path, mount_point) and (
-            deepest_point is None or len(mount_point) >= len(deepest_point)
-        ):
-            deepest_point = mount_point
-            found_type = fields[fields.index(OPTIONAL_FIELDS_END) + 1]
-    return found_type
+        mounts.append(
+            Mount(
+                point=unescaped(fields[MOUNT_POINT_FIELD]),
+                file_system=fields[fields.index(OPTIONAL_FIELDS_END) + 1],
+            )
+        )
+    return mounts
+
+
+def file_system_types(path: str, mount_info: str) -> list[str]:
+    """The types of the file systems at and below a real, absolute path, by the mounts' table:
+    the one it lies on, the deepest mount point holding it and the last one mounted there where
+    several are, then each mounted below it, in the table's order."""
+    mounts = mounts_of(mount_info)
+    holding = [mount for mount in mounts if lies_within(path, mount.point)]
+    # The last of the deepest, as `max` keeps the first of equals it meets
+    deepest = max(reversed(holding), key=lambda mount: len(mount.point), default=None)
+    below = [
+        mount.file_system
+        for mount in mounts
+        if mount.point != path and lies_within(mount.point, path)
+    ]
+    return ([deepest.file_system] if deepest is not None else []) + below
 
 
 def sees_every_change(directory: Path) -> bool:
     """Whether inotify sees every change under a real directory: it lies on a local file
-    system."""
+    system, and so does each file system mounted below it."""
     try:
         mount_info = os.fsdecode(MOUNT_INFO.read_bytes())
     except OSError:
         return False
-    return file_system_type(str(directory), mount_info) in LOCAL_FILE_SYSTEMS
+    types = file_system_types(str(directory), mount_info)
+    return bool(types) and all(file_system in LOCAL_FILE_SYSTEMS for file_system in types)

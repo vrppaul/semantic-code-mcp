@@ -3,7 +3,7 @@ change only on a local one."""
 
 import pytest
 
-from semantic_code_mcp.watching import file_system_type
+from semantic_code_mcp.watching import file_system_types
 
 # A table as /proc/self/mountinfo gives it: the root on a disk, network and FUSE shares below
 # the home directory, one spelled with a blank, WSL's mount of Windows' drive, and two file
@@ -21,16 +21,21 @@ MOUNT_INFO = """\
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
-        pytest.param("/home/user/project", "ext4", id="on the root's disk"),
-        pytest.param("/home/user/shares/repository", "nfs4", id="on a network share"),
+        pytest.param("/home/user/project", ["ext4"], id="on the root's disk"),
+        pytest.param("/home/user/shares/repository", ["nfs4"], id="on a network share"),
         pytest.param(
-            "/home/user/shares/my code/repository", "fuse.sshfs", id="spelled with a blank"
+            "/home/user/shares/my code/repository", ["fuse.sshfs"], id="spelled with a blank"
         ),
-        pytest.param("/mnt/c/Users/user/project", "9p", id="on Windows' drive under WSL"),
-        pytest.param("/tmp/project", "overlay", id="where two are mounted, the last"),
-        pytest.param("/home/user/sharesmore/project", "ext4", id="a name a mount point begins"),
-        pytest.param("/home/user/shares", "nfs4", id="at a mount point itself"),
+        pytest.param("/mnt/c/Users/user/project", ["9p"], id="on Windows' drive under WSL"),
+        pytest.param("/tmp/project", ["overlay"], id="where two are mounted, the last"),
+        pytest.param("/home/user/sharesmore/project", ["ext4"], id="a name a mount point begins"),
+        pytest.param("/home/user/shares", ["nfs4", "fuse.sshfs"], id="at a mount point itself"),
+        pytest.param(
+            "/home/user", ["ext4", "nfs4", "fuse.sshfs"], id="holding file systems mounted below"
+        ),
     ],
 )
-def test_a_path_lies_on_the_deepest_file_system_mounted_over_it(path: str, expected: str):
-    assert file_system_type(path, MOUNT_INFO) == expected
+def test_a_path_s_file_systems_are_the_deepest_mounted_over_it_then_those_below(
+    path: str, expected: list[str]
+):
+    assert file_system_types(path, MOUNT_INFO) == expected

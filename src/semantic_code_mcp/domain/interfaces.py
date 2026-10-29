@@ -80,6 +80,11 @@ class ProjectFiles(ABC):
         find them; safe for two threads at once. The mapping is never changed after."""
 
     @abstractmethod
+    def rescanned(self, project_root: Path) -> FileStamps:
+        """The project's indexable files by a full scan now, what follows them started again,
+        as a forced index run asks."""
+
+    @abstractmethod
     def close(self) -> None:
         """Let go of what follows the files, as the server stops."""
 

@@ -1,5 +1,6 @@
 """The composition root: builds the server and everything its tools share."""
 
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from functools import partial
@@ -118,7 +119,7 @@ def files_opener(settings: Settings, discovery: SourceDiscovery) -> FilesOpener:
     """What reads each project's files: inotify's events between full scans where the settings
     ask for it and the system has inotify, else a full scan each time."""
     if settings.watch_files and watching_supported():
-        return partial(WatchedFiles, discovery, Inotify)
+        return partial(WatchedFiles, discovery, Inotify, time.monotonic)
     return partial(ScannedFiles, discovery)
 
 
