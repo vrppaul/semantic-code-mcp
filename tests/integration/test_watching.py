@@ -46,6 +46,8 @@ NAMES_UTF8_ALONE = pytest.mark.skipif(
     sys.platform == LINUX_PLATFORM, reason="run with names that are not UTF-8"
 )
 
+# A name a module and a directory take in turn
+SHIFTING_NAME = "shifting.py"
 # An mtime well after any file the test wrote
 LATER_MTIME_SECONDS = 4_000_000_000
 SOURCE = "x = 1\n"
@@ -348,6 +350,25 @@ def write_a_module_beside_the_logs(project: Path) -> None:
     write_source(project / "logs" / "parser.py")
 
 
+def clear(path: Path) -> None:
+    """Whatever lies at a path removed, a file or a directory, as nothing lies there already."""
+    with contextlib.suppress(FileNotFoundError, IsADirectoryError, PermissionError):
+        path.unlink()
+    remove_tree(path)
+
+
+def make_a_name_a_package(project: Path) -> None:
+    """The name of a file, if one lay there, taken by a directory holding a module."""
+    clear(project / SHIFTING_NAME)
+    write_source(project / SHIFTING_NAME / "inner.py")
+
+
+def make_a_name_a_module(project: Path) -> None:
+    """The name of a directory, if one lay there, taken by a module."""
+    clear(project / SHIFTING_NAME)
+    write_source(project / SHIFTING_NAME)
+
+
 def link_to_a_module(project: Path) -> None:
     write_top_module(project)
     (project / "alias.py").unlink(missing_ok=True)
@@ -442,6 +463,8 @@ WALKED_OPERATIONS: list[Operation] = [
     edit_the_text_file,
     link_to_a_text_file_not_yet_written,
     write_the_later_text_file,
+    make_a_name_a_package,
+    make_a_name_a_module,
 ]
 REPOSITORY_OPERATIONS = [
     *WALKED_OPERATIONS,
@@ -964,6 +987,26 @@ def test_what_git_and_the_file_system_decide_the_files_followed_follow(case: Cas
     """Changes a scan sees only by asking git or the file system, too rare in a sequence drawn
     at random."""
     looked = looked_at_case(case, tmp_path)
+
+    assert looked.kept == looked.scanned
+
+
+@pytest.mark.parametrize(
+    ("make_project", "project_settings"),
+    [
+        pytest.param(repository, Settings(), id="listed by git"),
+        pytest.param(plain_directory, WALKED, id="walked, as set"),
+    ],
+)
+def test_a_name_taken_by_another_kind_is_followed(
+    make_project: Callable[[Path], Path], project_settings: Settings
+):
+    """A module's name taken by a directory and back: a tree's system tells the name alone."""
+    looked = looked_at(
+        make_project,
+        [make_a_name_a_module, make_a_name_a_package, make_a_name_a_module],
+        project_settings,
+    )
 
     assert looked.kept == looked.scanned
 

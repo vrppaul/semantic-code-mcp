@@ -14,10 +14,9 @@ watched is passed over, as no inotify watch would have told it.
 The system says little of what it saw, and some of it folded together: FSEvents gives one set
 of flags for several changes of one path, a directory's or a file's, and Windows names no kind
 at all. So what lies at the path now says what changed there:
-- an entry made, removed or renamed where a directory watched lay is that directory gone, and a
-  directory there now is new, walked again from its top;
-- one made, removed or renamed elsewhere is an entry added if something lies there now, or
-  removed;
+- an entry made, removed or renamed is what lay at its path gone, a directory watched there or a
+  file, and what lies there now added, a directory walked again from its top: a file's name may
+  have been taken by a directory, or a directory's by a file;
 - an entry written is a file changed; a directory's own writing, as its entries change, is
   passed over, as their own changes tell them;
 - an entry's attributes changed is a file changed, or a directory whose permissions may change
@@ -238,13 +237,16 @@ class TreeWatcher(DirectoryWatcher):
     def _made_or_removed(
         self, watch: int, name: str, path: str, *, directory_now: bool
     ) -> list[WatchEvent]:
-        if os.path.normcase(path) in self._by_path:
-            gone = [entry_event(watch, WatchChange.entry_removed, name, is_directory=True)]
-            made = [entry_event(watch, WatchChange.entry_added, name, is_directory=True)]
-            return gone + made if directory_now else gone
-        if os.path.lexists(path):
-            return [entry_event(watch, WatchChange.entry_added, name, is_directory=directory_now)]
-        return [entry_event(watch, WatchChange.entry_removed, name, is_directory=False)]
+        """What lay at the path gone, a directory watched or a file, and what lies there now
+        added: a file's name may have been taken by a directory, or a directory's by a file."""
+        watched = os.path.normcase(path) in self._by_path
+        gone = [entry_event(watch, WatchChange.entry_removed, name, is_directory=watched)]
+        if not os.path.lexists(path):
+            return gone
+        return [
+            *gone,
+            entry_event(watch, WatchChange.entry_added, name, is_directory=directory_now),
+        ]
 
     def _watch_holding(self, directory: str) -> int | None:
         """The watch of a directory as the system spells it: by its text, else by where it lies;

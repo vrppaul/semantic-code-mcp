@@ -3,10 +3,11 @@ told as inotify would tell it, by the directory watched that holds it and its na
 lies at its path now; a watch is refused where inotify would refuse it."""
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from semantic_code_mcp.domain.models import NO_WATCH, WatchChange, WatchEvent
 from semantic_code_mcp.watching.systems import WINDOWS_PLATFORM
@@ -54,6 +55,16 @@ def write_a_module(project: Path) -> None:
     (project / "c.py").write_text("")
 
 
+def make_the_module_a_directory(project: Path) -> None:
+    (project / "a.py").unlink()
+    (project / "a.py").mkdir()
+
+
+def make_the_source_directory_a_file(project: Path) -> None:
+    remove_the_source_directory(project)
+    (project / "src").write_text("")
+
+
 def test_a_change_is_told_by_the_directory_watched_that_holds_it(tmp_path: Path):
     project = watched_project(tmp_path)
     watcher = ScriptedTrees()
@@ -86,19 +97,33 @@ def test_changes_lost_are_told_as_a_queue_overflowed(tmp_path: Path):
     assert events == [event(NO_WATCH, WatchChange.queue_overflowed, "", is_directory=False)]
 
 
+class Told(BaseModel):
+    """An event of the root's watch, of an entry whose name the test gives."""
+
+    change: WatchChange
+    is_directory: bool
+
+
+REMOVED_FILE = Told(change=WatchChange.entry_removed, is_directory=False)
+ADDED_FILE = Told(change=WatchChange.entry_added, is_directory=False)
+REMOVED_DIRECTORY = Told(change=WatchChange.entry_removed, is_directory=True)
+ADDED_DIRECTORY = Told(change=WatchChange.entry_added, is_directory=True)
+
+
 @pytest.mark.parametrize(
     ("change_since", "expected"),
     [
         pytest.param(
-            leave_it,
-            [WatchChange.entry_removed, WatchChange.entry_added],
-            id="a directory there now, walked again",
+            leave_it, [REMOVED_DIRECTORY, ADDED_DIRECTORY], id="a directory there, walked again"
         ),
-        pytest.param(remove_the_source_directory, [WatchChange.entry_removed], id="none there"),
+        pytest.param(
+            make_the_source_directory_a_file, [REMOVED_DIRECTORY, ADDED_FILE], id="a file there"
+        ),
+        pytest.param(remove_the_source_directory, [REMOVED_DIRECTORY], id="nothing there"),
     ],
 )
-def test_a_directory_watched_made_or_removed_is_gone(
-    change_since: Callable[[Path], None], expected: list[WatchChange], tmp_path: Path
+def test_a_directory_watched_made_or_removed_is_gone_and_what_lies_there_added(
+    change_since: Callable[[Path], None], expected: list[Told], tmp_path: Path
 ):
     """Removed and made again, swapped, or moved away and back, it may hold what no change
     below it told."""
@@ -110,28 +135,32 @@ def test_a_directory_watched_made_or_removed_is_gone(
 
     events = told(watcher, project, project / "src", TreeAction.made_or_removed)
 
-    assert events == [event(root, change, "src", is_directory=True) for change in expected]
+    assert events == [
+        event(root, entry.change, "src", is_directory=entry.is_directory) for entry in expected
+    ]
 
 
 @pytest.mark.parametrize(
-    ("change_since", "name", "expected", "is_directory"),
+    ("change_since", "name", "expected"),
     [
-        pytest.param(write_a_module, "c.py", WatchChange.entry_added, False, id="a file there"),
+        pytest.param(write_a_module, "c.py", [REMOVED_FILE, ADDED_FILE], id="a file there"),
         pytest.param(
-            make_a_package, "package", WatchChange.entry_added, True, id="a directory there"
+            make_a_package, "package", [REMOVED_FILE, ADDED_DIRECTORY], id="a directory there"
         ),
-        pytest.param(leave_it, "gone.py", WatchChange.entry_removed, False, id="nothing there"),
+        pytest.param(
+            make_the_module_a_directory,
+            "a.py",
+            [REMOVED_FILE, ADDED_DIRECTORY],
+            id="a file made a directory",
+        ),
+        pytest.param(leave_it, "gone.py", [REMOVED_FILE], id="nothing there"),
     ],
 )
-def test_an_entry_made_or_removed_is_what_lies_at_its_path_now(
-    change_since: Callable[[Path], None],
-    name: str,
-    expected: WatchChange,
-    is_directory: bool,
-    tmp_path: Path,
+def test_an_entry_made_or_removed_is_a_file_gone_and_what_lies_there_added(
+    change_since: Callable[[Path], None], name: str, expected: list[Told], tmp_path: Path
 ):
-    """Whatever the system folded together: made then removed, removed then made, renamed
-    from or to the path."""
+    """Whatever the system folded together: made then removed, removed then made, renamed from
+    or to the path, a file's name taken by a directory."""
     project = watched_project(tmp_path)
     watcher = ScriptedTrees()
     root = watcher.watch(str(project))
@@ -139,7 +168,9 @@ def test_an_entry_made_or_removed_is_what_lies_at_its_path_now(
 
     events = told(watcher, project, project / name, TreeAction.made_or_removed)
 
-    assert events == [event(root, expected, name, is_directory=is_directory)]
+    assert events == [
+        event(root, entry.change, name, is_directory=entry.is_directory) for entry in expected
+    ]
 
 
 @pytest.mark.parametrize(
@@ -235,13 +266,19 @@ def test_what_is_no_directory_itself_is_not_watched(
         watcher.watch(str(not_a_directory(project)))
 
 
+@pytest.fixture
+def unlistable_sources(tmp_path: Path) -> Iterator[Path]:
+    """A project's `src` that may not be listed, made listable again after the test."""
+    sources = watched_project(tmp_path) / "src"
+    sources.chmod(EXECUTE_ONLY)
+    yield sources
+    sources.chmod(READABLE)
+
+
 @pytest.mark.skipif(sys.platform == WINDOWS_PLATFORM, reason="a directory of Windows lists always")
-def test_a_directory_that_may_not_be_listed_is_not_watched(tmp_path: Path):
+def test_a_directory_that_may_not_be_listed_is_not_watched(unlistable_sources: Path):
     """As inotify refuses it: what git lists in it is read at every look."""
-    project = watched_project(tmp_path)
-    (project / "src").chmod(EXECUTE_ONLY)
     watcher = ScriptedTrees()
 
     with pytest.raises(PermissionError):
-        watcher.watch(str(project / "src"))
-    (project / "src").chmod(READABLE)
+        watcher.watch(str(unlistable_sources))
