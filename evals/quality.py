@@ -362,8 +362,8 @@ def chunks_of(working_tree: Path) -> list[Chunk]:
     )
     return [
         chunk
-        for source in discovery.discover(working_tree)
-        for chunk in chunker.chunk_file(working_tree, source.path)
+        for path in discovery.discover(working_tree)
+        for chunk in chunker.chunk_file(working_tree, Path(path))
     ]
 
 

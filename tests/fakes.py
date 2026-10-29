@@ -150,7 +150,10 @@ class FakeIndexStore(IndexStore):
     @override
     def indexed_files(self) -> IndexedFiles:
         # Its write records chunks and files together: no chunk is left without its record
-        return IndexedFiles(records=list(self.files_by_path.values()), unrecorded_paths=[])
+        return IndexedFiles(
+            records={path.as_posix(): file.stamp for path, file in self.files_by_path.items()},
+            unrecorded_paths=[],
+        )
 
     @override
     def counts(self, model: VectorIdentity) -> IndexCounts:

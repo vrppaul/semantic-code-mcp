@@ -194,8 +194,28 @@ class SearchHit(BaseModel):
         return None if similarity is None else similarity_in_range(similarity)
 
 
+class FileStamp(BaseModel):
+    """What a file was when a scan found it or the index recorded it: its modification time
+    and size, which an edit of it moves."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mtime_ns: int
+    size_bytes: int
+
+    def file_at(self, path: str) -> SourceFile:
+        """The file at a path from the project root, as POSIX text, that this stamp is of."""
+        return SourceFile(path=Path(path), stamp=self)
+
+
+# The files of a project by their paths from its root as POSIX text, each with its stamp: a
+# stale check compares every file found with every one the index recorded before each
+# search, which by `Path` took 60 ms at Sentry's size and by text takes 7 (ADR 010, O2)
+type FileStamps = dict[str, FileStamp]
+
+
 class SourceFile(BaseModel):
-    """A file discovery found, with what it was when it was found.
+    """A file an index run indexes, with what it was when the scan found it.
 
     The index records each file it indexed as the scan found it, never stat'ed again
     later: an edit or a deletion made while the file is chunked and embedded leaves
@@ -207,8 +227,7 @@ class SourceFile(BaseModel):
 
     # From the project root
     path: Path
-    mtime_ns: int
-    size_bytes: int
+    stamp: FileStamp
 
     @field_validator("path")
     @classmethod
@@ -307,15 +326,15 @@ class IndexUpdate(BaseModel):
 
 
 class IndexedFiles(BaseModel):
-    """What the index holds of the project's files: the record of each file it indexed, as
+    """What the index holds of the project's files: the stamp of each file it indexed, as
     the scan that indexed it found it, and the paths it holds chunks of with no record,
     which a write stopped between a file's chunks and its record leaves in a store that lays
-    them apart."""
+    them apart; each path from the project root as POSIX text."""
 
     model_config = ConfigDict(frozen=True)
 
-    records: list[SourceFile]
-    unrecorded_paths: list[Path]
+    records: FileStamps
+    unrecorded_paths: list[str]
 
 
 class IndexCounts(BaseModel):

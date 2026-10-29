@@ -440,7 +440,7 @@ def test_an_empty_store_finds_nothing(store: IndexStore):
 def test_removing_files_takes_only_their_chunks_records_and_vectors(filled_store: IndexStore):
     filled_store.write(update_of([], removed_paths=[Path("near.py"), Path("it's quoted.py")]))
 
-    assert sorted(str(file.path) for file in filled_store.indexed_files().records) == [
+    assert sorted(filled_store.indexed_files().records) == [
         "far.py",
         "indexer.py",
     ]

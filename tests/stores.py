@@ -13,6 +13,7 @@ from semantic_code_mcp.domain.models import (
     Candidate,
     Chunk,
     ChunkKind,
+    FileStamp,
     IndexIdentity,
     IndexUpdate,
     Language,
@@ -44,6 +45,8 @@ LIMIT = 10
 # A text no chunk's words match, so a search finds by vector alone
 NO_WORDS_MATCH = "zzzz"
 LOCK_TIMEOUT_SECONDS = 5.0
+# What every file a test writes was when it was found
+RECORDED = FileStamp(mtime_ns=1, size_bytes=1)
 IDENTITY = IndexIdentity(chunker_version=1)
 OTHER_IDENTITY = IndexIdentity(chunker_version=2)
 # The model whose vectors the tests add, and another, whose vectors an index keeps apart
@@ -88,7 +91,7 @@ def function_chunk(name: str, path: str, content: str) -> Chunk:
 
 
 def record_of(path: str) -> SourceFile:
-    return SourceFile(path=Path(path), mtime_ns=1, size_bytes=1)
+    return RECORDED.file_at(path)
 
 
 def update_of(chunks: list[Chunk], removed_paths: list[Path]) -> IndexUpdate:

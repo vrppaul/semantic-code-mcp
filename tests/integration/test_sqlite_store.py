@@ -20,6 +20,7 @@ from semantic_code_mcp.storage.sqlite import (
 from tests.stores import (
     IDENTITY,
     MODEL,
+    RECORDED,
     TOWARD_QUERY,
     fill,
     function_chunk,
@@ -133,7 +134,7 @@ def test_a_write_that_fails_midway_leaves_the_index_as_it_was(tmp_path: Path):
         store.indexed_files().records,
         [chunk.name for chunk in matching(store, "kept")],
         store.counts(MODEL).chunks_with_vectors,
-    ) == ([record_of("kept.py")], ["kept"], 1)
+    ) == ({"kept.py": RECORDED}, ["kept"], 1)
 
 
 def test_a_word_a_question_repeats_counts_once(tmp_path: Path):

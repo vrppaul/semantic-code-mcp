@@ -17,7 +17,7 @@ from pathlib import Path
 import structlog
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.domain.models import SourceFile
+from semantic_code_mcp.domain.models import FileStamp, FileStamps
 
 log = structlog.get_logger()
 
@@ -91,14 +91,15 @@ def joined_path(directory: str, name: str) -> str:
 
 class FoundFile(BaseModel):
     """A candidate that is a file inside the project: where it really lives, whether its own
-    path is a symlink, and its record."""
+    path is a symlink, its path from the project root as POSIX text, and its stamp."""
 
     model_config = ConfigDict(frozen=True)
 
     # Its real path as text, which two paths to one file share
     target: str
     through_link: bool
-    source: SourceFile
+    path: str
+    stamp: FileStamp
 
 
 class IgnoreRules:
@@ -168,9 +169,8 @@ class CandidateCheck:
         return FoundFile(
             target=target,
             through_link=through_link,
-            source=SourceFile(
-                path=Path(relative_path), mtime_ns=status.st_mtime_ns, size_bytes=status.st_size
-            ),
+            path=relative_path,
+            stamp=FileStamp(mtime_ns=status.st_mtime_ns, size_bytes=status.st_size),
         )
 
     def _link_target(self, path: str) -> str | None:
@@ -283,9 +283,9 @@ class SourceDiscovery:
         # Resolved as git resolves the work tree roots it is compared with
         self._home_directory = home_directory.resolve()
 
-    def discover(self, project_root: Path) -> list[SourceFile]:
-        """The indexable files under a project root, by their paths from it and sorted by
-        those paths' text, each with its modification time and size as found now."""
+    def discover(self, project_root: Path) -> FileStamps:
+        """The indexable files under a project root, by their paths from it as POSIX text and
+        in those paths' order, each with its stamp as found now."""
         root = project_root.resolve()
         rules = IgnoreRules(self._component_pattern, self._path_pattern)
         candidates = self._list_with_git(root) if self._use_gitignore else None
@@ -392,7 +392,7 @@ class SourceDiscovery:
             found.extend(joined_path(relative_directory, name) for name in file_names)
         return found
 
-    def _indexable(self, candidates: list[str], root: Path, rules: IgnoreRules) -> list[SourceFile]:
+    def _indexable(self, candidates: list[str], root: Path, rules: IgnoreRules) -> FileStamps:
         """The candidates worth indexing, each file once, sorted by their paths' text.
 
         The checks that need no file system run first, over every candidate; only what
@@ -406,7 +406,7 @@ class SourceDiscovery:
         kept_by_target: dict[str, FoundFile] = {}
         for file in sorted(found, key=lambda file: file.through_link):
             kept_by_target.setdefault(file.target, file)
-        return [file.source for file in found if kept_by_target[file.target] is file]
+        return {file.path: file.stamp for file in found if kept_by_target[file.target] is file}
 
     def _is_wanted(self, relative_path: str, rules: IgnoreRules) -> bool:
         """Whether a candidate has a supported extension, a name the index can hold, and no

@@ -13,8 +13,8 @@ from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.domain.models import (
     Chunk,
+    FileStamp,
     IndexUpdate,
-    SourceFile,
 )
 from semantic_code_mcp.storage import lancedb as lancedb_store
 from semantic_code_mcp.storage.index_directories import IndexDirectory
@@ -42,6 +42,7 @@ from tests.stores import (
     LIMIT,
     MODEL,
     QUERY,
+    RECORDED,
     TOWARD_QUERY,
     fill,
     function_chunk,
@@ -74,6 +75,9 @@ EDITS_UNDER_THE_SHARE = int(
 # Modes for a table's files: read and enter only, so a write to it fails; and writable again
 READ_ONLY = 0o555
 WRITABLE = 0o755
+# A file's edit a failed write left unrecorded, and what the filled store recorded before it
+EDITED = FileStamp(mtime_ns=2, size_bytes=2)
+RECORDS_OF_THE_FILLED_STORE = {"far.py": RECORDED, "indexer.py": RECORDED, "near.py": RECORDED}
 
 
 class StoredColumn(BaseModel):
@@ -206,7 +210,7 @@ def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     set_mode_of_tree(chunks_table_directory, READ_ONLY)
     edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
     update = IndexUpdate(
-        files=[SourceFile(path=Path("near.py"), mtime_ns=2, size_bytes=2)],
+        files=[EDITED.file_at("near.py")],
         chunks=[edited],
         removed_paths=[],
         last_of_run=True,
@@ -216,11 +220,7 @@ def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
         filled_store.write(update)
     set_mode_of_tree(chunks_table_directory, WRITABLE)
 
-    assert sorted(filled_store.indexed_files().records, key=lambda file: file.path) == [
-        record_of("far.py"),
-        record_of("indexer.py"),
-        record_of("near.py"),
-    ]
+    assert filled_store.indexed_files().records == RECORDS_OF_THE_FILLED_STORE
 
 
 def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_were(
@@ -232,7 +232,7 @@ def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_we
     set_mode_of_tree(indices_directory, READ_ONLY)
     edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
     update = IndexUpdate(
-        files=[SourceFile(path=Path("near.py"), mtime_ns=2, size_bytes=2)],
+        files=[EDITED.file_at("near.py")],
         chunks=[edited],
         removed_paths=[],
         last_of_run=True,
@@ -242,11 +242,7 @@ def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_we
         filled_store.write(update)
     set_mode_of_tree(indices_directory, WRITABLE)
 
-    assert sorted(filled_store.indexed_files().records, key=lambda file: file.path) == [
-        record_of("far.py"),
-        record_of("indexer.py"),
-        record_of("near.py"),
-    ]
+    assert filled_store.indexed_files().records == RECORDS_OF_THE_FILLED_STORE
 
 
 def test_a_file_s_new_chunks_take_the_place_of_its_old_ones_in_one_commit(
@@ -274,7 +270,7 @@ def test_chunks_with_no_record_come_back_as_unrecorded_paths(
     files_table = lancedb.connect(str(index_directory.path)).open_table(FILES_TABLE)
     files_table.delete("path = 'near.py'")
 
-    assert filled_store.indexed_files().unrecorded_paths == [Path("near.py")]
+    assert filled_store.indexed_files().unrecorded_paths == ["near.py"]
 
 
 def test_a_run_s_last_write_folds_every_chunk_into_the_full_text_index(

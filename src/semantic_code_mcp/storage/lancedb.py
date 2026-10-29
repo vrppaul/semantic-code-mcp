@@ -51,6 +51,7 @@ from semantic_code_mcp.domain.models import (
     Candidate,
     Chunk,
     ChunkKind,
+    FileStamp,
     IndexCounts,
     IndexedFiles,
     IndexUpdate,
@@ -226,9 +227,9 @@ class StoredFile(BaseModel):
     mtime_ns: int
     size_bytes: int
 
-    def source(self) -> SourceFile:
-        """This row as the record of a file the index holds."""
-        return SourceFile(path=Path(self.path), mtime_ns=self.mtime_ns, size_bytes=self.size_bytes)
+    def stamp(self) -> FileStamp:
+        """This row's file as the index recorded it."""
+        return FileStamp(mtime_ns=self.mtime_ns, size_bytes=self.size_bytes)
 
 
 class LanceDBIndexStore(DirectoryStore):
@@ -255,12 +256,10 @@ class LanceDBIndexStore(DirectoryStore):
         table = self._open(FILES_TABLE)
         rows = [] if table is None else table.to_arrow().to_pylist()
         stored = [StoredFile.model_validate(row) for row in rows]
-        recorded_paths = {file.path for file in stored}
+        records = {file.path: file.stamp() for file in stored}
         return IndexedFiles(
-            records=[file.source() for file in stored],
-            unrecorded_paths=[
-                Path(path) for path in self._chunked_paths() if path not in recorded_paths
-            ],
+            records=records,
+            unrecorded_paths=[path for path in self._chunked_paths() if path not in records],
         )
 
     @override
@@ -607,8 +606,8 @@ def files_table(files: list[SourceFile]) -> pyarrow.Table:
     return pyarrow.table(
         {
             PATH_COLUMN: [file.path.as_posix() for file in files],
-            MTIME_COLUMN: [file.mtime_ns for file in files],
-            SIZE_COLUMN: [file.size_bytes for file in files],
+            MTIME_COLUMN: [file.stamp.mtime_ns for file in files],
+            SIZE_COLUMN: [file.stamp.size_bytes for file in files],
         },
         schema=FILES_SCHEMA,
     )

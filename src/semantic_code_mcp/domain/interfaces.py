@@ -98,8 +98,8 @@ class IndexStore(ABC):
 
     @abstractmethod
     def indexed_files(self) -> IndexedFiles:
-        """The record of every file the index holds, and the paths it holds chunks of with
-        no record."""
+        """The stamp of every file the index holds, by its path's text, and the paths it holds
+        chunks of with no record."""
 
     @abstractmethod
     def counts(self, model: VectorIdentity) -> IndexCounts:

@@ -74,8 +74,8 @@ def test_a_repository_s_size_is_held_to_its_own_bounds_and_to_none_it_lacks():
     bounds allow, within its own; and a run by words alone has no figure by meaning to hold."""
     measured = speeds(
         chunks=SENTRY_CHUNKS,
-        status_milliseconds=290.0,
-        search_after_edit_milliseconds=500.0,
+        status_milliseconds=150.0,
+        search_after_edit_milliseconds=300.0,
         peak_memory_megabytes=700.0,
         meaning=None,
     )

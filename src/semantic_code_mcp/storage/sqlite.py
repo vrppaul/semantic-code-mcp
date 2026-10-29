@@ -61,6 +61,7 @@ from semantic_code_mcp.domain.models import (
     Candidate,
     Chunk,
     ChunkKind,
+    FileStamp,
     IndexCounts,
     IndexedFiles,
     IndexUpdate,
@@ -68,7 +69,6 @@ from semantic_code_mcp.domain.models import (
     SearchCandidates,
     SearchQuery,
     SearchScope,
-    SourceFile,
     StoreKind,
     VectorIdentity,
 )
@@ -412,10 +412,10 @@ class SqliteIndexStore(DirectoryStore):
     def indexed_files(self) -> IndexedFiles:
         with self._snapshot() as connection:
             rows = [] if connection is None else connection.execute(SELECT_RECORDS).fetchall()
-        records = [
-            SourceFile(path=Path(path), mtime_ns=mtime_ns, size_bytes=size_bytes)
+        records = {
+            path: FileStamp(mtime_ns=mtime_ns, size_bytes=size_bytes)
             for path, mtime_ns, size_bytes in rows
-        ]
+        }
         # A write is one transaction: no chunk is ever left without its record
         return IndexedFiles(records=records, unrecorded_paths=[])
 
@@ -804,7 +804,10 @@ def replace_records(connection: sqlite3.Connection, update: IndexUpdate) -> None
     connection.executemany(DELETE_RECORD, [(path.as_posix(),) for path in update.removed_paths])
     connection.executemany(
         UPSERT_RECORD,
-        [(file.path.as_posix(), file.mtime_ns, file.size_bytes) for file in update.files],
+        [
+            (file.path.as_posix(), file.stamp.mtime_ns, file.stamp.size_bytes)
+            for file in update.files
+        ],
     )
 
 

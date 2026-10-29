@@ -8,7 +8,7 @@ import pytest
 from hypothesis import example, given, settings, strategies
 
 from semantic_code_mcp.discovery import ProjectRoot, SourceDiscovery
-from semantic_code_mcp.domain.models import SourceFile
+from semantic_code_mcp.domain.models import FileStamps
 from tests.helpers import commit_all, make_repository, run_git
 
 PYTHON_EXTENSIONS = (".py",)
@@ -33,9 +33,9 @@ def make_discovery(
     )
 
 
-def relative_names(files: list[SourceFile]) -> set[str]:
+def relative_names(files: FileStamps) -> set[str]:
     """The paths discovery gives, each relative to the project root it was asked about."""
-    return {file.path.as_posix() for file in files}
+    return set(files)
 
 
 class TestGitDiscovery:
@@ -71,7 +71,7 @@ class TestGitDiscovery:
         files = make_discovery().discover(repository)
 
         assert relative_names(files) == {"тест.py"}
-        assert all((repository / file.path).is_file() for file in files)
+        assert all((repository / path).is_file() for path in files)
 
     def test_subdirectory_of_a_repository_honours_gitignore(self, tmp_path: Path):
         repository = make_repository(tmp_path / "repo")
@@ -429,11 +429,11 @@ def test_discovery_returns_every_source_on_disk_and_only_files_inside_the_projec
 
         files = make_discovery(use_gitignore=use_gitignore).discover(project)
 
-        returned = [project / file.path for file in files]
+        returned = [project / path for path in files]
         every_one = [True] * len(returned)
         assert [path.is_file() for path in returned] == every_one
         assert [path.resolve().is_relative_to(project.resolve()) for path in returned] == every_one
-        assert PLAIN_SOURCES & (written - deleted) <= {file.path.as_posix() for file in files}
+        assert PLAIN_SOURCES & (written - deleted) <= set(files)
 
 
 @pytest.fixture

@@ -32,6 +32,7 @@ from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, IndexStore
 from semantic_code_mcp.domain.models import (
     Chunk,
+    FileStamps,
     IndexDelta,
     IndexedFiles,
     IndexFreshness,
@@ -80,7 +81,7 @@ class StaleCheck(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     project_root: Path
-    files: list[SourceFile]
+    files: FileStamps
     freshness: IndexFreshness
 
 
@@ -209,7 +210,7 @@ class IndexingService:
             being_built=self._store.run_held(),
         )
 
-    def _stale_files_count(self, files: list[SourceFile]) -> int:
+    def _stale_files_count(self, files: FileStamps) -> int:
         """How many of the files changed since the index was written, new or modified, and
         how many it holds that are gone."""
         delta = self._plan(files, force=False)
@@ -218,7 +219,7 @@ class IndexingService:
     async def _index(
         self,
         project_root: Path,
-        files: list[SourceFile],
+        files: FileStamps,
         *,
         force: bool,
         progress: ProgressReporter,
@@ -253,7 +254,7 @@ class IndexingService:
             duration_seconds=round(time.perf_counter() - started, DURATION_DECIMALS),
         )
 
-    def _plan(self, files: list[SourceFile], *, force: bool) -> IndexDelta:
+    def _plan(self, files: FileStamps, *, force: bool) -> IndexDelta:
         """What a run over these files is to do, from what the store holds."""
         return plan_delta(files, self._store.indexed_files(), every_file=force)
 
@@ -317,15 +318,15 @@ def write_slices(chunked: list[ChunkedFile], size: int) -> list[WriteSlice]:
     return slices
 
 
-def plan_delta(on_disk: list[SourceFile], indexed: IndexedFiles, *, every_file: bool) -> IndexDelta:
+def plan_delta(on_disk: FileStamps, indexed: IndexedFiles, *, every_file: bool) -> IndexDelta:
     """The files to index — every file, or those new or changed since their record — and
-    the paths no longer on disk that the index holds records or chunks of."""
-    recorded = {file.path: file for file in indexed.records}
-    paths_on_disk = {source.path for source in on_disk}
-    to_index = (
-        on_disk
-        if every_file
-        else [source for source in on_disk if recorded.get(source.path) != source]
-    )
-    to_delete = sorted((recorded.keys() | set(indexed.unrecorded_paths)) - paths_on_disk)
-    return IndexDelta(to_index=to_index, to_delete=to_delete)
+    the paths no longer on disk that the index holds records or chunks of. Compared by their
+    paths' text, a file's record made only for the files to index."""
+    recorded = indexed.records
+    to_index = [
+        stamp.file_at(path)
+        for path, stamp in on_disk.items()
+        if every_file or recorded.get(path) != stamp
+    ]
+    gone = (recorded.keys() | set(indexed.unrecorded_paths)) - on_disk.keys()
+    return IndexDelta(to_index=to_index, to_delete=[Path(path) for path in sorted(gone)])
