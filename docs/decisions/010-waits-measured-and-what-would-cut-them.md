@@ -1,6 +1,6 @@
 # 010: The waits measured after words first, and what would cut them
 
-**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O3, O2 and O5 built (2026-10-29); O1 built, rejected by its review and reverted, its construction again waiting for the owner; O4 and O6 to come
+**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O5 built (2026-10-28), O3 and O2 (2026-10-29); O1 built, rejected by its review and reverted, its construction again waiting for the owner; O4 and O6 to come
 **Date**: 2026-10-28
 **Continues**: 009 (D4, D6, D9, D12, its step 7)
 
@@ -97,4 +97,4 @@ O3 and O2 (done, as O5); then O1 on the owner's word for its new construction (a
 
 - A warm search on a large repository costs what its search does, not what its scan does; a search after an edit, what the edit's file costs.
 - A first answer on Sentry halves, and a server's memory stays near its start.
-- O1 adds a part with a life of its own (a watcher per project, started and stopped with the registry) and a dependency.
+- O1 adds a part with a life of its own (a watcher per project, started and stopped with the registry); built on watchfiles it added a dependency, which its construction on inotify read directly would drop.
