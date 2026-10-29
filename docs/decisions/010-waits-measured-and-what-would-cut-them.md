@@ -1,6 +1,6 @@
 # 010: The waits measured after words first, and what would cut them
 
-**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O5 built (2026-10-28), O3 and O2 (2026-10-29); O1 built, rejected by its review and reverted, its construction again waiting for the owner; O4 and O6 to come
+**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O5 built (2026-10-28), O3 and O2 (2026-10-29); O1 built, rejected by its review and reverted, to be built again on Linux by its new construction; O4, macOS's and Windows' watchers with CI on them, and O6 to come
 **Date**: 2026-10-28
 **Continues**: 009 (D4, D6, D9, D12, its step 7)
 
@@ -47,6 +47,8 @@ Built on watchfiles (`15901da`, 2026-10-29, on the owner's word for the dependen
 - **Watched, then listed**: each directory's watch is added before its entries are read, so what is made meanwhile sends an event; a new directory gets its watch on the live descriptor and is listed, with no restart; `IN_ISDIR` says what is a directory.
 - **What decides git's listing**, found by `git rev-parse --absolute-git-dir` and `--git-common-dir` (a linked worktree's index and excludes); directories pruned only where `git check-ignore` confirms them; a directory name the scan cannot hold (not UTF-8) left out as the scan leaves its files out; a link the scan keeps has its target watched; the root's own going, and a nested repository's directory watched alone for its `.git`.
 - **Elsewhere a scan**: macOS and Windows scan at each search until a watcher there is measured.
+
+The owner's word (2026-10-29): build it on Linux now, then O4; then CI on macOS and Windows, where their watchers are built and tested: on macOS FSEvents, one stream ordered by event, whose `FSEventStreamFlushSync` hands every event before it at a check, its drops flagged (`MustScanSubDirs`, `UserDropped`, `KernelDropped`); on Windows `ReadDirectoryChangesW` over the root's subtree, one handle and so one queue, drained without waiting at a check, its overflow seen (`ERROR_NOTIFY_ENUM_DIR`), whether a change is queued inside the call that made it to be shown there. Each comes as another `ProjectFiles`, the rest of the code unchanged.
 - **Tests that can fail**: the property with the cases the review found, each rule broken and its test seen failing, and an end-to-end search after an edit with the default setting.
 
 ### O2. A lean scan for what scanning stays
@@ -84,7 +86,7 @@ The chunks without vectors handed out in pages, not all 87,694 at once, which wo
 
 ### Order
 
-O3 and O2 (done, as O5); then O1 on the owner's word for its new construction (above), or O4 first if he puts it after; O6 with ADR 009's step 9.
+O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29); then O4; then CI on macOS and Windows with their watchers; O6 with ADR 009's step 9.
 
 ## Alternatives Considered
 

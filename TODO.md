@@ -13,7 +13,7 @@ The first search of a repository waits for its whole index, in one tool call: th
 ## Pending
 
 ### Before a release: the platforms
-CI's tests run on macOS and Windows since ADR 009's block review, and have never run: nothing is pushed, and the store's FTS5, file locks, paths and renames behave apart on each, so the first run decides whether the README's "every platform" holds.
+CI's tests run on macOS and Windows since ADR 009's block review, and have never run: nothing is pushed, and the store's FTS5, file locks, paths and renames behave apart on each, so the first run decides whether the README's "every platform" holds. The owner's plan (2026-10-29): once ADR 010's O1 (on Linux) and O4 are built, CI on macOS and Windows is made to run, and there each gets a watcher of its own, FSEvents and `ReadDirectoryChangesW` (ADR 010, O1), tested where it runs; until then both scan at each search.
 
 ### The waits a user meets, cut where they were measured
 After words became the default, a warm search on Sentry spent 85 to 90% of its 340-400 ms checking which files changed (233-243 ms since a lean check, half of it still that check), a first answer takes 12.5 s (chunking about 7 s, the writes 4.5 s) and a first index holds every chunk at once, its peak 383 MB. `docs/decisions/010-waits-measured-and-what-would-cut-them.md` holds the split and the changes ranked: a watcher of the files instead of a scan per search, a first index in a pool, streamed and in few writes. The owner put them after ADR 009's other steps; one pass after an edit, a lean scan and the model's libraries imported with the model are done.
