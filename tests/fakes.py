@@ -32,6 +32,7 @@ from semantic_code_mcp.domain.models import (
     StoreKind,
     VectorIdentity,
 )
+from semantic_code_mcp.watching.trees import Tree, TreeChange, TreeWatcher
 
 EMBEDDING_DIMENSION = 384
 FAKE_MODEL_NAME = "fake-model"
@@ -333,6 +334,39 @@ class InlinePool(Executor):
         done: Future = Future()
         done.set_result(task(*args, **kwargs))
         return done
+
+
+class ScriptedTree(Tree):
+    """A tree a system watches whole, which tells the changes a test hands it, each once."""
+
+    def __init__(self, directory: str) -> None:
+        super().__init__(directory)
+        self.told: list[TreeChange] = []
+        self.closed = False
+
+    @override
+    def changes(self) -> list[TreeChange]:
+        changes = self.told
+        self.told = []
+        return changes
+
+    @override
+    def close(self) -> None:
+        self.closed = True
+
+
+class ScriptedTrees(TreeWatcher):
+    """A watcher of trees that tell what a test hands them, keeping each tree it opened by its
+    directory."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.trees: dict[str, ScriptedTree] = {}
+
+    @override
+    def open_tree(self, directory: str) -> Tree:
+        self.trees[directory] = ScriptedTree(directory)
+        return self.trees[directory]
 
 
 class RefusedPools:
