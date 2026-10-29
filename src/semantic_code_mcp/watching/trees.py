@@ -99,10 +99,6 @@ class WatchedDirectory(BaseModel):
     place: Place
 
 
-def place_of(status: os.stat_result) -> Place:
-    return Place(device=status.st_dev, inode=status.st_ino)
-
-
 def is_plain_directory(path: str, status: os.stat_result) -> bool:
     """Whether what a path's own `lstat` read is a directory itself: no symlink, nor on Windows a
     junction, whose `lstat` reads as a plain directory."""
@@ -153,17 +149,16 @@ class TreeWatcher(DirectoryWatcher):
         # As inotify, which watches only what it may read
         if not os.access(directory, os.R_OK):
             raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), directory)
-        place = place_of(status)
-        known = self._by_path.get(os.path.normcase(directory))
-        if known is not None and self._watched[known].place == place:
-            return known
+        key = os.path.normcase(directory)
+        known = self._by_path.get(key)
         if known is not None:
-            self.unwatch(known)
+            return known
         self._hold_in_a_tree(directory)
         watch = self._next_watch
         self._next_watch += 1
+        place = Place.of(status)
         self._watched[watch] = WatchedDirectory(path=directory, place=place)
-        self._by_path[os.path.normcase(directory)] = watch
+        self._by_path[key] = watch
         self._by_place[place] = watch
         return watch
 
@@ -213,14 +208,12 @@ class TreeWatcher(DirectoryWatcher):
     def _told(self, change: TreeChange, holding: dict[str, int | None]) -> list[WatchEvent]:
         """A change as inotify would tell it: none below no directory watched."""
         if change.action is TreeAction.lost:
-            return [
-                entry_event(NO_WATCH, WatchChange.queue_overflowed, NO_NAME, is_directory=False)
-            ]
+            return [entry_event(NO_WATCH, WatchChange.changes_lost, NO_NAME, is_directory=False)]
         parent, name = os.path.split(os.path.normpath(change.path))
         if parent not in holding:
             holding[parent] = self._watch_holding(parent)
         watch = holding[parent]
-        if watch is None or not name:
+        if watch is None:
             return []
         path = f"{self._watched[watch].path}{os.sep}{name}"
         directory_now = is_plain_directory_now(path)
@@ -258,4 +251,4 @@ class TreeWatcher(DirectoryWatcher):
             status = Path(directory).stat()
         except OSError:
             return None
-        return self._by_place.get(place_of(status))
+        return self._by_place.get(Place.of(status))

@@ -77,7 +77,7 @@ DIRECTORY_GONE = (
 def change_of(mask: int) -> WatchChange:
     """What an event's mask says happened."""
     if mask & InotifyFlag.queue_overflowed:
-        return WatchChange.queue_overflowed
+        return WatchChange.changes_lost
     if mask & ENTRY_ADDED:
         return WatchChange.entry_added
     if mask & ENTRY_REMOVED:

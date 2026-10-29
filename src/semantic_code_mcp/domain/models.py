@@ -1,5 +1,6 @@
 """Domain models: chunks, search results, index state and the reports of each operation."""
 
+import os
 from datetime import datetime
 from enum import StrEnum, auto
 from pathlib import Path
@@ -226,8 +227,9 @@ class WatchChange(StrEnum):
     entry_changed = auto()
     # The watched directory itself deleted, moved, unmounted, or its watch removed
     directory_gone = auto()
-    # Events were lost: the queue was full
-    queue_overflowed = auto()
+    # Changes went untold: the queue overflowed, the system dropped them, or it could not show
+    # them all as they came
+    changes_lost = auto()
 
 
 class WatchEvent(BaseModel):
@@ -252,6 +254,11 @@ class Place(BaseModel):
 
     device: int
     inode: int
+
+    @classmethod
+    def of(cls, status: os.stat_result) -> Place:
+        """Where what a `stat` read lies."""
+        return cls(device=status.st_dev, inode=status.st_ino)
 
 
 class SourceFile(BaseModel):

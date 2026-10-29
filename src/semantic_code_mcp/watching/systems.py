@@ -4,6 +4,7 @@
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import MappingProxyType
 
 from pydantic import BaseModel, ConfigDict
 
@@ -33,13 +34,15 @@ class SystemWatching(BaseModel):
     sees_every_change: Callable[[Path], bool]
 
 
-SYSTEMS = {
-    LINUX_PLATFORM: SystemWatching(watcher=Inotify, sees_every_change=linux_sees_every_change),
-    MACOS_PLATFORM: SystemWatching(watcher=FSEvents, sees_every_change=macos_sees_every_change),
-    WINDOWS_PLATFORM: SystemWatching(
-        watcher=DirectoryChanges, sees_every_change=windows_sees_every_change
-    ),
-}
+SYSTEMS = MappingProxyType(
+    {
+        LINUX_PLATFORM: SystemWatching(watcher=Inotify, sees_every_change=linux_sees_every_change),
+        MACOS_PLATFORM: SystemWatching(watcher=FSEvents, sees_every_change=macos_sees_every_change),
+        WINDOWS_PLATFORM: SystemWatching(
+            watcher=DirectoryChanges, sees_every_change=windows_sees_every_change
+        ),
+    }
+)
 
 
 def system_watcher() -> type[DirectoryWatcher] | None:

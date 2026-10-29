@@ -87,14 +87,14 @@ def test_a_change_below_no_directory_watched_is_passed_over(tmp_path: Path):
     assert events == []
 
 
-def test_changes_lost_are_told_as_a_queue_overflowed(tmp_path: Path):
+def test_changes_lost_are_told_by_no_watch(tmp_path: Path):
     project = watched_project(tmp_path)
     watcher = ScriptedTrees()
     watcher.watch(str(project))
 
     events = told(watcher, project, Path(), TreeAction.lost)
 
-    assert events == [event(NO_WATCH, WatchChange.queue_overflowed, "", is_directory=False)]
+    assert events == [event(NO_WATCH, WatchChange.changes_lost, "", is_directory=False)]
 
 
 class Told(BaseModel):
@@ -241,6 +241,54 @@ def test_a_directory_a_tree_holds_opens_none_of_its_own(tmp_path: Path):
     watcher.watch(str(project / "src"))
 
     assert list(watcher.trees) == [str(project)]
+
+
+def test_a_watcher_closed_closes_each_of_its_trees(tmp_path: Path):
+    project = watched_project(tmp_path)
+    (tmp_path / "git").mkdir()
+    watcher = ScriptedTrees()
+    watcher.watch(str(project))
+    watcher.watch(str(tmp_path / "git"))
+
+    watcher.close()
+
+    assert [tree.closed for tree in watcher.trees.values()] == [True, True]
+
+
+def test_a_tree_replaced_is_asked_no_more(tmp_path: Path):
+    project = watched_project(tmp_path)
+    watcher = ScriptedTrees()
+    watcher.watch(str(project / "src"))
+    watcher.watch(str(project))
+
+    events = told(watcher, project / "src", project / "src" / "b.py", TreeAction.written)
+
+    assert events == []
+
+
+def test_a_directory_watched_again_keeps_its_watch(tmp_path: Path):
+    """As inotify gives it, so a follower's records of the watch hold."""
+    project = watched_project(tmp_path)
+    watcher = ScriptedTrees()
+    first = watcher.watch(str(project / "src"))
+
+    again = watcher.watch(str(project / "src"))
+
+    assert (again, list(watcher.trees)) == (first, [str(project / "src")])
+
+
+def test_a_directory_unwatched_is_found_no_more_by_where_it_lies(tmp_path: Path):
+    """Spelled otherwise than it was watched by, here through a symlink."""
+    project = watched_project(tmp_path)
+    (tmp_path / "spelled").symlink_to(project / "src", target_is_directory=True)
+    watcher = ScriptedTrees()
+    watcher.watch(str(project))
+    source = watcher.watch(str(project / "src"))
+    watcher.unwatch(source)
+
+    events = told(watcher, project, tmp_path / "spelled" / "b.py", TreeAction.written)
+
+    assert events == []
 
 
 def link_to_the_sources(project: Path) -> Path:

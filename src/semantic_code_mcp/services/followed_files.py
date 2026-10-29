@@ -93,7 +93,7 @@ NO_NAMES = frozenset[str]()
 
 
 class FollowingLostError(RuntimeError):
-    """The files kept can no longer be trusted, as the queue overflowed, the root went, git
+    """The files kept can no longer be trusted, as changes went untold, the root went, git
     failed or a rule changed: only a full scan can tell them."""
 
 
@@ -131,7 +131,7 @@ def place_of(directory: Path) -> Place | None:
         status = directory.stat()
     except OSError:
         return None
-    return Place(device=status.st_dev, inode=status.st_ino)
+    return Place.of(status)
 
 
 def parent_of(path: str) -> str:
@@ -301,8 +301,8 @@ class FollowedFiles:
         """Note what one event changed. An event of a directory forgotten in this look keeps
         its path as it was: what it names is read where that path leads now, which a walk of
         the directory's new place reads too."""
-        if event.change is WatchChange.queue_overflowed:
-            message = "the watcher's queue overflowed"
+        if event.change is WatchChange.changes_lost:
+            message = "the watcher lost changes"
             raise FollowingLostError(message)
         git = self._git.get(event.watch)
         if git is not None:
