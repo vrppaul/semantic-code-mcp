@@ -57,8 +57,9 @@ EXECUTE_ONLY = 0o311
 READABLE = 0o755
 # This process's open files
 OPEN_DESCRIPTORS = Path("/proc/self/fd")
-# A directory name that is not UTF-8, as the file system takes it
-NOT_UTF8_NAME = os.fsdecode(b"caf\xe9")
+# A directory name that is not UTF-8, as bytes: decoded where a test runs, as Windows cannot
+# decode it and this module is imported there too
+NOT_UTF8_NAME = b"caf\xe9"
 
 
 class RecordingDiscovery(SourceDiscovery):
@@ -323,7 +324,7 @@ def write_the_later_text_file(project: Path) -> None:
 
 
 def name_a_directory_not_utf8(project: Path) -> None:
-    write_source(project / NOT_UTF8_NAME / "inside.py")
+    write_source(project / os.fsdecode(NOT_UTF8_NAME) / "inside.py")
 
 
 def commit_anything(repository: Path) -> None:
@@ -1177,7 +1178,7 @@ def test_only_the_directories_a_scan_reads_and_git_s_own_are_watched(tmp_path: P
         "node_modules/package",
         "build/out",
         "generated/out",
-        NOT_UTF8_NAME,
+        os.fsdecode(NOT_UTF8_NAME),
     ]:
         write_source(project / directory / "module.py")
     nest_a_repository(project)

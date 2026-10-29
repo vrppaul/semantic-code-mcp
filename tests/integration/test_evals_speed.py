@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from evals.speed import SERVER_COMMAND_MARK, ServerMemory
 
 # A stand-in server that starts a process holding memory, as a first index's pool does
@@ -20,6 +21,7 @@ def tell(server: subprocess.Popen[str]) -> None:
     server.stdout.readline()
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="memory is read from Linux's /proc")
 def test_a_server_s_peak_memory_counts_what_a_process_it_started_held_before_it_ended():
     """A first index's pool lives for seconds, its processes' memory the server's while it
     does; what the server holds after is its own and that of the processes left."""

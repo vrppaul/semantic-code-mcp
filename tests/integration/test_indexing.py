@@ -813,6 +813,7 @@ def test_a_server_killed_mid_run_leaves_none_of_its_pool_s_processes(tmp_path: P
     assert len(processes) == POOL_WORKERS + PROCESSES_BESIDE_A_POOL
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux starts a pool from a forkserver")
 def test_a_system_whose_forkserver_cannot_start_has_its_runs_chunked_in_the_server(
     tmp_path: Path,
 ):

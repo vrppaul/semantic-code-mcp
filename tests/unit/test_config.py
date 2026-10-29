@@ -32,8 +32,9 @@ def test_the_global_index_of_a_project_lives_under_the_cache():
     assert index_path.parent == CACHE
 
 
-def test_the_local_index_lives_in_the_project():
-    project = Path("/home/user/project")
+def test_the_local_index_lives_in_the_project(tmp_path: Path):
+    """A project's path as it really is: macOS's `/home` is another directory's link."""
+    project = tmp_path.resolve() / "project"
 
     assert get_index_path(Settings(local_index=True), project) == project / LOCAL_INDEX_DIRECTORY
 

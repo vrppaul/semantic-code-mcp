@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,6 +19,9 @@ SHORT_GIT_TIMEOUT_SECONDS = 0.2
 GIT_TIMEOUT_SECONDS = 10.0
 # A home directory no repository of a test lies at or above
 HOME_OF_NO_TEST = Path("/home-of-no-test")
+# Where every file name is Unicode, so none that is not UTF-8 can be made: macOS's APFS and
+# Windows' NTFS
+PLATFORMS_OF_UNICODE_NAMES = ("darwin", "win32")
 
 
 def make_discovery(
@@ -357,6 +361,9 @@ def test_a_name_of_dots_and_an_extension_is_no_source(tmp_path: Path, use_gitign
     assert relative_names(files) == {"kept.py"}
 
 
+@pytest.mark.skipif(
+    sys.platform in PLATFORMS_OF_UNICODE_NAMES, reason="APFS and NTFS hold no other name"
+)
 @pytest.mark.parametrize("use_gitignore", [True, False], ids=["asking git", "walking"])
 def test_a_file_name_that_is_not_utf8_is_skipped(tmp_path: Path, use_gitignore: bool):
     """The index cannot store such a name; one of them must not stop the rest."""
