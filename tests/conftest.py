@@ -54,14 +54,20 @@ def store_class(request: pytest.FixtureRequest) -> StoreClass:
 
 @pytest.fixture
 def test_settings(tmp_path: Path) -> Settings:
-    """Settings whose indexes live in the test's temporary directory."""
-    return Settings(cache_dir=tmp_path / "cache")
+    """Settings whose indexes live in the test's temporary directory, each project's files
+    scanned: a watcher, which a registry closes with its server, is the watching tests'."""
+    return Settings(cache_dir=tmp_path / "cache", watch_files=False)
 
 
 @pytest.fixture
 def store_settings(tmp_path: Path, store_class: StoreClass) -> Settings:
-    """Settings whose indexes live in the test's temporary directory, in each store in turn."""
-    return Settings(cache_dir=tmp_path / "cache", index_store=store_class.LAYOUT.store_kind)
+    """Settings whose indexes live in the test's temporary directory, in each store in turn,
+    each project's files scanned."""
+    return Settings(
+        cache_dir=tmp_path / "cache",
+        index_store=store_class.LAYOUT.store_kind,
+        watch_files=False,
+    )
 
 
 @pytest.fixture

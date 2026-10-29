@@ -1,5 +1,6 @@
 """The composition root: builds the server and everything its tools share."""
 
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from functools import partial
@@ -20,9 +21,11 @@ from semantic_code_mcp.extras import LANCEDB_EXTRA, needing
 from semantic_code_mcp.server.instructions import SERVER_INSTRUCTIONS
 from semantic_code_mcp.server.profiling import ProfilingMiddleware
 from semantic_code_mcp.server.tools import index_codebase, index_status, search_code
-from semantic_code_mcp.services.projects import ProjectRegistry, StoreOpener
+from semantic_code_mcp.services.files import ScannedFiles, WatchedFiles
+from semantic_code_mcp.services.projects import FilesOpener, ProjectRegistry, StoreOpener
 from semantic_code_mcp.storage.index_directories import DirectoryStore, IndexDirectory
 from semantic_code_mcp.storage.sqlite import SqliteIndexStore
+from semantic_code_mcp.watching import FileWatcher, watching_supported
 
 SERVER_NAME = "semantic-code-mcp"
 PACKAGE_NAME = "semantic-code-mcp"
@@ -78,11 +81,16 @@ async def project_registry_lifespan(
     embedder: Embedder,
     open_store: StoreOpener,
 ) -> AsyncGenerator[ProjectRegistry]:
-    """The state every request of a session shares: the projects and their services.
+    """The state every request of a session shares: the projects and their services, whose
+    watchers stop with the session.
 
     The lifespan protocol hands in the server; the registry does not need it.
     """
-    yield build_registry(settings, embedder, open_store)
+    registry = build_registry(settings, embedder, open_store)
+    try:
+        yield registry
+    finally:
+        registry.close()
 
 
 def build_registry(
@@ -90,19 +98,29 @@ def build_registry(
 ) -> ProjectRegistry:
     """The registry of projects, over the parts the server is built from."""
     chunker = build_chunker()
+    discovery = SourceDiscovery(
+        extensions=chunker.supported_extensions,
+        ignore_patterns=settings.ignore_patterns,
+        use_gitignore=settings.use_gitignore,
+        git_timeout_seconds=settings.git_timeout_seconds,
+        home_directory=Path.home(),
+    )
     return ProjectRegistry(
         settings=settings,
         embedder=embedder,
         chunker=chunker,
-        discovery=SourceDiscovery(
-            extensions=chunker.supported_extensions,
-            ignore_patterns=settings.ignore_patterns,
-            use_gitignore=settings.use_gitignore,
-            git_timeout_seconds=settings.git_timeout_seconds,
-            home_directory=Path.home(),
-        ),
+        discovery=discovery,
         open_store=open_store,
+        open_files=files_opener(settings, discovery),
     )
+
+
+def files_opener(settings: Settings, discovery: SourceDiscovery) -> FilesOpener:
+    """What reads each project's files: a watcher's changes between full scans where the
+    settings ask for it and its barrier holds here, else a full scan each time."""
+    if settings.watch_files and watching_supported():
+        return partial(WatchedFiles, discovery, FileWatcher, time.monotonic)
+    return partial(ScannedFiles, discovery)
 
 
 def build_chunker() -> CompositeChunker:
