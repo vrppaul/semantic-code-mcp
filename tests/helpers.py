@@ -2,7 +2,6 @@
 
 import subprocess
 import sys
-from functools import partial
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -12,7 +11,6 @@ from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
-from semantic_code_mcp.services.files import ScannedFiles
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry, vector_identity
 from semantic_code_mcp.services.vectors import VectorService
@@ -65,13 +63,10 @@ def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:
 
 
 def indexing_service(store: IndexStore, settings: Settings, chunker: Chunker) -> IndexingService:
-    """The indexing of a project's words over the given parts, its files scanned by the real
-    discovery, its status counting the fake model's vectors."""
+    """The indexing of a project's words over the given parts, with the real discovery, its
+    status counting the fake model's vectors."""
     return IndexingService(
-        files=ScannedFiles(discovery_for(settings, chunker)),
-        chunker=chunker,
-        store=store,
-        model=FAKE_MODEL,
+        discovery=discovery_for(settings, chunker), chunker=chunker, store=store, model=FAKE_MODEL
     )
 
 
@@ -82,15 +77,13 @@ def vector_service(store: IndexStore, embedder: Embedder) -> VectorService:
 
 def registry_of(settings: Settings, embedder: Embedder, chunker: Chunker) -> ProjectRegistry:
     """The registry of a server whose model and chunker are the given ones, its indexes in
-    the store the settings pick, each project's files scanned."""
-    discovery = discovery_for(settings, chunker)
+    the store the settings pick."""
     return ProjectRegistry(
         settings=settings,
         embedder=embedder,
         chunker=chunker,
-        discovery=discovery,
+        discovery=discovery_for(settings, chunker),
         open_store=store_opener(settings),
-        open_files=partial(ScannedFiles, discovery),
     )
 
 

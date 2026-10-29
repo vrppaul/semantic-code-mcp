@@ -28,7 +28,8 @@ from pathlib import Path
 import structlog
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.domain.interfaces import Chunker, IndexStore, ProjectFiles
+from semantic_code_mcp.discovery import SourceDiscovery
+from semantic_code_mcp.domain.interfaces import Chunker, IndexStore
 from semantic_code_mcp.domain.models import (
     Chunk,
     FileStamps,
@@ -121,12 +122,12 @@ class IndexingService:
 
     def __init__(
         self,
-        files: ProjectFiles,
+        discovery: SourceDiscovery,
         chunker: Chunker,
         store: IndexStore,
         model: VectorIdentity,
     ) -> None:
-        self._files = files
+        self._discovery = discovery
         self._chunker = chunker
         self._store = store
         self._model = model
@@ -164,7 +165,7 @@ class IndexingService:
     async def _scan(self, project_root: Path, progress: ProgressReporter) -> FileStamps:
         """The project's files as they are now, found off the event loop."""
         await progress.report(IndexPhase.scanning.value, "Scanning files...")
-        files = await asyncio.to_thread(self._files.current, project_root)
+        files = await asyncio.to_thread(self._discovery.discover, project_root)
         log.debug("scanned_files", project=str(project_root), count=len(files))
         return files
 
@@ -197,7 +198,7 @@ class IndexingService:
     def _stale_check(self, project_root: Path) -> StaleCheck:
         manifest = self._store.manifest()
         files_count = self._store.counts(self._model).files
-        files = self._files.current(project_root)
+        files = self._discovery.discover(project_root)
         return StaleCheck(
             project_root=project_root,
             files=files,
@@ -217,7 +218,7 @@ class IndexingService:
             chunks_count=counts.chunks,
             model=self._model,
             chunks_with_vectors_count=counts.chunks_with_vectors,
-            stale_files_count=self._stale_files_count(self._files.current(project_root)),
+            stale_files_count=self._stale_files_count(self._discovery.discover(project_root)),
             manifest=self._store.manifest(),
             being_built=self._store.run_held(),
         )

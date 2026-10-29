@@ -18,7 +18,6 @@ dependencies = [
     "tree-sitter-markdown>=0.5.1,<0.6",
     "tree-sitter-python>=0.25.0,<0.26",
     "tree-sitter-rust>=0.24.0,<0.25",
-    "watchfiles>=1.3.0,<2",
 ]
 
 [project.urls]
@@ -212,7 +211,7 @@ layers = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.server",
     "semantic_code_mcp.services",
-    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage | semantic_code_mcp.watching",
+    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage",
     "semantic_code_mcp.config | semantic_code_mcp.logging | semantic_code_mcp.extras",
     "semantic_code_mcp.domain",
 ]
@@ -369,28 +368,6 @@ forbidden_modules = ["tree_sitter", "tree_sitter_python", "tree_sitter_rust", "t
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "watchfiles stays in the watching part"
-type = "forbidden"
-# A watcher's barrier rests on how the library reads events: one part holds that knowledge
-source_modules = [
-    "semantic_code_mcp.app",
-    "semantic_code_mcp.cli",
-    "semantic_code_mcp.__main__",
-    "semantic_code_mcp.server",
-    "semantic_code_mcp.services",
-    "semantic_code_mcp.discovery",
-    "semantic_code_mcp.chunkers",
-    "semantic_code_mcp.embedding",
-    "semantic_code_mcp.storage",
-    "semantic_code_mcp.config",
-    "semantic_code_mcp.logging",
-    "semantic_code_mcp.domain",
-]
-forbidden_modules = ["watchfiles"]
-# Through the part that wraps it, a library is meant to be reached
-allow_indirect_imports = true
-
-[[tool.importlinter.contracts]]
 name = "The domain is pure"
 type = "forbidden"
 # Models and interfaces import pydantic, the standard library and numpy's array type
@@ -407,7 +384,6 @@ forbidden_modules = [
     "tokenizers",
     "huggingface_hub",
     "tree_sitter",
-    "watchfiles",
 ]
 
 [tool.vulture]
@@ -439,8 +415,6 @@ ignore_names = [
     "record_chunks",
     "record_vectors",
     "record_schema",
-    # The marks pytest reads off a test module by name
-    "pytestmark",
 ]
 
 [tool.uv.sources]
