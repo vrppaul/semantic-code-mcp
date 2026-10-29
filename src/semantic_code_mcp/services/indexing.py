@@ -36,6 +36,7 @@ from semantic_code_mcp.domain.models import (
     IndexDelta,
     IndexedFiles,
     IndexFreshness,
+    IndexManifest,
     IndexReport,
     IndexStatus,
     IndexUpdate,
@@ -76,13 +77,16 @@ class IndexPhase(Enum):
 class StaleCheck(BaseModel):
     """What a search found of its project before it searches: the files on disk as its scan
     took them, and how far the index is from them. The run it starts plans from these files,
-    so a search after an edit scans the project once."""
+    so a search after an edit scans the project once, unless another run wrote since."""
 
     model_config = ConfigDict(frozen=True)
 
     project_root: Path
     files: FileStamps
     freshness: IndexFreshness
+    # The index's manifest as the check found it, before it read anything else of the index:
+    # every write that changes the index records a new one
+    manifest: IndexManifest | None
 
 
 class ChunkedFile(BaseModel):
@@ -136,9 +140,7 @@ class IndexingService:
         changed."""
         async with self._lock, self._held_run(progress):
             started = time.perf_counter()
-            await progress.report(IndexPhase.scanning.value, "Scanning files...")
-            files = await asyncio.to_thread(self._discovery.discover, project_root)
-            log.debug("scanned_files", project=str(project_root), count=len(files))
+            files = await self._scan(project_root, progress)
             return await self._index(
                 project_root, files, force=force, progress=progress, started=started
             )
@@ -147,16 +149,25 @@ class IndexingService:
         self, check: StaleCheck, *, progress: ProgressReporter
     ) -> IndexReport:
         """Bring the index up to date with the files a stale check found, never forced: an
-        edit since the check is the next search's. Planned once the run holds the index, so
-        what another run wrote since the check is not done again."""
+        edit since the check is the next search's. Where another run wrote since the check,
+        the files are scanned again, as what it wrote of a file changed since is newer than
+        the check's view of that file; and the run plans once it holds the index, so what
+        another run did is not done again."""
         async with self._lock, self._held_run(progress):
+            started = time.perf_counter()
+            files = check.files
+            if await asyncio.to_thread(self._store.manifest) != check.manifest:
+                files = await self._scan(check.project_root, progress)
             return await self._index(
-                check.project_root,
-                check.files,
-                force=False,
-                progress=progress,
-                started=time.perf_counter(),
+                check.project_root, files, force=False, progress=progress, started=started
             )
+
+    async def _scan(self, project_root: Path, progress: ProgressReporter) -> FileStamps:
+        """The project's files as they are now, found off the event loop."""
+        await progress.report(IndexPhase.scanning.value, "Scanning files...")
+        files = await asyncio.to_thread(self._discovery.discover, project_root)
+        log.debug("scanned_files", project=str(project_root), count=len(files))
+        return files
 
     @asynccontextmanager
     async def _held_run(self, progress: ProgressReporter) -> AsyncGenerator[None]:
@@ -185,6 +196,7 @@ class IndexingService:
         return await asyncio.to_thread(self._stale_check, project_root)
 
     def _stale_check(self, project_root: Path) -> StaleCheck:
+        manifest = self._store.manifest()
         files_count = self._store.counts(self._model).files
         files = self._discovery.discover(project_root)
         return StaleCheck(
@@ -193,6 +205,7 @@ class IndexingService:
             freshness=IndexFreshness(
                 files_count=files_count, stale_files_count=self._stale_files_count(files)
             ),
+            manifest=manifest,
         )
 
     def _status(self, project_root: Path) -> IndexStatus:
@@ -324,7 +337,7 @@ def plan_delta(on_disk: FileStamps, indexed: IndexedFiles, *, every_file: bool) 
     paths' text, a file's record made only for the files to index."""
     recorded = indexed.records
     to_index = [
-        stamp.file_at(path)
+        SourceFile(path=Path(path), stamp=stamp)
         for path, stamp in on_disk.items()
         if every_file or recorded.get(path) != stamp
     ]

@@ -1,6 +1,7 @@
 """Tests for source file discovery."""
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -176,20 +177,22 @@ class TestGitDiscovery:
 
         assert relative_names(files) == {"real.py"}
 
+    @pytest.mark.parametrize(
+        "tracked",
+        [pytest.param("module.py", id="in it"), pytest.param("sub/module.py", id="below it")],
+    )
     def test_tracked_files_of_a_directory_a_symlink_replaced_are_skipped_outside_the_project(
-        self, tmp_path: Path
+        self, tmp_path: Path, tracked: str
     ):
-        """Git still lists them from its index; read through the link, they lie elsewhere."""
+        """Git still lists them from its index; read through the link, they lie elsewhere, a
+        file below the link as one in it."""
         elsewhere = tmp_path / "elsewhere"
-        elsewhere.mkdir()
-        (elsewhere / "module.py").write_text("x = 1\n")
+        write_source(elsewhere / tracked)
         repository = make_repository(tmp_path / "repo")
         (repository / "code.py").write_text("x = 1\n")
-        (repository / "package").mkdir()
-        (repository / "package" / "module.py").write_text("x = 1\n")
+        write_source(repository / "package" / tracked)
         commit_all(repository)
-        (repository / "package" / "module.py").unlink()
-        (repository / "package").rmdir()
+        shutil.rmtree(repository / "package")
         (repository / "package").symlink_to(elsewhere, target_is_directory=True)
 
         files = make_discovery().discover(repository)

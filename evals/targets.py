@@ -110,16 +110,17 @@ TARGETS = (
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=PINNED, most=50.0),
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=HUNDRED_THOUSAND, most=220.0),
     # A search after an edit of one file, its run taking the files its stale check found (ADR
-    # 010, O3): at 100k chunks 288-294 ms, at its slowest 340-373
+    # 010, O3): at 100k chunks 284-294 ms, at its slowest 328-373; a run scanning again, as
+    # before O3, takes 418-435 and 617-634, which these bounds catch
     SpeedTarget(figure=SpeedFigure.search_after_edit_p50_milliseconds, size=PINNED, most=250.0),
     SpeedTarget(
-        figure=SpeedFigure.search_after_edit_p50_milliseconds, size=HUNDRED_THOUSAND, most=450.0
+        figure=SpeedFigure.search_after_edit_p50_milliseconds, size=HUNDRED_THOUSAND, most=400.0
     ),
     SpeedTarget(figure=SpeedFigure.search_after_edit_slowest_milliseconds, size=PINNED, most=500.0),
     SpeedTarget(
         figure=SpeedFigure.search_after_edit_slowest_milliseconds,
         size=HUNDRED_THOUSAND,
-        most=600.0,
+        most=500.0,
     ),
     # A fresh server's first answer on an indexed project
     SpeedTarget(figure=SpeedFigure.first_search_seconds, size=ANY_SIZE, most=3.0),

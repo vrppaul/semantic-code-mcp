@@ -91,7 +91,7 @@ def function_chunk(name: str, path: str, content: str) -> Chunk:
 
 
 def record_of(path: str) -> SourceFile:
-    return RECORDED.file_at(path)
+    return SourceFile(path=Path(path), stamp=RECORDED)
 
 
 def update_of(chunks: list[Chunk], removed_paths: list[Path]) -> IndexUpdate:

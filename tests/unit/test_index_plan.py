@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from semantic_code_mcp.domain.models import FileStamp, IndexDelta, IndexedFiles
+from semantic_code_mcp.domain.models import FileStamp, IndexDelta, IndexedFiles, SourceFile
 from semantic_code_mcp.services.indexing import plan_delta
 
 FIRST = FileStamp(mtime_ns=100, size_bytes=10)
@@ -21,9 +21,9 @@ def test_a_run_indexes_what_is_new_or_changed_and_drops_what_is_gone():
 
     assert delta == IndexDelta(
         to_index=[
-            TOUCHED.file_at("touched.py"),
-            RESIZED.file_at("resized.py"),
-            FIRST.file_at("new.py"),
+            SourceFile(path=Path("touched.py"), stamp=TOUCHED),
+            SourceFile(path=Path("resized.py"), stamp=RESIZED),
+            SourceFile(path=Path("new.py"), stamp=FIRST),
         ],
         to_delete=[GONE],
     )
@@ -33,7 +33,13 @@ def test_a_forced_run_indexes_every_file_and_drops_what_is_gone():
     delta = plan_delta(ON_DISK, INDEXED, every_file=True)
 
     assert delta == IndexDelta(
-        to_index=[stamp.file_at(path) for path, stamp in ON_DISK.items()], to_delete=[GONE]
+        to_index=[
+            SourceFile(path=Path("unchanged.py"), stamp=FIRST),
+            SourceFile(path=Path("touched.py"), stamp=TOUCHED),
+            SourceFile(path=Path("resized.py"), stamp=RESIZED),
+            SourceFile(path=Path("new.py"), stamp=FIRST),
+        ],
+        to_delete=[GONE],
     )
 
 

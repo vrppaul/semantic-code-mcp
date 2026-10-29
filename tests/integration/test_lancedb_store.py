@@ -15,6 +15,7 @@ from semantic_code_mcp.domain.models import (
     Chunk,
     FileStamp,
     IndexUpdate,
+    SourceFile,
 )
 from semantic_code_mcp.storage import lancedb as lancedb_store
 from semantic_code_mcp.storage.index_directories import IndexDirectory
@@ -210,7 +211,7 @@ def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     set_mode_of_tree(chunks_table_directory, READ_ONLY)
     edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
     update = IndexUpdate(
-        files=[EDITED.file_at("near.py")],
+        files=[SourceFile(path=Path("near.py"), stamp=EDITED)],
         chunks=[edited],
         removed_paths=[],
         last_of_run=True,
@@ -232,7 +233,7 @@ def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_we
     set_mode_of_tree(indices_directory, READ_ONLY)
     edited = function_chunk("near", "near.py", "def near(): return elapsed_time() * 2")
     update = IndexUpdate(
-        files=[EDITED.file_at("near.py")],
+        files=[SourceFile(path=Path("near.py"), stamp=EDITED)],
         chunks=[edited],
         removed_paths=[],
         last_of_run=True,

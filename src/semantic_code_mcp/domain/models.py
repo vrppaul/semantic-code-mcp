@@ -203,15 +203,13 @@ class FileStamp(BaseModel):
     mtime_ns: int
     size_bytes: int
 
-    def file_at(self, path: str) -> SourceFile:
-        """The file at a path from the project root, as POSIX text, that this stamp is of."""
-        return SourceFile(path=Path(path), stamp=self)
 
-
-# The files of a project by their paths from its root as POSIX text, each with its stamp: a
-# stale check compares every file found with every one the index recorded before each
-# search, which by `Path` took 60 ms at Sentry's size and by text takes 7 (ADR 010, O2)
-type FileStamps = dict[str, FileStamp]
+# A file's path from the project root as POSIX text: what a scan and the index key a file
+# by, as a stale check compares every file found with every one the index recorded before
+# each search, and a `Path` a file made that check cost several times more (ADR 010, O2)
+type ProjectPath = str
+# The files of a project, each with its stamp
+type FileStamps = dict[ProjectPath, FileStamp]
 
 
 class SourceFile(BaseModel):
@@ -334,7 +332,7 @@ class IndexedFiles(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     records: FileStamps
-    unrecorded_paths: list[str]
+    unrecorded_paths: list[ProjectPath]
 
 
 class IndexCounts(BaseModel):

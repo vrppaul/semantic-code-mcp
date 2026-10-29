@@ -167,7 +167,8 @@ class CandidateCheck:
             log.debug("skipped_file_outside_project", file_path=path, project=self._root_text)
             return None
         return FoundFile(
-            target=target,
+            # In the case the file system compares names in, so the paths to one file meet
+            target=os.path.normcase(target),
             through_link=through_link,
             path=relative_path,
             stamp=FileStamp(mtime_ns=status.st_mtime_ns, size_bytes=status.st_size),
@@ -203,9 +204,10 @@ class CandidateCheck:
 
     def _real_entry(self, path: str) -> str | None:
         """Where an entry of a directory that really lives where its path says lives itself:
-        there, unless it is a symlink; None where it leads outside the root or cannot be read."""
+        there, unless it is a symlink or, on Windows, a junction, whose `lstat` reads as a
+        plain directory; None where it leads outside the root or cannot be read."""
         try:
-            through_link = stat.S_ISLNK(os.lstat(path).st_mode)
+            through_link = stat.S_ISLNK(os.lstat(path).st_mode) or os.path.isjunction(path)
         except OSError:
             return None
         return self._link_target(path) if through_link else path

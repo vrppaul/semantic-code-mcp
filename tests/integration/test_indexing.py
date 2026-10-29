@@ -443,16 +443,24 @@ async def test_two_runs_at_once_store_each_chunk_once(
 async def test_a_run_from_a_stale_check_finds_done_what_another_run_did_since(
     indexing: IndexingService, sample_project: Path
 ):
-    """It plans against the index as it holds it: of two searches that checked at once, the
-    second finds the first one's run done rather than index the same files again."""
+    """Of two searches that checked at once, the second finds the first one's run done rather
+    than index the same files again, and never takes back what that run wrote of a file made
+    since its check."""
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
     touch_later(sample_project / "main.py")
     check = await indexing.stale_check(sample_project)
+    (sample_project / "added.py").write_text(ADDED_FUNCTION)
     await indexing.index(sample_project, force=False, progress=NO_PROGRESS)
 
     report = await indexing.index_from_check(check, progress=NO_PROGRESS)
+    status = await indexing.status(sample_project)
 
-    assert (check.freshness.stale_files_count, report.files_indexed) == (1, 0)
+    assert (
+        check.freshness.stale_files_count,
+        report.files_indexed,
+        report.files_deleted,
+        status.stale_files_count,
+    ) == (1, 0, 0, 0)
 
 
 async def test_a_file_that_is_not_utf8_does_not_stop_the_rest(
