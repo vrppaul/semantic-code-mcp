@@ -114,7 +114,7 @@ The chunks without vectors handed out in pages, not all 87,694 at once, which wo
 
 ### Order
 
-O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29; done); then O4 (done); then CI on macOS and Windows with their watchers; O6 with ADR 009's step 9.
+O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29; done); then O4 (done); then CI on macOS and Windows (running and green since pull request 4, 2026-10-29) and their watchers; O6 with ADR 009's step 9.
 
 ## Alternatives Considered
 
