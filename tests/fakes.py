@@ -357,6 +357,20 @@ class StoreHeldInItsWrite(DelegatingStore):
         self.written.set()
 
 
+class StoreChangedAsARunHoldsIt(DelegatingStore):
+    """Another store, the project changed each time a run takes its hold of the index: an
+    edit landing after a search's stale check found the files, before its run starts."""
+
+    def __init__(self, inner: IndexStore, change: Callable[[], object]) -> None:
+        super().__init__(inner)
+        self._change = change
+
+    @override
+    def try_hold_for_run(self) -> bool:
+        self._change()
+        return super().try_hold_for_run()
+
+
 class ChunkCountRecorder:
     """A progress callback that notes, at each report, how many chunks a store holds."""
 

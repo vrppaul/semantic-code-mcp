@@ -3,12 +3,14 @@ of the store's hits; and the indexing and embedding it does first."""
 
 import asyncio
 import threading
+from functools import partial
 from pathlib import Path
 
 import pytest
 
 from semantic_code_mcp.app import build_chunker
 from semantic_code_mcp.config import Settings
+from semantic_code_mcp.domain.interfaces import IndexStore
 from semantic_code_mcp.domain.models import (
     LOWEST_SIMILARITY,
     WHOLE_PROJECT,
@@ -23,8 +25,15 @@ from semantic_code_mcp.domain.models import (
 )
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
-from tests.fakes import FAKE_MODEL, FakeEmbedder, FakeIndexStore, ProgressRecorder
+from tests.fakes import (
+    FAKE_MODEL,
+    FakeEmbedder,
+    FakeIndexStore,
+    ProgressRecorder,
+    StoreChangedAsARunHoldsIt,
+)
 from tests.helpers import indexing_service, registry_of, vector_service
+from tests.indexing import touch_later
 from tests.stores import NO_CANDIDATES
 
 NO_PROGRESS = ProgressReporter(None)
@@ -67,7 +76,7 @@ def found_by_vector(*candidates: Candidate) -> SearchCandidates:
 
 
 def search_service(
-    store: FakeIndexStore, settings: Settings, embedder: FakeEmbedder, mode: SearchMode
+    store: IndexStore, settings: Settings, embedder: FakeEmbedder, mode: SearchMode
 ) -> SearchService:
     return SearchService(
         store=store,
@@ -298,6 +307,27 @@ async def test_a_project_never_indexed_is_indexed_before_the_search(
 
     assert report.index_report is not None
     assert report.index_report.files_indexed == 2
+
+
+async def test_a_search_indexes_what_its_stale_check_found_not_what_changed_after(
+    test_settings: Settings, sample_project: Path
+):
+    """An edit landing after the check scanned the project, as the run takes the index, is
+    the next search's: the run starts from the files the check found and never scans again."""
+    store = FakeIndexStore(NO_CANDIDATES)
+    await search_service(store, test_settings, FakeEmbedder(), SearchMode.words).search(
+        query_of("first"), sample_project, progress=NO_PROGRESS
+    )
+    touch_later(sample_project / "main.py")
+    changed_as_run_starts = StoreChangedAsARunHoldsIt(
+        store, partial(touch_later, sample_project / "utils.py")
+    )
+    service = search_service(changed_as_run_starts, test_settings, FakeEmbedder(), SearchMode.words)
+
+    report = await service.search(query_of("second"), sample_project, progress=NO_PROGRESS)
+
+    assert report.index_report is not None
+    assert report.index_report.files_indexed == 1
 
 
 async def test_an_index_up_to_date_is_not_touched(test_settings: Settings, sample_project: Path):

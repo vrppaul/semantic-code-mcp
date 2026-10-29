@@ -108,16 +108,17 @@ TARGETS = (
     # `index_status`: the stale check each search makes first
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=PINNED, most=50.0),
     SpeedTarget(figure=SpeedFigure.status_p50_milliseconds, size=HUNDRED_THOUSAND, most=400.0),
-    # At 100k chunks a bound today's 664-744 ms meet, until ADR 010's O3 tightens it
+    # A search after an edit of one file: at 100k chunks 468-471 ms, at its slowest 531-554,
+    # once its run took the files its stale check found (ADR 010, O3)
     SpeedTarget(figure=SpeedFigure.search_after_edit_p50_milliseconds, size=PINNED, most=250.0),
     SpeedTarget(
-        figure=SpeedFigure.search_after_edit_p50_milliseconds, size=HUNDRED_THOUSAND, most=1000.0
+        figure=SpeedFigure.search_after_edit_p50_milliseconds, size=HUNDRED_THOUSAND, most=700.0
     ),
     SpeedTarget(figure=SpeedFigure.search_after_edit_slowest_milliseconds, size=PINNED, most=500.0),
     SpeedTarget(
         figure=SpeedFigure.search_after_edit_slowest_milliseconds,
         size=HUNDRED_THOUSAND,
-        most=1500.0,
+        most=1000.0,
     ),
     # A fresh server's first answer on an indexed project
     SpeedTarget(figure=SpeedFigure.first_search_seconds, size=ANY_SIZE, most=3.0),

@@ -40,6 +40,8 @@ The first scan and the checks O1 keeps: paths as strings rather than `Path`, one
 
 The search's stale check hands what it found to the index run, which scans and plans again today: 300 ms less at once, with or without O1. It touches `SearchService` and `IndexingService`.
 
+Done (2026-10-29): the stale check (`IndexingService.stale_check`) hands the run (`index_from_check`) the files its scan found, and the run plans once it holds the index. The scan is what the run took again for nothing; the plan is what another run's write since the check makes wrong, so it is made again under the hold: of two searches that checked at once, the second finds the first's work done, and one that waited for another session's first build does not build it twice. Handing the plan too, trusted while the index's manifest stayed the same, would save the plan too, 250 ms at the median in process at a load of 5 (the index's records read in 77 ms, compared in 177), but it trusts a view of the index taken before the hold for a cost O2 cuts. An edit that lands between the check and the run is the next search's. `evals speed` on Sentry by words, the old build and the new in alternating turns at a load of 0.9 to 1.7: a search after an edit 468-471 ms against 677-700, at its slowest 531-554 against 703-988; every other figure the same. Its target at 100k chunks is now 700 ms, 1 s at its slowest (`evals/targets.py`).
+
 ### O4. A first index in a pool, streamed, in few writes
 
 Chunking in a pool of processes (ADR 009's step 7, moved here): about 7-10 s to 3-4 s by D12's probe. Streamed: a slice of files chunked, then written, then the next, instead of every chunk held before the first write: the peak from 383 MB to about 150, and what the server holds after it as low, as Python does not hand freed memory back. A whole first build (ADR 009, D12) written in large transactions: about 1.3 s less. Together Sentry's first answer about 6-7 s instead of 12.5. It needs `__main__` that does nothing on import, as a pool's workers start from a forkserver on Linux.
@@ -54,7 +56,7 @@ The chunks without vectors handed out in pages, not all 87,694 at once, which wo
 
 ### Order
 
-O3 (O5 done); then O2; then O1 on O2's figures and the owner's word on the dependency; then O4; O6 with ADR 009's step 9.
+O3 (done, as O5); then O2; then O1 on O2's figures and the owner's word on the dependency; then O4; O6 with ADR 009's step 9.
 
 ## Alternatives Considered
 

@@ -6,10 +6,12 @@ sessions on one repository never chunk it twice: one that finds it held tries ag
 RUN_RETRY_SECONDS, for as long as the other holds it, and says so; it then plans afresh and
 finds the other's work done. A run plans before it changes anything: the records discovery
 takes of the files on disk, compared with the records the index keeps and the files its
-chunks come from, give the files to index and the paths gone. It then writes a slice of
-whole files at a time, each slice's chunks taking the place of what the index held of those
-files, so a reader always finds every file's old chunks or its new ones, and a run stopped
-midway keeps the slices it wrote. A run embeds nothing: a chunk whose text the index holds
+chunks come from, give the files to index and the paths gone. A search's run takes the
+files its stale check found rather than scan the project again (ADR 010, O3), and plans
+once it holds the index, as another run may have written since. The run then writes a slice
+of whole files at a time, each slice's chunks taking the place of what the index held of
+those files, so a reader always finds every file's old chunks or its new ones, and a run
+stopped midway keeps the slices it wrote. A run embeds nothing: a chunk whose text the index holds
 already keeps the vectors it has, by its id, and the rest are embedded by the first search
 by meaning (`vectors.py`); a forced run drops the vectors of a model nothing pins, so that
 search embeds every chunk again. The index is the one of this server's chunker version; the
@@ -70,6 +72,18 @@ class IndexPhase(Enum):
     writing = 80.0
 
 
+class StaleCheck(BaseModel):
+    """What a search found of its project before it searches: the files on disk as its scan
+    took them, and how far the index is from them. The run it starts plans from these files,
+    so a search after an edit scans the project once."""
+
+    model_config = ConfigDict(frozen=True)
+
+    project_root: Path
+    files: list[SourceFile]
+    freshness: IndexFreshness
+
+
 class ChunkedFile(BaseModel):
     """A file indexed in this run, and the chunks it gave."""
 
@@ -120,7 +134,28 @@ class IndexingService:
         """Bring the index up to date with the files: all of them when forced, else what
         changed."""
         async with self._lock, self._held_run(progress):
-            return await self._index(project_root, force=force, progress=progress)
+            started = time.perf_counter()
+            await progress.report(IndexPhase.scanning.value, "Scanning files...")
+            files = await asyncio.to_thread(self._discovery.discover, project_root)
+            log.debug("scanned_files", project=str(project_root), count=len(files))
+            return await self._index(
+                project_root, files, force=force, progress=progress, started=started
+            )
+
+    async def index_from_check(
+        self, check: StaleCheck, *, progress: ProgressReporter
+    ) -> IndexReport:
+        """Bring the index up to date with the files a stale check found, never forced: an
+        edit since the check is the next search's. Planned once the run holds the index, so
+        what another run wrote since the check is not done again."""
+        async with self._lock, self._held_run(progress):
+            return await self._index(
+                check.project_root,
+                check.files,
+                force=False,
+                progress=progress,
+                started=time.perf_counter(),
+            )
 
     @asynccontextmanager
     async def _held_run(self, progress: ProgressReporter) -> AsyncGenerator[None]:
@@ -142,16 +177,21 @@ class IndexingService:
         """How far the project's index is from its files, worked out off the event loop."""
         return await asyncio.to_thread(self._status, project_root)
 
-    async def freshness(self, project_root: Path) -> IndexFreshness:
+    async def stale_check(self, project_root: Path) -> StaleCheck:
         """What a search checks before it searches, worked out off the event loop: never
         whether a run holds the index, as that tries the run's lock, which a run's own try
         meeting would take for another session's build."""
-        return await asyncio.to_thread(self._freshness, project_root)
+        return await asyncio.to_thread(self._stale_check, project_root)
 
-    def _freshness(self, project_root: Path) -> IndexFreshness:
-        return IndexFreshness(
-            files_count=self._store.counts(self._model).files,
-            stale_files_count=self._stale_files_count(project_root),
+    def _stale_check(self, project_root: Path) -> StaleCheck:
+        files_count = self._store.counts(self._model).files
+        files = self._discovery.discover(project_root)
+        return StaleCheck(
+            project_root=project_root,
+            files=files,
+            freshness=IndexFreshness(
+                files_count=files_count, stale_files_count=self._stale_files_count(files)
+            ),
         )
 
     def _status(self, project_root: Path) -> IndexStatus:
@@ -164,24 +204,28 @@ class IndexingService:
             chunks_count=counts.chunks,
             model=self._model,
             chunks_with_vectors_count=counts.chunks_with_vectors,
-            stale_files_count=self._stale_files_count(project_root),
+            stale_files_count=self._stale_files_count(self._discovery.discover(project_root)),
             manifest=self._store.manifest(),
             being_built=self._store.run_held(),
         )
 
-    def _stale_files_count(self, project_root: Path) -> int:
-        """How many files changed since the index was written: new, modified or deleted."""
-        delta = self._plan(self._discovery.discover(project_root), force=False)
+    def _stale_files_count(self, files: list[SourceFile]) -> int:
+        """How many of the files changed since the index was written, new or modified, and
+        how many it holds that are gone."""
+        delta = self._plan(files, force=False)
         return len(delta.to_index) + len(delta.to_delete)
 
     async def _index(
-        self, project_root: Path, *, force: bool, progress: ProgressReporter
+        self,
+        project_root: Path,
+        files: list[SourceFile],
+        *,
+        force: bool,
+        progress: ProgressReporter,
+        started: float,
     ) -> IndexReport:
-        started = time.perf_counter()
-        await progress.report(IndexPhase.scanning.value, "Scanning files...")
-        files = await asyncio.to_thread(self._discovery.discover, project_root)
-        log.debug("scanned_files", project=str(project_root), count=len(files))
-
+        """Plan a run over the files found, then chunk and write what it has to do; its report
+        timed from the run's start."""
         await progress.report(IndexPhase.planning.value, f"Found {len(files)} files, planning...")
         delta = await asyncio.to_thread(self._plan, files, force=force)
         log.debug("index_planned", to_index=len(delta.to_index), to_delete=len(delta.to_delete))

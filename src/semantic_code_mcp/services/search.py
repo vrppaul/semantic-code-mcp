@@ -126,14 +126,13 @@ class SearchService:
     ) -> SearchReport:
         """Index stale files, then return the best hits for a query within its scope."""
         await progress.report(SearchPhase.checking_index.value, "Checking index...")
-        freshness = await self._indexing.freshness(project_root)
+        check = await self._indexing.stale_check(project_root)
 
         index_report: IndexReport | None = None
-        if freshness.stale_files_count:
-            await progress.report(SearchPhase.indexing.value, indexing_message(freshness))
-            index_report = await self._indexing.index(
-                project_root,
-                force=False,
+        if check.freshness.stale_files_count:
+            await progress.report(SearchPhase.indexing.value, indexing_message(check.freshness))
+            index_report = await self._indexing.index_from_check(
+                check,
                 progress=progress.within(SearchPhase.indexing.value, SearchPhase.embedding.value),
             )
 
