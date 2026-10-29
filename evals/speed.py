@@ -7,25 +7,28 @@ filters read), and of one long question, an `index_status` call (each search mak
 first), how much the index grows with each edit of a file other than the last (the copies
 upkeep keeps for a few seconds included) and how long the search after it takes, at the
 median and at the slowest (it re-indexes the edited file first; one in twenty compacts a
-LanceDB index), the server's
-peak memory and what it still holds once its work is done, as a session's idle server keeps
-it, with no model loaded; in a server of its own set to search by meaning too, the model
+LanceDB index), the peak memory of the server and the processes it starts, a first index's
+pool among them, and what they still hold once its work is done, as a session's idle server
+keeps it, with no model loaded; in a server of its own set to search by meaning too, the model
 load, a search of a one-file project, then the corpus's first search, which embeds every
 chunk, the warm searches after it, and that server's memory, left out of a run asked to
 measure words alone, as that first search takes an hour at Sentry's size; the first answer
 of a freshly started server on an up-to-date index — the process start an agent waits for —
 and, last, the first answer on a repository never indexed: a server started on an empty
-index directory, until its first search answers, the whole index built inside it. Memory is read
-from `/proc`, so it is reported on Linux only. With 15 to 20 questions per corpus, p95 is
-close to the slowest search: read it as that.
+index directory, until its first search answers, the whole index built inside it. Memory is
+each process's proportional share of what it maps, summed, read from `/proc` every
+MEMORY_SAMPLE_SECONDS while a server works, so it is reported on Linux only. With 15 to 20
+questions per corpus, p95 is close to the slowest search: read it as that.
 """
 
+import asyncio
 import os
 import platform
 import statistics
 import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -51,10 +54,19 @@ EDIT_BY_EXTENSION = {
     ".md": "\n\n## Edited {number}\n\nEdit {number}.\n",
 }
 PROC_ROOT = Path("/proc")
-# The fields of a /proc status file that give the peak and the present resident memory
-PEAK_RESIDENT_FIELD = "VmHWM:"
-RESIDENT_FIELD = "VmRSS:"
+# Where a process's proportional share of the memory it maps is read: its own pages and its
+# share of those it maps with others, so a pool's processes, forked from one, are not counted
+# once each as their resident sizes would be
+MEMORY_ROLLUP_FILE = "smaps_rollup"
+PROPORTIONAL_FIELD = "Pss:"
+# Where a process's children are listed, a file for each of its threads
+CHILDREN_FILES = "task/*/children"
+# What a process holds that ended as it was read
+NOTHING_HELD = 0
 SERVER_COMMAND_MARK = b"semantic_code_mcp"
+# How often the memory of a server's processes is read while it works: a pool's processes
+# live for the seconds of a first index
+MEMORY_SAMPLE_SECONDS = 0.05
 # The one-file project the model-load search runs on, and what it asks
 WARM_UP_FILE_NAME = "warm_up.py"
 WARM_UP_SOURCE = "def warm_up():\n    return None\n"
@@ -106,6 +118,51 @@ class MeaningSpeed(BaseModel):
     warm_search_p50_milliseconds: float
     peak_memory_megabytes: float | None
     resident_memory_megabytes: float | None
+
+
+class ServerMemory:
+    """The memory of the servers this harness started and of every process they started in
+    turn, a first index's pool among them: each one's proportional share, summed. Its peak is
+    the highest sum read, by `sample` or every MEMORY_SAMPLE_SECONDS by `watched_server_memory`;
+    None where no server runs, as off Linux, which has no /proc."""
+
+    def __init__(self) -> None:
+        self._peak_kilobytes: int | None = None
+
+    def sample(self) -> int | None:
+        """What the servers' processes hold now, in kilobytes, kept as the peak where it is
+        the highest yet."""
+        held = server_tree_kilobytes()
+        if held is not None and (self._peak_kilobytes is None or held > self._peak_kilobytes):
+            self._peak_kilobytes = held
+        return held
+
+    def peak_megabytes(self) -> float | None:
+        """The most the servers' processes held at once, of what was read."""
+        self.sample()
+        return None if self._peak_kilobytes is None else megabytes_of(self._peak_kilobytes)
+
+    def resident_megabytes(self) -> float | None:
+        """What the servers' processes hold now."""
+        held = self.sample()
+        return None if held is None else megabytes_of(held)
+
+    async def watch(self) -> None:
+        """Sample until cancelled."""
+        while True:
+            self.sample()
+            await asyncio.sleep(MEMORY_SAMPLE_SECONDS)
+
+
+@asynccontextmanager
+async def watched_server_memory() -> AsyncGenerator[ServerMemory]:
+    """The servers' memory, sampled by a task of its own while the block runs."""
+    memory = ServerMemory()
+    watch = asyncio.create_task(memory.watch())
+    try:
+        yield memory
+    finally:
+        watch.cancel()
 
 
 class CorpusSpeed(BaseModel):
@@ -171,7 +228,7 @@ async def measure_speed(
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
 
-    async with servers.connect(index_directory) as connection:
+    async with servers.connect(index_directory) as connection, watched_server_memory() as memory:
         report = await connection.index(working_tree)
         latencies = [
             await timed_search_seconds(connection, working_tree, query, None) for query in queries
@@ -191,8 +248,8 @@ async def measure_speed(
         # Restoring the checkout touched the edited files: index them now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
-        peak_memory = server_memory_megabytes(PEAK_RESIDENT_FIELD)
-        resident_memory = server_memory_megabytes(RESIDENT_FIELD)
+        peak_memory = memory.peak_megabytes()
+        resident_memory = memory.resident_megabytes()
 
     meaning = (
         await measure_meaning(working_tree, index_directory, queries, servers)
@@ -241,9 +298,10 @@ async def measure_meaning(
 ) -> MeaningSpeed:
     """A server set to search by meaning too, on the corpus's index of words: its model's
     load, its first search, which embeds every chunk, its warm searches, and its memory."""
-    async with servers.searching(SearchMode.words_and_meaning).connect(
-        index_directory
-    ) as connection:
+    async with (
+        servers.searching(SearchMode.words_and_meaning).connect(index_directory) as connection,
+        watched_server_memory() as memory,
+    ):
         model_load_seconds = await timed_model_load_seconds(connection)
         first_search_seconds = await timed_search_seconds(
             connection, working_tree, queries[0], None
@@ -255,8 +313,8 @@ async def measure_meaning(
             model_load_seconds=rounded(model_load_seconds),
             first_search_seconds=rounded(first_search_seconds),
             warm_search_p50_milliseconds=percentile_milliseconds(latencies, MEDIAN_CUT),
-            peak_memory_megabytes=server_memory_megabytes(PEAK_RESIDENT_FIELD),
-            resident_memory_megabytes=server_memory_megabytes(RESIDENT_FIELD),
+            peak_memory_megabytes=memory.peak_megabytes(),
+            resident_memory_megabytes=memory.resident_megabytes(),
         )
 
 
@@ -400,21 +458,41 @@ def directory_bytes(directory: Path) -> int:
     return sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
 
 
-def server_memory_megabytes(field: str) -> float | None:
-    """One memory field of the server process this harness started, its peak or what it
-    holds now; None off Linux."""
-    status_paths = [PROC_ROOT / str(pid) / "status" for pid in server_process_ids()]
-    sizes = [status_kilobytes(path, field) for path in status_paths]
-    if not sizes:
+def server_tree_kilobytes() -> int | None:
+    """The proportional share of the memory the servers this harness started and every process
+    they started in turn hold, summed, in kilobytes; None where no server runs."""
+    servers = server_process_ids()
+    if not servers:
         return None
-    return rounded(max(sizes) / KILOBYTES_PER_MEGABYTE)
+    return sum(
+        proportional_kilobytes(process_id)
+        for server in servers
+        for process_id in [server, *descendant_ids(server)]
+    )
 
 
 def server_process_ids() -> list[int]:
     """Child processes of this one whose command line runs the server."""
-    children_files = (PROC_ROOT / str(os.getpid()) / "task").glob("*/children")
-    child_ids = [int(pid) for children in children_files for pid in children.read_text().split()]
-    return [pid for pid in child_ids if runs_the_server(pid)]
+    return [pid for pid in child_ids(os.getpid()) if runs_the_server(pid)]
+
+
+def descendant_ids(process_id: int) -> list[int]:
+    """The processes a process started, and those they started in turn, that still run."""
+    children = child_ids(process_id)
+    return [*children, *(descendant for child in children for descendant in descendant_ids(child))]
+
+
+def child_ids(process_id: int) -> list[int]:
+    """The processes a process started that still run; none for one that ended as it was
+    read."""
+    try:
+        return [
+            int(child)
+            for children in (PROC_ROOT / str(process_id)).glob(CHILDREN_FILES)
+            for child in children.read_text().split()
+        ]
+    except OSError:
+        return []
 
 
 def runs_the_server(process_id: int) -> bool:
@@ -425,10 +503,19 @@ def runs_the_server(process_id: int) -> bool:
         return False
 
 
-def status_kilobytes(status_path: Path, field: str) -> int:
-    """A size a /proc status file reports in a field, in kilobytes."""
-    line = next(line for line in status_path.read_text().splitlines() if line.startswith(field))
+def proportional_kilobytes(process_id: int) -> int:
+    """A process's proportional share of the memory it maps, in kilobytes; nothing for one that
+    ended as it was read."""
+    try:
+        rollup = (PROC_ROOT / str(process_id) / MEMORY_ROLLUP_FILE).read_text()
+    except OSError:
+        return NOTHING_HELD
+    line = next(line for line in rollup.splitlines() if line.startswith(PROPORTIONAL_FIELD))
     return int(line.split()[1])
+
+
+def megabytes_of(kilobytes: int) -> float:
+    return rounded(kilobytes / KILOBYTES_PER_MEGABYTE)
 
 
 def rounded(value: float) -> float:
