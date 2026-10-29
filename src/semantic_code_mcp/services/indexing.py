@@ -23,7 +23,7 @@ server's chunker version; the store keeps those of others apart.
 import asyncio
 import time
 from collections.abc import AsyncGenerator
-from contextlib import aclosing, asynccontextmanager
+from contextlib import asynccontextmanager
 from enum import Enum
 from pathlib import Path
 
@@ -260,7 +260,7 @@ class IndexingService:
         writer = RunWriter(
             self._store, delta.to_delete, files_total=len(delta.to_index), progress=progress
         )
-        async with aclosing(self._chunking.batches(project_root, delta.to_index)) as batches:
+        async with self._chunking.batches(project_root, delta.to_index) as batches:
             async for batch in batches:
                 await writer.add(batch)
         return await writer.finish()

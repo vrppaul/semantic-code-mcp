@@ -17,15 +17,20 @@ of a freshly started server on an up-to-date index — the process start an agen
 and, last, the first answer on a repository never indexed: a server started on an empty
 index directory, until its first search answers, the whole index built inside it. Memory is
 each process's proportional share of what it maps, summed, read from `/proc` every
-MEMORY_SAMPLE_SECONDS while a server works, so it is reported on Linux only. With 15 to 20
-questions per corpus, p95 is close to the slowest search: read it as that.
+MEMORY_SAMPLE_SECONDS in a thread of the harness's own while a server indexes or loads its
+model, where a pool lives and the peak is, never while a search is timed, which the reads
+slowed by up to 30 ms at the median on Sentry; it is reported on Linux only. Pages shared with
+processes outside the server's, the harness among them, are split with those, so the figure
+moves a little with what else runs; a spike shorter than the reads' interval, as a model's load
+can be, may pass unseen; and it reads 5 to 20% below the processes' resident sizes. With 15 to
+20 questions per corpus, p95 is close to the slowest search: read it as that.
 """
 
-import asyncio
 import os
 import platform
 import statistics
 import tempfile
+import threading
 import time
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
@@ -123,18 +128,21 @@ class MeaningSpeed(BaseModel):
 class ServerMemory:
     """The memory of the servers this harness started and of every process they started in
     turn, a first index's pool among them: each one's proportional share, summed. Its peak is
-    the highest sum read, by `sample` or every MEMORY_SAMPLE_SECONDS by `watched_server_memory`;
-    None where no server runs, as off Linux, which has no /proc."""
+    the highest sum read, by `sample` or every MEMORY_SAMPLE_SECONDS by `sampled_while`; None
+    where no server runs, as off Linux, which has no /proc."""
 
     def __init__(self) -> None:
         self._peak_kilobytes: int | None = None
+        # The watching thread and the harness's own both read, and keep the peak
+        self._keeping_peak = threading.Lock()
 
     def sample(self) -> int | None:
         """What the servers' processes hold now, in kilobytes, kept as the peak where it is
         the highest yet."""
         held = server_tree_kilobytes()
-        if held is not None and (self._peak_kilobytes is None or held > self._peak_kilobytes):
-            self._peak_kilobytes = held
+        with self._keeping_peak:
+            if held is not None and (self._peak_kilobytes is None or held > self._peak_kilobytes):
+                self._peak_kilobytes = held
         return held
 
     def peak_megabytes(self) -> float | None:
@@ -147,22 +155,23 @@ class ServerMemory:
         held = self.sample()
         return None if held is None else megabytes_of(held)
 
-    async def watch(self) -> None:
-        """Sample until cancelled."""
-        while True:
+    def watch(self, stop: threading.Event) -> None:
+        """Sample every MEMORY_SAMPLE_SECONDS until told to stop."""
+        while not stop.wait(MEMORY_SAMPLE_SECONDS):
             self.sample()
-            await asyncio.sleep(MEMORY_SAMPLE_SECONDS)
 
 
 @asynccontextmanager
-async def watched_server_memory() -> AsyncGenerator[ServerMemory]:
-    """The servers' memory, sampled by a task of its own while the block runs."""
-    memory = ServerMemory()
-    watch = asyncio.create_task(memory.watch())
+async def sampled_while(memory: ServerMemory) -> AsyncGenerator[None]:
+    """The servers' memory sampled by a thread of its own while the block runs."""
+    stop = threading.Event()
+    watcher = threading.Thread(target=memory.watch, args=(stop,), daemon=True)
+    watcher.start()
     try:
-        yield memory
+        yield
     finally:
-        watch.cancel()
+        stop.set()
+        watcher.join()
 
 
 class CorpusSpeed(BaseModel):
@@ -228,8 +237,10 @@ async def measure_speed(
     """Every speed of one corpus, starting from an empty index directory."""
     queries = [query.text for query in corpus.queries]
 
-    async with servers.connect(index_directory) as connection, watched_server_memory() as memory:
-        report = await connection.index(working_tree)
+    memory = ServerMemory()
+    async with servers.connect(index_directory) as connection:
+        async with sampled_while(memory):
+            report = await connection.index(working_tree)
         latencies = [
             await timed_search_seconds(connection, working_tree, query, None) for query in queries
         ]
@@ -298,14 +309,15 @@ async def measure_meaning(
 ) -> MeaningSpeed:
     """A server set to search by meaning too, on the corpus's index of words: its model's
     load, its first search, which embeds every chunk, its warm searches, and its memory."""
-    async with (
-        servers.searching(SearchMode.words_and_meaning).connect(index_directory) as connection,
-        watched_server_memory() as memory,
-    ):
-        model_load_seconds = await timed_model_load_seconds(connection)
-        first_search_seconds = await timed_search_seconds(
-            connection, working_tree, queries[0], None
-        )
+    memory = ServerMemory()
+    async with servers.searching(SearchMode.words_and_meaning).connect(
+        index_directory
+    ) as connection:
+        async with sampled_while(memory):
+            model_load_seconds = await timed_model_load_seconds(connection)
+            first_search_seconds = await timed_search_seconds(
+                connection, working_tree, queries[0], None
+            )
         latencies = [
             await timed_search_seconds(connection, working_tree, query, None) for query in queries
         ]

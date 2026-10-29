@@ -14,6 +14,7 @@ from semantic_code_mcp.app import build_chunker, files_opener
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.interfaces import VectorMatrix
 from semantic_code_mcp.domain.models import VectorIdentity
+from semantic_code_mcp.pools import open_chunking_pool
 from semantic_code_mcp.services.chunking import Chunking
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
@@ -189,7 +190,7 @@ async def test_a_forced_run_keeps_the_vectors_of_a_model_whose_weights_are_pinne
     pinned = FakeEmbedder(revision=PINNED_REVISION)
     indexing = IndexingService(
         files=files_opener(test_settings, discovery_for(test_settings, build_chunker()))(),
-        chunking=Chunking(build_chunker(), workers=NO_POOL, debug_logging=False),
+        chunking=Chunking(build_chunker(), workers=NO_POOL, open_pool=open_chunking_pool),
         store=store,
         model=vector_identity(pinned),
     )

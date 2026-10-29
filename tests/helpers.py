@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -11,7 +12,8 @@ from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
 from semantic_code_mcp.domain.models import Chunk, ChunkKind
-from semantic_code_mcp.services.chunking import Chunking
+from semantic_code_mcp.pools import open_chunking_pool
+from semantic_code_mcp.services.chunking import Chunking, PoolOpener
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.projects import ProjectRegistry, vector_identity
 from semantic_code_mcp.services.vectors import VectorService
@@ -68,14 +70,23 @@ def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:
 
 
 def indexing_service(
-    store: IndexStore, settings: Settings, chunker: Chunker, *, workers: int = POOL_WORKERS
+    store: IndexStore,
+    settings: Settings,
+    chunker: Chunker,
+    *,
+    workers: int = POOL_WORKERS,
+    open_pool: PoolOpener | None = None,
 ) -> IndexingService:
     """The indexing of a project's words over the given parts, its files read as the settings
     ask by the real discovery, a run of source enough chunked in a pool of the workers given,
-    its status counting the fake model's vectors."""
+    the real one unless another opener is, its status counting the fake model's vectors."""
     return IndexingService(
         files=files_opener(settings, discovery_for(settings, chunker))(),
-        chunking=Chunking(chunker, workers=workers, debug_logging=settings.debug),
+        chunking=Chunking(
+            chunker,
+            workers=workers,
+            open_pool=open_pool or partial(open_chunking_pool, debug_logging=settings.debug),
+        ),
         store=store,
         model=FAKE_MODEL,
     )

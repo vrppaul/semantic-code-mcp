@@ -11,6 +11,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+from evals.speed import descendant_ids
 from pydantic import BaseModel, ConfigDict
 
 from semantic_code_mcp.app import build_chunker, build_registry, store_opener
@@ -34,13 +35,16 @@ from tests.fakes import (
     ChunkCountRecorder,
     FakeEmbedder,
     FakeIndexStore,
+    InlinePool,
     ProcessNamingChunker,
     ProgressRecorder,
+    RefusedPools,
     StoreHeldInItsWrite,
     VersionedChunker,
 )
 from tests.helpers import (
     NO_POOL,
+    POOL_WORKERS,
     commit_all,
     git_output,
     indexing_service,
@@ -50,6 +54,7 @@ from tests.helpers import (
 from tests.indexing import (
     ADDED_FUNCTION,
     FUNCTIONS_PER_FILE,
+    FUNCTIONS_PER_LARGE_MODULE,
     IDENTITY,
     NO_PROGRESS,
     POOLED_FILES,
@@ -71,9 +76,13 @@ WAIT_SEEN_TIMEOUT_SECONDS = 30.0
 RETRIES_SEEN_SECONDS = 0.5
 # 0.4's record of mtimes, which it kept in a project-local index directory
 LEGACY_RECORDS = LEGACY_ENTRIES[1]
-# The module that runs a first index in a pool in a process of its own, and where it runs
+# The modules that run a first index in a pool in a process of their own, and where they run
 POOLED_RUN_MODULE = "tests.pooled_run"
+STOPPED_RUN_MODULE = "tests.stopped_pooled_run"
 REPOSITORY_ROOT = Path(__file__).parents[2]
+# What runs beside a pool's workers once it has started: the forkserver and the resource
+# tracker
+PROCESSES_BESIDE_A_POOL = 2
 
 
 def delete(path: Path) -> None:
@@ -732,3 +741,64 @@ def test_what_a_pool_s_process_writes_to_standard_output_reaches_standard_error(
     )
 
     assert (run.stdout, STRAY_LINE in run.stderr) == (b"", True)
+
+
+async def test_a_run_in_a_pool_hands_out_its_last_batches_only_once_it_has_written_others(
+    test_settings: Settings, tmp_path: Path
+):
+    """A first index in a pool holds the batches handed out ahead and what it has not
+    written, never every chunk, as one in the server does."""
+    project = large_modules(tmp_path, POOLED_FILES)
+    store = FakeIndexStore(NO_CANDIDATES)
+    pool = InlinePool(store)
+
+    await first_index(
+        indexing_service(store, test_settings, build_chunker(), open_pool=lambda _workers: pool),
+        project,
+    )
+
+    assert (pool.writes_at_hand_outs[0], pool.writes_at_hand_outs[-1] > 0) == (0, True)
+
+
+async def test_a_system_that_cannot_start_a_pool_has_every_run_chunked_in_the_server(
+    test_settings: Settings, tmp_path: Path
+):
+    """No working semaphores, no Unix sockets for a forkserver: asked once a session, then
+    never again."""
+    project = large_modules(tmp_path, POOLED_FILES)
+    refused = RefusedPools()
+    indexing = indexing_service(
+        FakeIndexStore(NO_CANDIDATES), test_settings, build_chunker(), open_pool=refused
+    )
+
+    first = await indexing.index(project, force=False, progress=NO_PROGRESS)
+    again = await indexing.index(project, force=True, progress=NO_PROGRESS)
+
+    every_chunk = POOLED_FILES * FUNCTIONS_PER_LARGE_MODULE
+    assert (first.chunks_indexed, again.chunks_indexed, refused.asked) == (
+        every_chunk,
+        every_chunk,
+        1,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="processes are read from Linux's /proc")
+def test_a_server_killed_mid_run_leaves_none_of_its_pool_s_processes(tmp_path: Path):
+    """SIGKILL, the OOM killer, a SIGTERM the server does not handle: its workers would wait on
+    their queue for good, and the forkserver and the resource tracker beside them."""
+    project = large_modules(tmp_path, POOLED_FILES)
+    run = subprocess.Popen(  # nosec B603
+        [sys.executable, "-m", STOPPED_RUN_MODULE, str(project), str(tmp_path / "cache")],
+        cwd=REPOSITORY_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    run.stdout.readline()
+    processes = descendant_ids(run.pid)
+
+    run.kill()
+    # Each process of the run's holds its stdout or its stderr: both end once every one has
+    run.communicate(timeout=WAIT_SEEN_TIMEOUT_SECONDS)
+
+    assert len(processes) == POOL_WORKERS + PROCESSES_BESIDE_A_POOL

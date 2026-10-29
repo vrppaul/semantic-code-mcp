@@ -88,6 +88,15 @@ repos:
         files: ^(src/|scripts/check_base_install\.py$|pyproject\.toml$|uv\.lock$)
         pass_filenames: false
 
+      # A pool's processes import the console script's module again: it imports the server
+      # only when it runs (ADR 010, O4)
+      - id: entry-point
+        name: entry point (its module imports nothing of the server)
+        entry: uv run python scripts/check_entry_point.py
+        language: system
+        files: ^(src/semantic_code_mcp/(__init__|__main__)\.py$|scripts/check_entry_point\.py$|pyproject\.toml$)
+        pass_filenames: false
+
       - id: vulture
         name: vulture (code nothing calls)
         entry: uv run vulture

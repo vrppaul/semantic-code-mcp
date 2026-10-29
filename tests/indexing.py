@@ -29,9 +29,10 @@ MODULE_NAME_FORMAT = "module_{file_number}.py"
 FIRST_MODULE = MODULE_NAME_FORMAT.format(file_number=0)
 # What the chunkers in these tests build an index from
 IDENTITY = IndexIdentity(chunker_version=CHUNKER_VERSION)
-# Batches of files more than a pool of the tests' workers hands out at once, so a run hands
-# them out as others come back
-POOLED_BATCHES = POOL_WORKERS * BATCHES_IN_FLIGHT_PER_WORKER + 2
+# Batches of files more than a pool of the tests' workers hands out at once, enough that a run
+# hands its last out only once it has written others: one more is handed out as the first
+# comes back, and a slice is written once a file after it has come
+POOLED_BATCHES = POOL_WORKERS * BATCHES_IN_FLIGHT_PER_WORKER + 3
 POOLED_FILES = BATCH_FILES * POOLED_BATCHES
 # Modules of functions holding long strings, enough source in all for a run to pay a pool's
 # start, and enough functions in each that a run writes its first slice before its pool

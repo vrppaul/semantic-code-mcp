@@ -211,7 +211,7 @@ layers = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.server",
     "semantic_code_mcp.services",
-    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage | semantic_code_mcp.watching",
+    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage | semantic_code_mcp.watching | semantic_code_mcp.pools",
     "semantic_code_mcp.config | semantic_code_mcp.logging | semantic_code_mcp.extras",
     "semantic_code_mcp.domain",
 ]
@@ -227,6 +227,8 @@ source_modules = [
     "semantic_code_mcp.chunkers",
     "semantic_code_mcp.embedding",
     "semantic_code_mcp.storage",
+    "semantic_code_mcp.watching",
+    "semantic_code_mcp.pools",
     "semantic_code_mcp.domain",
     "semantic_code_mcp.config",
 ]
@@ -386,6 +388,30 @@ source_modules = [
     "semantic_code_mcp.domain",
 ]
 forbidden_modules = ["ctypes"]
+# Through the part that wraps it, a library is meant to be reached
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Processes of the server's own stay in the pools part"
+type = "forbidden"
+# A pool's process inherits the server's descriptors and outlives it unless told: one part
+# starts them, holds their output to stderr and ends them with the server
+source_modules = [
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.embedding",
+    "semantic_code_mcp.storage",
+    "semantic_code_mcp.watching",
+    "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+forbidden_modules = ["multiprocessing", "concurrent"]
 # Through the part that wraps it, a library is meant to be reached
 allow_indirect_imports = true
 

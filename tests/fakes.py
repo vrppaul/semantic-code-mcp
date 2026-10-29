@@ -3,9 +3,11 @@
 import asyncio
 import hashlib
 import os
+import sys
 import threading
 from collections import defaultdict
 from collections.abc import Callable
+from concurrent.futures import Executor, Future
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import override
@@ -50,6 +52,8 @@ STRAY_LINE = b"a stray line on standard output\n"
 STANDARD_OUTPUT = 1
 # Where the one chunk of a file a fake chunker makes lies
 FIRST_LINE = 1
+# What a store stopped in its write says as it stops
+WRITING = "writing\n"
 
 
 class FakeEmbedder(Embedder):
@@ -315,6 +319,35 @@ class StdoutWritingChunker(VersionedChunker):
         return self._inner.chunk_file(project_root, path)
 
 
+class InlinePool(Executor):
+    """A pool that runs each task in the thread that hands it out, as it is handed out, and
+    notes how many writes a store had received at each."""
+
+    def __init__(self, store: FakeIndexStore) -> None:
+        self._store = store
+        self.writes_at_hand_outs: list[int] = []
+
+    @override
+    def submit(self, task, /, *args, **kwargs):
+        self.writes_at_hand_outs.append(len(self._store.updates))
+        done: Future = Future()
+        done.set_result(task(*args, **kwargs))
+        return done
+
+
+class RefusedPools:
+    """An opener of pools on a system that cannot run one, which keeps how often it was
+    asked."""
+
+    def __init__(self) -> None:
+        self.asked = 0
+
+    def __call__(self, _workers: int) -> Executor:
+        self.asked += 1
+        message = "this system runs no pool of processes"
+        raise OSError(message)
+
+
 class DelegatingStore(IndexStore):
     """Another store, every call handed on to it; a subclass changes what it means to."""
 
@@ -404,6 +437,17 @@ class StoreHeldInItsWrite(DelegatingStore):
         self.release.wait()
         super().write(update)
         self.written.set()
+
+
+class StoreStoppedInItsWrite(DelegatingStore):
+    """Another store, whose first write says WRITING on stdout and never ends: a run caught
+    mid-write, for a test to kill."""
+
+    @override
+    def write(self, update: IndexUpdate) -> None:
+        sys.stdout.write(WRITING)
+        sys.stdout.flush()
+        threading.Event().wait()
 
 
 class StoreChangedAsARunHoldsIt(DelegatingStore):

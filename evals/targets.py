@@ -88,10 +88,12 @@ class TargetCrossed(BaseModel):
 
 
 TARGETS = (
-    # What an agent waits for on first contact with a repository
+    # What an agent waits for on first contact with a repository; at 100k chunks 9.7-9.9 s
+    # once a first index is chunked in a pool (ADR 010, O4), where the server alone takes
+    # 13.7-17.0
     SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=PINNED, most=3.0),
     SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=TWENTY_THOUSAND, most=10.0),
-    SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=HUNDRED_THOUSAND, most=60.0),
+    SpeedTarget(figure=SpeedFigure.cold_first_answer_seconds, size=HUNDRED_THOUSAND, most=12.5),
     # A warm search by words, at p95 about the slowest question; at 100k chunks 109-155 ms,
     # and narrowed 95-111 at the median, once ADR 010's O1 followed the files, where a scan at
     # each search takes 227-343 and 198-311
@@ -127,11 +129,14 @@ TARGETS = (
     ),
     # A fresh server's first answer on an indexed project
     SpeedTarget(figure=SpeedFigure.first_search_seconds, size=ANY_SIZE, most=3.0),
-    # A server by words, at its peak and once its work is done
+    # A server by words and the processes it starts, at their peak and once its work is done,
+    # by their proportional shares: at 100k chunks 299-306 MB and 130-135 once a first index
+    # is streamed, its pool's four workers counted, where every chunk held at once took
+    # 343-345 and 219-221 in the server alone, and would take about 180 more beside a pool
     SpeedTarget(figure=SpeedFigure.peak_memory_megabytes, size=PINNED, most=200.0),
-    SpeedTarget(figure=SpeedFigure.peak_memory_megabytes, size=HUNDRED_THOUSAND, most=600.0),
+    SpeedTarget(figure=SpeedFigure.peak_memory_megabytes, size=HUNDRED_THOUSAND, most=400.0),
     SpeedTarget(figure=SpeedFigure.resident_memory_megabytes, size=PINNED, most=200.0),
-    SpeedTarget(figure=SpeedFigure.resident_memory_megabytes, size=HUNDRED_THOUSAND, most=600.0),
+    SpeedTarget(figure=SpeedFigure.resident_memory_megabytes, size=HUNDRED_THOUSAND, most=180.0),
     # A server set to search by meaning
     SpeedTarget(figure=SpeedFigure.meaning_model_load_seconds, size=PINNED, most=1.0),
     SpeedTarget(figure=SpeedFigure.meaning_peak_memory_megabytes, size=PINNED, most=1000.0),

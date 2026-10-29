@@ -1,6 +1,8 @@
 """The services of each project the server has been asked about, built once and kept."""
 
+import os
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -9,7 +11,8 @@ from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, ProjectFiles
 from semantic_code_mcp.domain.models import IndexIdentity, VectorIdentity
-from semantic_code_mcp.services.chunking import Chunking, pool_workers
+from semantic_code_mcp.pools import open_chunking_pool, pool_workers
+from semantic_code_mcp.services.chunking import Chunking
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
 from semantic_code_mcp.services.vectors import VectorService
@@ -77,7 +80,11 @@ class ProjectRegistry:
         self._settings = settings
         self._embedder = embedder
         self._chunker = chunker
-        self._chunking = Chunking(chunker, workers=pool_workers(), debug_logging=settings.debug)
+        self._chunking = Chunking(
+            chunker,
+            workers=pool_workers(os.process_cpu_count()),
+            open_pool=partial(open_chunking_pool, debug_logging=settings.debug),
+        )
         self._discovery = discovery
         self._open_store = open_store
         self._open_files = open_files
