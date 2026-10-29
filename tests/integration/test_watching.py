@@ -30,8 +30,14 @@ from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import DirectoryWatcher
 from semantic_code_mcp.domain.models import FileStamps, WatchEvent
 from semantic_code_mcp.services.files import CHECK_INTERVAL_SECONDS, WatchedFiles
-from semantic_code_mcp.watching.directory_changes import BUFFER_SIZE
-from semantic_code_mcp.watching.systems import LINUX_PLATFORM, WINDOWS_PLATFORM, system_watcher
+from semantic_code_mcp.watching.directory_changes import BUFFER_SIZE, NAME_ENCODING, RECORD_HEADER
+from semantic_code_mcp.watching.fsevents import MARKS_PREFIX
+from semantic_code_mcp.watching.systems import (
+    LINUX_PLATFORM,
+    MACOS_PLATFORM,
+    WINDOWS_PLATFORM,
+    system_watcher,
+)
 from tests.fakes import FakeEmbedder
 from tests.helpers import commit_all, discovery_for, indexing_service, make_repository, run_git
 from tests.indexing import NO_PROGRESS
@@ -39,6 +45,7 @@ from tests.stores import IDENTITY, StoreClass, open_store
 
 pytestmark = pytest.mark.skipif(system_watcher() is None, reason="this system has no watcher")
 ONLY_ON_LINUX = pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="Linux's alone")
+ONLY_ON_MACOS = pytest.mark.skipif(sys.platform != MACOS_PLATFORM, reason="macOS's alone")
 ONLY_ON_WINDOWS = pytest.mark.skipif(sys.platform != WINDOWS_PLATFORM, reason="Windows' alone")
 # APFS and NTFS hold no name that is not UTF-8
 NAMES_NOT_UTF8 = ONLY_ON_LINUX
@@ -63,16 +70,21 @@ QUEUE_LIMIT_FILE = Path("/proc/sys/fs/inotify/max_queued_events")
 START_OF_TIME = 0.0
 # More new modules than a look usually meets, made at once
 MANY_MODULES = 150
-# renameat2's flag that swaps two paths, and the directory a relative path is read from
+# renameat2's flag that swaps two paths, and the directory a relative path is read from; and
+# the flag of macOS's renamex_np that does the same
 RENAME_EXCHANGE = 2
 CURRENT_DIRECTORY = -100
+RENAME_SWAP = 2
 # The error inotify gives at the user's limit of watches
 LIMIT_OF_WATCHES_ERROR = OSError(28, "No space left on device")
 # A name of 100 characters, whose records fill ReadDirectoryChangesW's buffer soon: each a header
 # of 12 bytes and the name in UTF-16, one as it is made and one as it is deleted
 LONG_NAME = "n" * 100 + ".py"
-RECORD_BYTES = 12 + 2 * len(LONG_NAME)
-FILES_FILLING_THE_BUFFER = 2 * BUFFER_SIZE // (2 * RECORD_BYTES)
+RECORD_BYTES = RECORD_HEADER.size + len(LONG_NAME.encode(NAME_ENCODING))
+RECORDS_A_FILE = 2
+# The files made and deleted: enough to fill the buffer twice over
+BUFFERS_FILLED = 2
+FILES_FILLING_THE_BUFFER = BUFFERS_FILLED * BUFFER_SIZE // (RECORDS_A_FILE * RECORD_BYTES)
 EXECUTE_ONLY = 0o311
 READABLE = 0o755
 # This process's open files
@@ -208,9 +220,9 @@ class SetClock:
         return self.now
 
 
-def exchange(first: Path, second: Path) -> int:
-    """Swap two paths in one call, as `mv --exchange` does: each directory's parent sees one
-    leave and the other come under one name. What the call returned, 0 where it swapped."""
+def exchanged_by_renameat2(first: Path, second: Path) -> int:
+    """Swap two paths in one call, as Linux's `mv --exchange` does: each directory's parent sees
+    one leave and the other come under one name. What the call returned, 0 where it swapped."""
     library = ctypes.CDLL(None, use_errno=True)
     return library.renameat2(
         CURRENT_DIRECTORY,
@@ -219,6 +231,12 @@ def exchange(first: Path, second: Path) -> int:
         os.fsencode(second),
         RENAME_EXCHANGE,
     )
+
+
+def exchanged_by_renamex_np(first: Path, second: Path) -> int:
+    """Swap two paths in one call, as macOS's `renamex_np` with RENAME_SWAP does."""
+    library = ctypes.CDLL(None, use_errno=True)
+    return library.renamex_np(os.fsencode(first), os.fsencode(second), RENAME_SWAP)
 
 
 class CountedWatchers:
@@ -1127,8 +1145,16 @@ def test_a_link_git_ignores_is_listed_once(tmp_path: Path):
     assert discovery.listings == 2
 
 
-@ONLY_ON_LINUX
-def test_two_directories_swapped_are_followed_where_they_lie(tmp_path: Path):
+@pytest.mark.parametrize(
+    "exchange",
+    [
+        pytest.param(exchanged_by_renameat2, marks=ONLY_ON_LINUX),
+        pytest.param(exchanged_by_renamex_np, marks=ONLY_ON_MACOS),
+    ],
+)
+def test_two_directories_swapped_are_followed_where_they_lie(
+    exchange: Callable[[Path, Path], int], tmp_path: Path
+):
     """Each one's going and the other's coming arrive under one name at once."""
     project = committed_repository(tmp_path)
     write_deep_module(project)
@@ -1293,6 +1319,25 @@ def test_changes_past_the_buffer_start_the_following_again(tmp_path: Path):
     assert (instances.opened, kept) == (2, scan_of(project, Settings()))
 
 
+@ONLY_ON_MACOS
+def test_a_mark_the_system_will_not_make_starts_the_following_again(tmp_path: Path):
+    """As with the watcher's directory of marks removed: a following started again makes its
+    marks anew, where one given up would scan for the rest of the session."""
+    project = committed_repository(tmp_path)
+    instances = CountedWatchers()
+    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
+    files.current(project)
+
+    for marks in Path(tempfile.gettempdir()).glob(f"{MARKS_PREFIX}*"):
+        remove_tree(marks)
+    files.current(project)
+    edit_top_module(project)
+    kept = files.current(project)
+    files.close()
+
+    assert (instances.opened, kept) == (2, scan_of(project, Settings()))
+
+
 def test_a_directory_made_as_the_following_starts_is_followed(tmp_path: Path):
     """Made after the walk listed its parent, before the files were listed."""
     project = committed_repository(tmp_path)
@@ -1415,6 +1460,27 @@ def test_a_project_no_watch_can_tell_is_scanned_at_each_look(
 def open_descriptors() -> int:
     """How many files this process holds open."""
     return len(list(OPEN_DESCRIPTORS.iterdir()))
+
+
+@ONLY_ON_WINDOWS
+async def test_a_session_ended_lets_go_of_its_projects_directories(tmp_path: Path):
+    """Windows refuses to move a directory holding one watched: once the session ends, the
+    directory holding the project moves."""
+    holder = tmp_path / "holder"
+    holder.mkdir()
+    project = committed_repository(holder)
+    settings = Settings(cache_dir=tmp_path / "cache")
+
+    async with project_registry_lifespan(
+        create_app(settings, FakeEmbedder()),
+        settings=settings,
+        embedder=FakeEmbedder(),
+        open_store=store_opener(settings),
+    ) as registry:
+        registry.services_for(project).files.current(project)
+    holder.rename(tmp_path / "moved")
+
+    assert (tmp_path / "moved" / "project").is_dir()
 
 
 @ONLY_ON_LINUX
