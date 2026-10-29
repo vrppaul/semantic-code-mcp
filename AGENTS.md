@@ -41,7 +41,7 @@ Python 3.14 · uv · mcp 2.x (MCPServer) · onnxruntime and tokenizers, the extr
 All under `src/semantic_code_mcp/`, each layer building only on those after it:
 
 - cli → app → server → services → the parts → domain. `uv run lint-imports` refuses an import against them; `pyproject.toml` holds the contracts and their reasons.
-- The parts: discovery lists the files, the chunkers split them, embedding makes the vectors, storage keeps them with a record of each file and a manifest of what built the index.
+- The parts: discovery lists the files, watching follows their changes through inotify on Linux, the chunkers split them, embedding makes the vectors, storage keeps them with a record of each file and a manifest of what built the index.
 - `mcp` stays in the server layer, the app and the cli; each library stays in the part that wraps it.
 - The app builds the server; its lifespan holds the one `ProjectRegistry` every request shares. Nothing is module-level state.
 - Interfaces are abstract classes in `src/semantic_code_mcp/domain/interfaces.py`; tests use the fakes in `tests/fakes.py`.

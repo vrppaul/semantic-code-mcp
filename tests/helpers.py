@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.app import store_opener
+from semantic_code_mcp.app import files_opener, store_opener
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore
@@ -63,10 +63,13 @@ def discovery_for(settings: Settings, chunker: Chunker) -> SourceDiscovery:
 
 
 def indexing_service(store: IndexStore, settings: Settings, chunker: Chunker) -> IndexingService:
-    """The indexing of a project's words over the given parts, with the real discovery, its
-    status counting the fake model's vectors."""
+    """The indexing of a project's words over the given parts, its files read as the settings
+    ask by the real discovery, its status counting the fake model's vectors."""
     return IndexingService(
-        discovery=discovery_for(settings, chunker), chunker=chunker, store=store, model=FAKE_MODEL
+        files=files_opener(settings, discovery_for(settings, chunker))(),
+        chunker=chunker,
+        store=store,
+        model=FAKE_MODEL,
     )
 
 
@@ -77,13 +80,15 @@ def vector_service(store: IndexStore, embedder: Embedder) -> VectorService:
 
 def registry_of(settings: Settings, embedder: Embedder, chunker: Chunker) -> ProjectRegistry:
     """The registry of a server whose model and chunker are the given ones, its indexes in
-    the store the settings pick."""
+    the store the settings pick, each project's files read as they ask."""
+    discovery = discovery_for(settings, chunker)
     return ProjectRegistry(
         settings=settings,
         embedder=embedder,
         chunker=chunker,
-        discovery=discovery_for(settings, chunker),
+        discovery=discovery,
         open_store=store_opener(settings),
+        open_files=files_opener(settings, discovery),
     )
 
 

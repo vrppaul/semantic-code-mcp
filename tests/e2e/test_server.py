@@ -20,7 +20,7 @@ from semantic_code_mcp.server.responses import (
     IndexStatusResponse,
     SearchCodeResponse,
 )
-from tests.helpers import make_repository
+from tests.helpers import commit_all, make_repository
 
 GREETING_MODULE = '''def greet(name: str) -> str:
     """Greet a person by their name."""
@@ -231,7 +231,26 @@ async def test_only_a_server_set_to_search_by_meaning_embeds_the_project_first(
     assert ([result.name for result in found], embedded_count) == (["greet"], embedded)
 
 
-async def test_search_sees_a_function_added_after_indexing(project: Path, client: Client):
+def leave_as_it_is(_project: Path) -> None:
+    """A directory no repository holds, which a search scans."""
+
+
+def commit_into_a_repository(project: Path) -> None:
+    """A repository's work tree, whose files a server follows by inotify where it can."""
+    commit_all(make_repository(project))
+
+
+@pytest.mark.parametrize(
+    "make_kind",
+    [
+        pytest.param(leave_as_it_is, id="outside a repository"),
+        pytest.param(commit_into_a_repository, id="in a repository"),
+    ],
+)
+async def test_search_sees_a_function_added_after_indexing(
+    project: Path, client: Client, make_kind: Callable[[Path], None]
+):
+    make_kind(project)
     async with client:
         await client.call_tool("index_codebase", {"project_path": str(project)})
         config_module = project / "config.py"

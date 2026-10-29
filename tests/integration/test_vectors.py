@@ -10,7 +10,7 @@ from typing import override
 import numpy
 import pytest
 
-from semantic_code_mcp.app import build_chunker
+from semantic_code_mcp.app import build_chunker, files_opener
 from semantic_code_mcp.config import Settings
 from semantic_code_mcp.domain.interfaces import VectorMatrix
 from semantic_code_mcp.domain.models import VectorIdentity
@@ -187,7 +187,7 @@ async def test_a_forced_run_keeps_the_vectors_of_a_model_whose_weights_are_pinne
     store = open_store(store_class, tmp_path / "index", IDENTITY)
     pinned = FakeEmbedder(revision=PINNED_REVISION)
     indexing = IndexingService(
-        discovery=discovery_for(test_settings, build_chunker()),
+        files=files_opener(test_settings, discovery_for(test_settings, build_chunker()))(),
         chunker=build_chunker(),
         store=store,
         model=vector_identity(pinned),

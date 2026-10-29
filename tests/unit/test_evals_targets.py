@@ -10,15 +10,16 @@ SENTRY_CHUNKS = 87694
 def speeds(
     *,
     chunks: int,
+    cold_first_answer_seconds: float,
     status_milliseconds: float,
     search_after_edit_milliseconds: float,
     peak_memory_megabytes: float,
     meaning: MeaningSpeed | None,
 ) -> CorpusSpeed:
-    """A corpus's speeds, each within every target but the four given."""
+    """A corpus's speeds, each within every target but the five given."""
     return CorpusSpeed(
         corpus="click",
-        cold_first_answer_seconds=1.0,
+        cold_first_answer_seconds=cold_first_answer_seconds,
         files_indexed=133,
         chunks_indexed=chunks,
         full_index_seconds=0.3,
@@ -52,6 +53,7 @@ def by_meaning(peak_memory_megabytes: float) -> MeaningSpeed:
 def test_a_pinned_corpus_crosses_the_targets_its_figures_pass_and_no_larger_size_s():
     measured = speeds(
         chunks=PINNED_CHUNKS,
+        cold_first_answer_seconds=1.0,
         status_milliseconds=60.0,
         search_after_edit_milliseconds=300.0,
         peak_memory_megabytes=700.0,
@@ -70,12 +72,13 @@ def test_a_pinned_corpus_crosses_the_targets_its_figures_pass_and_no_larger_size
 
 
 def test_a_repository_s_size_is_held_to_its_own_bounds_and_to_none_it_lacks():
-    """Sentry's stale check and search after an edit are slower than the pinned corpora's
-    bounds allow, within its own; and a run by words alone has no figure by meaning to hold."""
+    """Sentry's first answer is slower than the pinned corpora's bound allows, within its own;
+    and a run by words alone has no figure by meaning to hold."""
     measured = speeds(
         chunks=SENTRY_CHUNKS,
-        status_milliseconds=150.0,
-        search_after_edit_milliseconds=300.0,
+        cold_first_answer_seconds=15.0,
+        status_milliseconds=40.0,
+        search_after_edit_milliseconds=200.0,
         peak_memory_megabytes=700.0,
         meaning=None,
     )

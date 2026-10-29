@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 
 from semantic_code_mcp.domain.models import (
     Chunk,
+    FileStamps,
     IndexCounts,
     IndexedFiles,
     IndexManifest,
@@ -67,6 +68,20 @@ class Embedder(ABC):
     def embed_documents(self, texts: list[str]) -> VectorMatrix:
         """The vectors of at least one text to be searched, one row each; loads the model
         on first use."""
+
+
+class ProjectFiles(ABC):
+    """The indexable files of one project as they are on disk now: scanned each time they are
+    asked for, or kept from what changed since a scan."""
+
+    @abstractmethod
+    def current(self, project_root: Path) -> FileStamps:
+        """The project's indexable files now, by their paths from the root, as a scan would
+        find them; safe for two threads at once. The mapping is never changed after."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Let go of what follows the files, as the server stops."""
 
 
 class IndexStore(ABC):

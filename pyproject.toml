@@ -211,7 +211,7 @@ layers = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.server",
     "semantic_code_mcp.services",
-    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage",
+    "semantic_code_mcp.discovery | semantic_code_mcp.chunkers | semantic_code_mcp.embedding | semantic_code_mcp.storage | semantic_code_mcp.watching",
     "semantic_code_mcp.config | semantic_code_mcp.logging | semantic_code_mcp.extras",
     "semantic_code_mcp.domain",
 ]
@@ -368,6 +368,28 @@ forbidden_modules = ["tree_sitter", "tree_sitter_python", "tree_sitter_rust", "t
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
+name = "ctypes stays in the watching part"
+type = "forbidden"
+# A call into the C library trusts its signature and the platform's: one part holds inotify's
+source_modules = [
+    "semantic_code_mcp.app",
+    "semantic_code_mcp.cli",
+    "semantic_code_mcp.__main__",
+    "semantic_code_mcp.server",
+    "semantic_code_mcp.services",
+    "semantic_code_mcp.discovery",
+    "semantic_code_mcp.chunkers",
+    "semantic_code_mcp.embedding",
+    "semantic_code_mcp.storage",
+    "semantic_code_mcp.config",
+    "semantic_code_mcp.logging",
+    "semantic_code_mcp.domain",
+]
+forbidden_modules = ["ctypes"]
+# Through the part that wraps it, a library is meant to be reached
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 name = "The domain is pure"
 type = "forbidden"
 # Models and interfaces import pydantic, the standard library and numpy's array type
@@ -398,13 +420,15 @@ ignore_names = [
     "model_config",
     "cls",
     # Compared as part of a whole model, never read by name: an answer, a machine, what a
-    # schema version stored
+    # schema version stored, where a directory lies
     "symbol",
     "logical_cores",
     "python",
     "columns",
     "search_texts",
     "statements",
+    "device",
+    "inode",
     # What sqlite3 reads of a connection to make its rows: by name, not by position
     "row_factory",
     # What Claude Code reads of an MCP config the agents' sessions are given: by name, in JSON
@@ -415,6 +439,8 @@ ignore_names = [
     "record_chunks",
     "record_vectors",
     "record_schema",
+    # The marks pytest reads off a test module by name
+    "pytestmark",
 ]
 
 [tool.uv.sources]

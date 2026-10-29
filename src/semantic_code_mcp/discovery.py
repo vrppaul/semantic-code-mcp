@@ -1,16 +1,18 @@
 """Source file discovery — which files of a project get indexed.
 
-It runs before every search, to see what changed, so its cost is per file and kept to the
-file system's: each directory is judged and resolved once for all its files, the ignore
-patterns are one expression of each kind, and a path is resolved whole only where it is a
-symlink (ADR 009, D4).
+It runs before every search a watcher does not spare, to see what changed, so its cost is per
+file and kept to the file system's: each directory is judged and resolved once for all its
+files, the ignore patterns are one expression of each kind, and a path is resolved whole only
+where it is a symlink (ADR 009, D4). A scan is its listing, from git or a walk, then each
+candidate read by its rules; a watcher of the files reads the paths that changed by the same
+rules and asks git what a scan would (ADR 010, O1).
 """
 
 import os
 import re
 import stat
 import subprocess  # nosec B404
-from collections.abc import Sequence
+from collections.abc import Collection, Iterable, Sequence
 from fnmatch import translate
 from pathlib import Path
 
@@ -24,8 +26,16 @@ log = structlog.get_logger()
 # `git ls-files -z` separates paths with NUL, so any file name survives unquoted.
 GIT_PATH_SEPARATOR = b"\0"
 SUCCESS_EXIT_CODE = 0
-# `git check-ignore` exits 0 when the path it was given is ignored.
+# `git check-ignore` exits 0 when a path it was given is ignored, 1 when none is.
 CHECK_IGNORE_MATCHED_EXIT_CODE = 0
+CHECK_IGNORE_NONE_MATCHED_EXIT_CODE = 1
+# What a git call that reads nothing from its standard input is handed, so it never reads the
+# server's own, which carries the protocol
+NO_INPUT = b""
+# `git ls-files --directory` ends the entry of a directory it names whole with a slash
+DIRECTORY_ENTRY_SUFFIX = "/"
+# A pathspec that names its path as it is spelled, wildcards and all
+LITERAL_PATHSPEC_PREFIX = ":(literal)"
 # Variables that point git at another repository than the one around the project.
 GIT_REDIRECTING_VARIABLES = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"}
@@ -102,6 +112,11 @@ class FoundFile(BaseModel):
     stamp: FileStamp
 
 
+# The files of a project a scan found, by their paths from the root, before a file reached twice
+# is kept once
+type FoundFiles = dict[str, FoundFile]
+
+
 class IgnoreRules:
     """The ignore patterns as one discovery reads them (`SourceDiscovery` says how): a file is
     covered when a pattern covers its name, its path or a directory it lies in, and each
@@ -150,6 +165,9 @@ class CandidateCheck:
         self._root_text = str(root)
         # Each directory met as it really lives, as text; None for one outside the root
         self._real_directories: dict[str, str | None] = {}
+        # The candidates met whose own path is a symlink, found or not: a watcher reads them at
+        # every look, as their target may change where nothing watches
+        self.links_met: set[str] = set()
 
     def found(self, relative_path: str) -> FoundFile | None:
         """A candidate that is a file and resolves inside the root, with its record as of now."""
@@ -157,6 +175,8 @@ class CandidateCheck:
         try:
             own_status = os.lstat(path)
             through_link = stat.S_ISLNK(own_status.st_mode)
+            if through_link:
+                self.links_met.add(relative_path)
             status = Path(path).stat() if through_link else own_status
         except OSError:
             return None
@@ -211,6 +231,29 @@ class CandidateCheck:
         except OSError:
             return None
         return self._link_target(path) if through_link else path
+
+
+class Repository(BaseModel):
+    """A git work tree's root and where git keeps what decides which files it lists: its own
+    directory, with the index, and the one every work tree of it shares, with `info/exclude`;
+    a linked worktree's both lie outside it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    root: Path
+    git_directory: Path
+    common_directory: Path
+
+
+def kept_once(found: Iterable[FoundFile]) -> FileStamps:
+    """The files found, each kept once, by their paths and in those paths' order: a file reached
+    both directly and through a symlink keeps its direct path."""
+    by_path = sorted(found, key=lambda file: file.path)
+    # Direct paths first, so a file reached both ways keeps its direct path
+    kept_by_target: dict[str, FoundFile] = {}
+    for file in sorted(by_path, key=lambda file: file.through_link):
+        kept_by_target.setdefault(file.target, file)
+    return {file.path: file.stamp for file in by_path if kept_by_target[file.target] is file}
 
 
 class ProjectRoot(BaseModel):
@@ -285,15 +328,147 @@ class SourceDiscovery:
         # Resolved as git resolves the work tree roots it is compared with
         self._home_directory = home_directory.resolve()
 
+    @property
+    def use_gitignore(self) -> bool:
+        """Whether git lists the files where it can, or a walk always does."""
+        return self._use_gitignore
+
     def discover(self, project_root: Path) -> FileStamps:
         """The indexable files under a project root, by their paths from it as POSIX text and
         in those paths' order, each with its stamp as found now."""
         root = project_root.resolve()
-        rules = IgnoreRules(self._component_pattern, self._path_pattern)
-        candidates = self._list_with_git(root) if self._use_gitignore else None
+        return self.scan(root, self.listing_repository(root))
+
+    def listing_repository(self, root: Path) -> Repository | None:
+        """The repository whose git lists the files under a resolved root; None where a walk
+        does, as `SourceDiscovery` says."""
+        return self.repository_of(root) if self._use_gitignore else None
+
+    def scan(self, root: Path, repository: Repository | None) -> FileStamps:
+        """The indexable files under a resolved root, listed by the repository's git, or by a
+        walk where there is none or git fails."""
+        rules = self.ignore_rules()
+        candidates = self.git_listing(root) if repository is not None else None
         if candidates is None:
             candidates = self._walk(root, rules)
-        return self._indexable(candidates, root, rules)
+        return kept_once(self.found_files(candidates, rules, CandidateCheck(root)).values())
+
+    def ignore_rules(self) -> IgnoreRules:
+        """The ignore patterns as a discovery reads them, each directory's verdict kept."""
+        return IgnoreRules(self._component_pattern, self._path_pattern)
+
+    def found_files(
+        self, candidates: Iterable[str], rules: IgnoreRules, check: CandidateCheck
+    ) -> FoundFiles:
+        """The candidates worth indexing that are files inside the root, each with its record,
+        in their paths' order.
+
+        The checks that need no file system run first, over every candidate; only what passes
+        them is stat'ed.
+        """
+        wanted = sorted(path for path in set(candidates) if self.is_wanted(path, rules))
+        return {file.path: file for file in map(check.found, wanted) if file is not None}
+
+    def is_wanted(self, relative_path: str, rules: IgnoreRules) -> bool:
+        """Whether a candidate has a supported extension, a name the index can hold, and no
+        pattern ignores it."""
+        if extension_of(relative_path) not in self._extensions:
+            return False
+        if rules.covers_file(relative_path):
+            return False
+        if not is_utf8(relative_path):
+            log.warning("skipped_file_name_not_utf8", file_path=ascii(relative_path))
+            return False
+        return True
+
+    def git_listing(self, root: Path) -> list[str] | None:
+        """The files git lists under the root of its work tree, tracked or untracked and not
+        ignored, by their paths from it; None when git fails."""
+        pathspecs = [f"*{extension}" for extension in sorted(self._extensions)]
+        tracked = self._run_git(
+            ["ls-files", "-z", "--cached", "--recurse-submodules", "--", *pathspecs],
+            root,
+            NO_INPUT,
+        )
+        untracked = self._run_git(
+            ["ls-files", "-z", "--others", "--exclude-standard", "--", *pathspecs],
+            root,
+            NO_INPUT,
+        )
+        listings = [tracked, untracked]
+        if any(listing is None or listing.returncode != SUCCESS_EXIT_CODE for listing in listings):
+            log.warning("git_listing_failed", project=str(root))
+            return None
+
+        entries = b"".join(listing.stdout for listing in listings if listing is not None)
+        return paths_of(entries)
+
+    def ignored_by_git(self, root: Path, paths: Collection[str]) -> frozenset[str] | None:
+        """Which of the paths from the root git ignores, as they were given, a directory's with
+        a slash after it; None when git fails. A file git tracks is never ignored, and git lists
+        nothing it does not track in a directory it ignores."""
+        if not paths:
+            return frozenset()
+        query = GIT_PATH_SEPARATOR.join(os.fsencode(path) for path in paths)
+        check = self._run_git(["check-ignore", "-z", "--stdin"], root, query)
+        answered = (CHECK_IGNORE_MATCHED_EXIT_CODE, CHECK_IGNORE_NONE_MATCHED_EXIT_CODE)
+        if check is None or check.returncode not in answered:
+            log.warning("git_check_ignore_failed", project=str(root))
+            return None
+        return frozenset(paths_of(check.stdout))
+
+    def directories_git_may_ignore(self, root: Path, under: Collection[str]) -> list[str] | None:
+        """The directories `git ls-files --ignored --directory` names within those given, each
+        from the root, or within the whole work tree where none is: each one git ignores whole,
+        and one whose every file it ignores though not the directory, which only `git
+        check-ignore` tells apart. None when git fails."""
+        pathspecs = [
+            f"{LITERAL_PATHSPEC_PREFIX}{directory}{DIRECTORY_ENTRY_SUFFIX}" for directory in under
+        ]
+        listing = self._run_git(
+            [
+                "ls-files",
+                "-z",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+                "--",
+                *pathspecs,
+            ],
+            root,
+            NO_INPUT,
+        )
+        if listing is None or listing.returncode != SUCCESS_EXIT_CODE:
+            log.warning("git_ignored_listing_failed", project=str(root))
+            return None
+        return [
+            entry.removesuffix(DIRECTORY_ENTRY_SUFFIX)
+            for entry in paths_of(listing.stdout)
+            if entry.endswith(DIRECTORY_ENTRY_SUFFIX)
+        ]
+
+    def directories_holding_tracked(
+        self, root: Path, directories: Collection[str]
+    ) -> frozenset[str] | None:
+        """Which of the directories, each from the root, hold a file git tracks below them: git
+        looks into such a directory though it holds a repository of its own, and into no other
+        that does. None when git fails."""
+        pathspecs = [
+            f"{LITERAL_PATHSPEC_PREFIX}{directory}{DIRECTORY_ENTRY_SUFFIX}"
+            for directory in directories
+        ]
+        listing = self._run_git(["ls-files", "-z", "--cached", "--", *pathspecs], root, NO_INPUT)
+        if listing is None or listing.returncode != SUCCESS_EXIT_CODE:
+            log.warning("git_tracked_listing_failed", project=str(root))
+            return None
+        asked = set(directories)
+        return frozenset(
+            directory
+            for path in paths_of(listing.stdout)
+            for directory in leading_directories(path)
+            if directory in asked
+        )
 
     def project_root_of(self, directory: Path) -> ProjectRoot:
         """The root of the project a directory belongs to: of the git work tree it lies
@@ -302,58 +477,46 @@ class SourceDiscovery:
         where that repository's root is the user's home directory or above it, as a home
         under git for its dotfiles is, which holds projects rather than being one; and
         whether a repository names it. Asked of git whether or not it lists the files."""
-        repository_root = self._repository_of(directory)
-        if repository_root is None or self._home_directory.is_relative_to(repository_root):
+        repository = self.repository_of(directory)
+        if repository is None or self._home_directory.is_relative_to(repository.root):
             return ProjectRoot(path=directory, is_repository=False)
-        return ProjectRoot(path=repository_root, is_repository=True)
+        return ProjectRoot(path=repository.root, is_repository=True)
 
-    def _list_with_git(self, root: Path) -> list[str] | None:
-        """Ask git which files to index, by their paths from root; None when git cannot or
-        should not answer."""
-        if self._repository_of(root) is None:
-            return None
-
-        pathspecs = [f"*{extension}" for extension in sorted(self._extensions)]
-        tracked = self._run_git(
-            ["ls-files", "-z", "--cached", "--recurse-submodules", "--", *pathspecs], root
+    def repository_of(self, root: Path) -> Repository | None:
+        """The git work tree root lies in; None outside one, when git cannot answer, or when
+        that repository ignores root itself."""
+        layout = self._run_git(
+            ["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"], root, NO_INPUT
         )
-        untracked = self._run_git(
-            ["ls-files", "-z", "--others", "--exclude-standard", "--", *pathspecs], root
-        )
-        listings = [tracked, untracked]
-        if any(listing is None or listing.returncode != SUCCESS_EXIT_CODE for listing in listings):
-            log.warning("git_listing_failed", project=str(root))
-            return None
-
-        entries = b"".join(listing.stdout for listing in listings if listing is not None)
-        return [os.fsdecode(entry) for entry in entries.split(GIT_PATH_SEPARATOR) if entry]
-
-    def _repository_of(self, root: Path) -> Path | None:
-        """The root of the git work tree root lies in; None outside one, when git cannot
-        answer, or when that repository ignores root itself."""
-        toplevel = self._run_git(["rev-parse", "--show-toplevel"], root)
-        if toplevel is None or toplevel.returncode != SUCCESS_EXIT_CODE:
+        if layout is None or layout.returncode != SUCCESS_EXIT_CODE:
             log.debug("not_a_git_work_tree", project=str(root))
             return None
-        repository_root = Path(os.fsdecode(toplevel.stdout.strip())).resolve()
-        if repository_root != root and self._is_ignored_by_git(root):
+        # Each on its line, the directories of git from root where it gives them relative
+        toplevel, git_directory, common_directory = os.fsdecode(layout.stdout).splitlines()
+        repository = Repository(
+            root=Path(toplevel).resolve(),
+            git_directory=(root / git_directory).resolve(),
+            common_directory=(root / common_directory).resolve(),
+        )
+        if repository.root != root and self._is_ignored_by_git(root):
             log.info(
                 "project_ignored_by_enclosing_repository",
                 project=str(root),
-                repository=str(repository_root),
+                repository=str(repository.root),
             )
             return None
-        return repository_root
+        return repository
 
     def _is_ignored_by_git(self, root: Path) -> bool:
         """Whether the repository around root ignores root itself."""
-        check = self._run_git(["check-ignore", "--quiet", "."], root)
+        check = self._run_git(["check-ignore", "--quiet", "."], root, NO_INPUT)
         return check is not None and check.returncode == CHECK_IGNORE_MATCHED_EXIT_CODE
 
     def _run_git(
-        self, arguments: list[str], root: Path
+        self, arguments: list[str], root: Path, standard_input: bytes
     ) -> subprocess.CompletedProcess[bytes] | None:
-        """Run git in root, its answer whatever the exit code; None when git could not run.
+        """Run git in root, handed the standard input, its answer whatever the exit code; None
+        when git could not run.
 
         Variables that would point git at another repository are left out of its environment.
         """
@@ -367,6 +530,7 @@ class SourceDiscovery:
                 ["git", *arguments],
                 cwd=root,
                 env=environment,
+                input=standard_input,
                 capture_output=True,
                 timeout=self._git_timeout_seconds,
                 check=False,
@@ -394,30 +558,13 @@ class SourceDiscovery:
             found.extend(joined_path(relative_directory, name) for name in file_names)
         return found
 
-    def _indexable(self, candidates: list[str], root: Path, rules: IgnoreRules) -> FileStamps:
-        """The candidates worth indexing, each file once, sorted by their paths' text.
 
-        The checks that need no file system run first, over every candidate; only what
-        passes them is stat'ed. A file reached both directly and through a symlink keeps
-        its direct path.
-        """
-        check = CandidateCheck(root)
-        wanted = sorted(path for path in set(candidates) if self._is_wanted(path, rules))
-        found = [file for file in map(check.found, wanted) if file is not None]
-        # Direct paths first, so a file reached both ways keeps its direct path
-        kept_by_target: dict[str, FoundFile] = {}
-        for file in sorted(found, key=lambda file: file.through_link):
-            kept_by_target.setdefault(file.target, file)
-        return {file.path: file.stamp for file in found if kept_by_target[file.target] is file}
+def leading_directories(path: str) -> list[str]:
+    """Each directory a path from the root lies below, outermost first."""
+    parts = path.split(PATH_SEPARATOR)[:-1]
+    return [PATH_SEPARATOR.join(parts[: depth + 1]) for depth in range(len(parts))]
 
-    def _is_wanted(self, relative_path: str, rules: IgnoreRules) -> bool:
-        """Whether a candidate has a supported extension, a name the index can hold, and no
-        pattern ignores it."""
-        if extension_of(relative_path) not in self._extensions:
-            return False
-        if rules.covers_file(relative_path):
-            return False
-        if not is_utf8(relative_path):
-            log.warning("skipped_file_name_not_utf8", file_path=ascii(relative_path))
-            return False
-        return True
+
+def paths_of(entries: bytes) -> list[str]:
+    """The paths git printed, each ended by NUL, as the file system spells them."""
+    return [os.fsdecode(entry) for entry in entries.split(GIT_PATH_SEPARATOR) if entry]
