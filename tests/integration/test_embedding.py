@@ -194,7 +194,7 @@ def copy_with_case(directory: Path, config: object, normalizer: object) -> Path:
     normalizer replaced by the one given."""
     copy_of_the_model(directory)
     (directory / SENTENCE_BERT_CONFIG_FILE).write_text(json.dumps(config))
-    tokenizer = json.loads((directory / TOKENIZER_FILE).read_text())
+    tokenizer = json.loads((directory / TOKENIZER_FILE).read_text(encoding="utf-8"))
     (directory / TOKENIZER_FILE).write_text(json.dumps(tokenizer | {NORMALIZER_FIELD: normalizer}))
     return directory
 
@@ -310,7 +310,7 @@ def record_vectors() -> None:
     EMBEDDER_VERSION, unless that version is recorded already: it keeps what it made, so a
     change of vectors needs a new version. Run it by hand from the repository's root,
     through `uv run python -c` and an import of this module."""
-    recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text())
+    recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory() as directory:
         readings = readings_of(recorded.texts, Path(directory))
     updated = RecordedVectors(
@@ -344,7 +344,7 @@ def test_texts_about_one_thing_are_closer_than_texts_about_another(embedder: Onn
 def test_the_vectors_are_those_sentence_transformers_gave(embedder: OnnxEmbedder):
     """So an index built before keeps answering; one of the texts runs past the model's
     256 tokens, which both cut alike."""
-    reference = json.loads(REFERENCE_VECTORS.read_text())
+    reference = json.loads(REFERENCE_VECTORS.read_text(encoding="utf-8"))
 
     vectors = embedder.embed_documents(reference["texts"])
 
@@ -355,7 +355,7 @@ def test_the_embedder_s_version_names_the_vectors_it_makes(tmp_path: Path):
     """An index holds the vectors of one EMBEDDER_VERSION, so a change to how the embedder
     reads a model needs a new version, whose vectors `record_vectors` records; none
     recorded fails here."""
-    recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text())
+    recorded = RecordedVectors.model_validate_json(RECORDED_VECTORS.read_text(encoding="utf-8"))
 
     readings = readings_of(recorded.texts, tmp_path)
 
@@ -434,7 +434,7 @@ def test_a_model_saved_by_sentence_transformers_5_4_or_later_embeds_as_its_older
     (directory / POOLING_CONFIG_FILE).write_text(json.dumps(POOLING_BY_NAME))
     (directory / SENTENCE_BERT_CONFIG_FILE).write_text(json.dumps(NO_LIMIT_OF_ITS_OWN))
     (directory / TOKENIZER_CONFIG_FILE).write_text(json.dumps(TOKENIZER_LIMIT))
-    texts = json.loads(REFERENCE_VECTORS.read_text())["texts"]
+    texts = json.loads(REFERENCE_VECTORS.read_text(encoding="utf-8"))["texts"]
 
     vectors = OnnxEmbedder(str(directory)).embed_documents(texts)
 
@@ -448,7 +448,7 @@ def test_a_model_whose_transformer_names_its_positions_otherwise_reads_to_its_ow
     find in the transformer's config."""
     directory = copy_of_the_model(tmp_path)
     (directory / TRANSFORMER_CONFIG_FILE).write_text(json.dumps(POSITIONS_NAMED_OTHERWISE))
-    texts = json.loads(REFERENCE_VECTORS.read_text())["texts"]
+    texts = json.loads(REFERENCE_VECTORS.read_text(encoding="utf-8"))["texts"]
 
     vectors = OnnxEmbedder(str(directory)).embed_documents(texts)
 
@@ -464,7 +464,7 @@ def test_a_tokenizer_of_no_limit_reads_as_many_tokens_as_the_transformer_has_pos
     (directory / TOKENIZER_CONFIG_FILE).write_text(json.dumps(NO_TOKENIZER_LIMIT))
     limited = copy_of_the_model(tmp_path / "limited")
     (limited / SENTENCE_BERT_CONFIG_FILE).write_text(json.dumps(LIMIT_OF_THE_POSITIONS))
-    texts = json.loads(REFERENCE_VECTORS.read_text())["texts"]
+    texts = json.loads(REFERENCE_VECTORS.read_text(encoding="utf-8"))["texts"]
 
     vectors = OnnxEmbedder(str(directory)).embed_documents(texts)
 

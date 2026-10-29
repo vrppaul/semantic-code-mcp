@@ -66,7 +66,7 @@ def many_functions_project(root: Path, functions: int) -> Path:
 
 
 def add_a_function(path: Path) -> None:
-    path.write_text(path.read_text() + ADDED_FUNCTION)
+    path.write_text(path.read_text() + ADDED_FUNCTION, newline="\n")
     touch_later(path)
 
 

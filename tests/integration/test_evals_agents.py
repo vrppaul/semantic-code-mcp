@@ -4,6 +4,7 @@ script on PATH, so no session spends the owner's subscription."""
 import asyncio
 import io
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,10 @@ from evals.agents import (
 from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
 from evals.server import DEFAULT_OPTIONS, ServerStarter
 
-from tests.helpers import install_fake_claude
+from tests.helpers import POSIX_HARNESS, WINDOWS, install_fake_claude
+
+pytestmark = pytest.mark.skipif(sys.platform == WINDOWS, reason=POSIX_HARNESS)
+
 
 LOGIN_FILE = ".credentials.json"
 # A second arm without a server, so the arms can take turns without one

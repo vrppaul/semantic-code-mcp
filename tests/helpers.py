@@ -19,6 +19,11 @@ from semantic_code_mcp.services.projects import ProjectRegistry, vector_identity
 from semantic_code_mcp.services.vectors import VectorService
 from tests.fakes import FAKE_MODEL
 
+# The platform name Python gives Windows, and why the agents harness's tests skip there: it
+# drives Claude Code as a POSIX shell does, a fake `claude` script run by its shebang, a home
+# in HOME
+WINDOWS = "win32"
+POSIX_HARNESS = "the agents harness drives Claude Code as a POSIX shell does"
 # Claude Code faked for the agents harness, which no test may run for real
 FAKE_CLAUDE = Path(__file__).parent / "data" / "fake_claude.py"
 EXECUTABLE_MODE = 0o755

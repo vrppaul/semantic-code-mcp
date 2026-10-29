@@ -1,5 +1,6 @@
 """Tests for an agent's answer scored through the chunks of the file it names."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from evals.corpus import Answer, JudgedAnswer, Query, QuestionKind
 
 from semantic_code_mcp.chunkers.markdown import MarkdownChunker
 from semantic_code_mcp.chunkers.python import PythonChunker
+from tests.helpers import POSIX_HARNESS, WINDOWS
 
 WORKING_TREE = Path("/checkouts/click")
 TERMUI = "src/click/termui.py"
@@ -106,6 +108,7 @@ def answer(path: str, symbol: str) -> SessionAnswer:
             AnswerVerdict.right,
             True,
             id="absolute",
+            marks=pytest.mark.skipif(sys.platform == WINDOWS, reason=POSIX_HARNESS),
         ),
         pytest.param(
             answer(TERMUI, "click.termui.progressbar"),

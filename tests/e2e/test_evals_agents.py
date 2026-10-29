@@ -1,6 +1,7 @@
 """End-to-end tests of the agents harness: an arm's index brought up to date through the
 server's tools before its first session, Claude Code faked where a session is asked."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,10 @@ from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
 from evals.server import DEFAULT_OPTIONS, ServerStarter
 
 from semantic_code_mcp.domain.models import SearchMode
-from tests.helpers import commit_all, install_fake_claude, make_repository
+from tests.helpers import POSIX_HARNESS, WINDOWS, commit_all, install_fake_claude, make_repository
+
+pytestmark = pytest.mark.skipif(sys.platform == WINDOWS, reason=POSIX_HARNESS)
+
 
 PROGRESS_MODULE = '''def progressbar(items):
     """Show how far a loop over the items has come."""

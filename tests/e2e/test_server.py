@@ -275,7 +275,7 @@ async def test_search_in_a_missing_project_is_an_error_naming_the_path(
         )
 
     assert result.is_error
-    assert str(missing) in str(result.content)
+    assert str(missing) in result.content[0].text
 
 
 async def test_a_glob_the_search_cannot_read_is_refused_before_the_project_is_looked_for(
@@ -537,7 +537,9 @@ async def test_a_tool_given_no_project_path_refuses_a_workspace_root_no_reposito
 ):
     """A session started there would index every project below it as one."""
     make_repository(tmp_path / "home")
+    # Path.home() reads HOME, and USERPROFILE on Windows
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     make_repository(tmp_path / "folder" / "project")
     client = client_with_roots(test_settings, embedder, [(tmp_path / root).as_uri()])
 

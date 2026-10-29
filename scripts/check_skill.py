@@ -108,7 +108,7 @@ DEFINITIONS = "$defs"
 REFERENCE = "$ref"
 DEFINITION_PREFIX = "#/$defs/"
 LANGUAGES_PARAMETER = "languages"
-SKILL_TEXT = str(SKILL)
+SKILL_TEXT = SKILL.as_posix()
 INSTRUCTIONS_TEXT = "the server's instructions"
 
 

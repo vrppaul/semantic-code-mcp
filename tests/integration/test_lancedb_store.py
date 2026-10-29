@@ -2,6 +2,7 @@
 (`test_index_store.py`): its tables' schema, its upkeep of the full-text index, its fragments
 and versions, and the order it lays a write in."""
 
+import sys
 import tempfile
 from collections.abc import Callable
 from datetime import timedelta
@@ -29,6 +30,7 @@ from semantic_code_mcp.storage.lancedb import (
     vectors_table_name,
 )
 from semantic_code_mcp.storage.search_text import search_text
+from tests.helpers import WINDOWS
 from tests.lancedb_tables import (
     TABLE_INDEX_VERSIONS,
     chunks_fragments,
@@ -202,6 +204,7 @@ def test_a_search_warns_of_nothing(
     assert capfd.readouterr().err == ""
 
 
+@pytest.mark.skipif(sys.platform == WINDOWS, reason="Windows writes into a read-only tree")
 def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     index_directory: IndexDirectory, filled_store: LanceDBIndexStore
 ):
@@ -224,6 +227,7 @@ def test_a_write_whose_chunks_fail_leaves_its_files_records_as_they_were(
     assert filled_store.indexed_files().records == RECORDS_OF_THE_FILLED_STORE
 
 
+@pytest.mark.skipif(sys.platform == WINDOWS, reason="Windows writes into a read-only tree")
 def test_a_run_s_last_write_whose_fold_fails_leaves_its_files_records_as_they_were(
     index_directory: IndexDirectory, filled_store: LanceDBIndexStore
 ):

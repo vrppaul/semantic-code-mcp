@@ -3,6 +3,7 @@ how it ended, and whether it leaves the run to be trusted."""
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,7 @@ from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
 from evals.server import CACHE_DIR_VARIABLE, SEARCH_MODE_VARIABLE
 
 from semantic_code_mcp.domain.models import SearchMode
+from tests.helpers import POSIX_HARNESS, WINDOWS
 
 WORDS_ARM = AGENT_ARMS[SearchMode.words]
 MEANING_ARM = AGENT_ARMS[SearchMode.words_and_meaning]
@@ -363,6 +365,7 @@ def test_a_session_s_environment_holds_only_what_claude_code_needs_to_run_on_the
         ),
     ],
 )
+@pytest.mark.skipif(sys.platform == WINDOWS, reason=POSIX_HARNESS)
 def test_an_arm_s_server_searches_the_kept_index_in_the_mode_the_arm_is_named_by(
     monkeypatch: pytest.MonkeyPatch, arm: AgentArm, settings_by_server: dict[str, dict[str, str]]
 ):
