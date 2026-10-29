@@ -69,6 +69,7 @@ def sample_project(tmp_path: Path) -> Path:
     """A project of two Python files: two functions, and a class with one method."""
     project = tmp_path / "project"
     project.mkdir()
-    (project / "main.py").write_text(GREETING_MODULE)
-    (project / "utils.py").write_text(HELPER_MODULE)
+    # Ends of lines as the edits of tests write them, on Windows too
+    (project / "main.py").write_text(GREETING_MODULE, newline="\n")
+    (project / "utils.py").write_text(HELPER_MODULE, newline="\n")
     return project
