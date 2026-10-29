@@ -1320,15 +1320,21 @@ def test_changes_past_the_buffer_start_the_following_again(tmp_path: Path):
 
 
 @ONLY_ON_MACOS
-def test_a_mark_the_system_will_not_make_starts_the_following_again(tmp_path: Path):
+def test_a_mark_the_system_will_not_make_starts_the_following_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """As with the watcher's directory of marks removed: a following started again makes its
     marks anew, where one given up would scan for the rest of the session."""
+    temporary = tmp_path / "temporary"
+    temporary.mkdir()
+    # The watcher's marks in the test's own directory, apart from a server's that runs
+    monkeypatch.setattr(tempfile, "tempdir", str(temporary))
     project = committed_repository(tmp_path)
     instances = CountedWatchers()
     files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
     files.current(project)
 
-    for marks in Path(tempfile.gettempdir()).glob(f"{MARKS_PREFIX}*"):
+    for marks in temporary.glob(f"{MARKS_PREFIX}*"):
         remove_tree(marks)
     files.current(project)
     edit_top_module(project)

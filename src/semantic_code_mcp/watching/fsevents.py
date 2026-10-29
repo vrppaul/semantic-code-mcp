@@ -331,8 +331,9 @@ class FSEventsTree(Tree):
 
     def _mark_came_back(self) -> bool:
         """Make a mark, wait for it, remove it; whether it came back in time. One the system will
-        not make or remove, as on a full disk, is as one that did not come back: a following
-        started again makes its marks anew."""
+        not make or remove, as with the directory of marks removed, is as one that did not come
+        back: a following started again makes its marks anew, or, on a full disk, cannot, and the
+        project is scanned at each look."""
         name = self._marks.next_name()
         mark = Path(self._marks.directory) / name
         self._delivered.await_mark(name)
