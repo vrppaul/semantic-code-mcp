@@ -54,7 +54,7 @@ POOL_START_ERRORS = (OSError, NotImplementedError)
 
 # The files a task chunks together, in their order
 type FileBatch = list[SourceFile]
-# Opens a pool of the workers given for one run; the composition root says how
+# Opens a pool of the workers given for one run; the registry says how
 type PoolOpener = Callable[[int], WorkerPool]
 
 

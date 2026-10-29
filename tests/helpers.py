@@ -26,6 +26,8 @@ EXECUTABLE_MODE = 0o755
 # enough for a pool makes one on any machine the tests run on; and none
 POOL_WORKERS = 2
 NO_POOL = 0
+# The real pools, their workers logging as a server not set to debug does
+QUIET_POOLS = partial(open_chunking_pool, debug_logging=False)
 
 
 def run_git(repository: Path, *arguments: str) -> None:
@@ -75,7 +77,7 @@ def indexing_service(
     chunker: Chunker,
     *,
     workers: int = POOL_WORKERS,
-    open_pool: PoolOpener | None = None,
+    open_pool: PoolOpener = QUIET_POOLS,
 ) -> IndexingService:
     """The indexing of a project's words over the given parts, its files read as the settings
     ask by the real discovery, a run of source enough chunked in a pool of the workers given,
@@ -85,7 +87,7 @@ def indexing_service(
         chunking=Chunking(
             chunker,
             workers=workers,
-            open_pool=open_pool or partial(open_chunking_pool, debug_logging=settings.debug),
+            open_pool=open_pool,
         ),
         store=store,
         model=FAKE_MODEL,

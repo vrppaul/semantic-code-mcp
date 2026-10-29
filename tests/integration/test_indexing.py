@@ -1,9 +1,11 @@
 """Tests of indexing a project's words, into each store in turn."""
 
 import asyncio
+import contextlib
 import multiprocessing
 import os
 import re
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
@@ -79,6 +81,7 @@ LEGACY_RECORDS = LEGACY_ENTRIES[1]
 # The modules that run a first index in a pool in a process of their own, and where they run
 POOLED_RUN_MODULE = "tests.pooled_run"
 STOPPED_RUN_MODULE = "tests.stopped_pooled_run"
+UNSTARTABLE_RUN_MODULE = "tests.unstartable_pool_run"
 REPOSITORY_ROOT = Path(__file__).parents[2]
 # What runs beside a pool's workers once it has started: the forkserver and the resource
 # tracker
@@ -793,12 +796,36 @@ def test_a_server_killed_mid_run_leaves_none_of_its_pool_s_processes(tmp_path: P
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
-    run.stdout.readline()
-    processes = descendant_ids(run.pid)
+    try:
+        run.stdout.readline()
+        processes = descendant_ids(run.pid)
 
-    run.kill()
-    # Each process of the run's holds its stdout or its stderr: both end once every one has
-    run.communicate(timeout=WAIT_SEEN_TIMEOUT_SECONDS)
+        run.kill()
+        # Each process of the run's holds its stdout or its stderr: both end once every one has
+        run.communicate(timeout=WAIT_SEEN_TIMEOUT_SECONDS)
+    finally:
+        # What the run leaves where its processes outlive it: its session, killed whole
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(run.pid, signal.SIGKILL)
 
     assert len(processes) == POOL_WORKERS + PROCESSES_BESIDE_A_POOL
+
+
+def test_a_system_whose_forkserver_cannot_start_has_its_runs_chunked_in_the_server(
+    tmp_path: Path,
+):
+    """A sandbox that refuses the forkserver's start, once the resource tracker runs: the pool
+    opened fails as it starts, not at a run's first batch."""
+    project = large_modules(tmp_path, POOLED_FILES)
+
+    run = subprocess.run(  # nosec B603
+        [sys.executable, "-m", UNSTARTABLE_RUN_MODULE, str(project), str(tmp_path / "cache")],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert run.stdout == f"{POOLED_FILES * FUNCTIONS_PER_LARGE_MODULE}\n"
