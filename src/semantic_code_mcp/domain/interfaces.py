@@ -21,6 +21,7 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SearchScope,
     VectorIdentity,
+    WatchEvent,
 )
 
 # The vector of one text
@@ -68,6 +69,34 @@ class Embedder(ABC):
     def embed_documents(self, texts: list[str]) -> VectorMatrix:
         """The vectors of at least one text to be searched, one row each; loads the model
         on first use."""
+
+
+class DirectoryWatcher(ABC):
+    """Watches directories, each on its own, and hands back what changed in them since it was
+    last asked: Linux's inotify, or a stream of a whole tree on macOS and Windows. Not safe for
+    two threads at once."""
+
+    @abstractmethod
+    def watch(self, directory: str) -> int:
+        """Watch a directory, never a symlink to one, for changes of its entries and of itself,
+        from the moment this returns; the watch's number, the same for a directory watched
+        already. Raises FileNotFoundError or NotADirectoryError where it is gone or no
+        directory, PermissionError where it may not be read, and the OSError the system gives
+        at its limits."""
+
+    @abstractmethod
+    def unwatch(self, watch: int) -> None:
+        """Stop a watch; one the system removed already, as a deleted directory's, is left as
+        it is."""
+
+    @abstractmethod
+    def events(self) -> list[WatchEvent]:
+        """The events of the directories watched since the last call, in their order: every
+        change made before the call is among them."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Stop every watch and let go of what the system holds for them."""
 
 
 class ProjectFiles(ABC):

@@ -1,8 +1,8 @@
-"""A project's files followed by inotify since a full scan, on Linux (ADR 010, O1): what each
-look reads of what changed, so it finds what a scan would.
+"""A project's files followed by the system's watcher of directories since a full scan (ADR 010,
+O1): what each look reads of what changed, so it finds what a scan would.
 
 A followed project keeps git's last listing and each listed file's record as last read, and at
-each look reads inotify's queue to its end, which holds every change its watches saw before the
+each look reads the watcher's events, which hold every change its watches saw before the
 look. A path that changed is read again by the scan's rules. Git is asked for its listing again,
 never patched, where it may have changed: its index rewritten, or a name it has not listed made
 in a directory followed; the paths whose listing changed are read again with the rest. A new
@@ -40,8 +40,8 @@ from semantic_code_mcp.discovery import (
     joined_path,
     kept_once,
 )
-from semantic_code_mcp.domain.models import FileStamps
-from semantic_code_mcp.watching import Change, Inotify, WatchEvent
+from semantic_code_mcp.domain.interfaces import DirectoryWatcher
+from semantic_code_mcp.domain.models import FileStamps, Place, WatchChange, WatchEvent
 
 # Where git keeps its work, in a work tree or as a nested repository's mark; the files whose
 # change can change which files git lists; and those of git's own directories that matter here
@@ -115,16 +115,6 @@ class GitDirectory(BaseModel):
     path: Path
 
 
-class Place(BaseModel):
-    """Where a directory lies: its device and inode, which its path keeps while nothing moves
-    it or a directory above it."""
-
-    model_config = ConfigDict(frozen=True)
-
-    device: int
-    inode: int
-
-
 class LookChanges(BaseModel):
     """What the events of one look changed: the paths to read again, the directories to forget
     and those to watch and list, and whether git is asked for its listing again."""
@@ -160,7 +150,7 @@ def lies_under_any(path: str, directories: Collection[str]) -> bool:
 
 
 class FollowedFiles:
-    """A project's files kept from inotify's events since a full scan: the work tree's
+    """A project's files kept from a watcher's events since a full scan: the work tree's
     directories watched each on its own, git's directories for what decides its listing, and
     the files git lists, each with its record as last read.
 
@@ -173,7 +163,7 @@ class FollowedFiles:
         root: Path,
         repository: Repository | None,
         discovery: SourceDiscovery,
-        inotify: Inotify,
+        watcher: DirectoryWatcher,
     ) -> None:
         self.root = root
         # The root as text, which a path from it joins without a `Path` built per path
@@ -181,7 +171,7 @@ class FollowedFiles:
         # None where a walk lists the files, as the settings ask
         self._repository = repository
         self._discovery = discovery
-        self._inotify = inotify
+        self._watcher = watcher
         self._rules = discovery.ignore_rules()
         self._work_tree: dict[int, WorkTreeDirectory] = {}
         self._git: dict[int, GitDirectory] = {}
@@ -210,13 +200,13 @@ class FollowedFiles:
         root: Path,
         repository: Repository | None,
         discovery: SourceDiscovery,
-        inotify: Inotify,
+        watcher: DirectoryWatcher,
     ) -> FollowedFiles:
         """A project followed from now: every directory watched before it is listed, then the
         files listed and read, so what changes meanwhile is the first look's. Raises
         `FollowingLostError` where it cannot be followed, and the OSError the system gives,
         as at its limits."""
-        followed = cls(root=root, repository=repository, discovery=discovery, inotify=inotify)
+        followed = cls(root=root, repository=repository, discovery=discovery, watcher=watcher)
         followed._begin()
         return followed
 
@@ -234,7 +224,7 @@ class FollowedFiles:
                 message = f"{directory} is no longer where the following found it"
                 raise FollowingLostError(message)
         changes = LookChanges(paths=set(), gone=set(), added=set(), list_again=False)
-        for event in self._inotify.events():
+        for event in self._watcher.events():
             self._take(event, changes)
         if changes.gone:
             self._forget(changes.gone, changes)
@@ -259,7 +249,7 @@ class FollowedFiles:
 
     def close(self) -> None:
         """Stop watching."""
-        self._inotify.close()
+        self._watcher.close()
 
     def _begin(self) -> None:
         self._hold_place(self.root)
@@ -301,7 +291,7 @@ class FollowedFiles:
 
     def _watch_git(self, directory: Path, role: GitRole) -> None:
         try:
-            watch = self._inotify.watch(str(directory))
+            watch = self._watcher.watch(str(directory))
         except (FileNotFoundError, NotADirectoryError, PermissionError) as error:
             message = f"git's directory {directory} cannot be watched: {error}"
             raise FollowingLostError(message) from error
@@ -311,15 +301,15 @@ class FollowedFiles:
         """Note what one event changed. An event of a directory forgotten in this look keeps
         its path as it was: what it names is read where that path leads now, which a walk of
         the directory's new place reads too."""
-        if event.change is Change.queue_overflowed:
-            message = "inotify's queue overflowed"
+        if event.change is WatchChange.queue_overflowed:
+            message = "the watcher's queue overflowed"
             raise FollowingLostError(message)
         git = self._git.get(event.watch)
         if git is not None:
             self._take_from_git(event, git, changes)
             return
         # A watch dropped since, whose directory a walk lists again where it still lies:
-        # inotify gives no watch's number twice until it wraps round
+        # a watcher gives no watch's number twice until it wraps round
         directory = self._work_tree.get(event.watch)
         if directory is None:
             return
@@ -333,7 +323,7 @@ class FollowedFiles:
     def _take_from_work_tree(self, event: WatchEvent, directory: str, changes: LookChanges) -> None:
         # A directory below the root deleted or moved is told by its parent, by its name; one
         # unmounted, by its own watch alone, is the check against a scan's to find
-        if event.change is Change.directory_gone:
+        if event.change is WatchChange.directory_gone:
             if directory == ROOT_DIRECTORY:
                 message = "the project's root went"
                 raise FollowingLostError(message)
@@ -349,13 +339,13 @@ class FollowedFiles:
         if event.is_directory:
             # A directory's attributes changed, as its permissions: what may be read of it now
             # is listed again
-            if event.change in (Change.entry_removed, Change.entry_changed):
+            if event.change in (WatchChange.entry_removed, WatchChange.entry_changed):
                 changes.gone.add(path)
-            if event.change in (Change.entry_added, Change.entry_changed):
+            if event.change in (WatchChange.entry_added, WatchChange.entry_changed):
                 changes.added.add(path)
             return
         changes.paths.add(path)
-        if event.change is Change.entry_added:
+        if event.change is WatchChange.entry_added:
             changes.list_again |= self._lists_anew([path])
 
     def _take_from_git(
@@ -382,7 +372,7 @@ class FollowedFiles:
         again: in one pass over what is watched and kept, however many went."""
         for watch, watched in list(self._work_tree.items()):
             if lies_under_any(watched.path, gone):
-                self._inotify.unwatch(watch)
+                self._watcher.unwatch(watch)
                 del self._work_tree[watch]
                 self._watches.pop(watched.path, None)
         self._looked_into = {path for path in self._looked_into if not lies_under_any(path, gone)}
@@ -419,7 +409,7 @@ class FollowedFiles:
         while pending:
             directory = pending.pop()
             try:
-                watch = self._inotify.watch(self._absolute(directory))
+                watch = self._watcher.watch(self._absolute(directory))
             # Its parent's event tells of its going; what git lists in one the server may not
             # read is read at every look
             except FileNotFoundError, NotADirectoryError, PermissionError:

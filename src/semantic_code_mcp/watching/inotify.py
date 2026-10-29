@@ -6,24 +6,18 @@ at a check holds every change made before it: no thread, no marker, no deadline.
 ask for changes alone, never a file opened or read, so a tool reading every file queues
 nothing; a queue that overflowed says so. inotify's calls are reached through `ctypes` from the
 C library the interpreter runs on: nothing to install.
-
-inotify sees the changes this machine's kernel makes: on a network or FUSE file system, or
-WSL's mount of Windows' drives, another machine's or Windows' own go unseen, so only the file
-systems named in LOCAL_FILE_SYSTEMS are watched.
 """
 
 import ctypes
 import os
-import re
 import struct
-import sys
 import weakref
-from enum import IntFlag, StrEnum, auto
-from pathlib import Path
+from enum import IntFlag
+from typing import override
 
-from pydantic import BaseModel, ConfigDict
+from semantic_code_mcp.domain.interfaces import DirectoryWatcher
+from semantic_code_mcp.domain.models import WatchChange, WatchEvent
 
-LINUX_PLATFORM = "linux"
 # The C library the interpreter runs on, which holds inotify's calls: `dlopen(NULL)`
 RUNNING_PROGRAM = None
 # The header of each event inotify hands a read, `struct inotify_event`: the watch, the mask,
@@ -33,37 +27,6 @@ NAME_PADDING = b"\0"
 # What one read takes from the queue: many events, and more than the largest one, a header and a
 # name of NAME_MAX bytes
 READ_SIZE = 65_536
-# The text of the paths in the mounts' table escapes a blank, a tab, a newline and a backslash
-# as a backslash and three octal digits
-MOUNT_ESCAPE = re.compile(r"\\([0-7]{3})")
-OCTAL = 8
-# A line of /proc/self/mountinfo: its mount point is the fifth field, and its file system's type
-# follows the field that ends the optional ones
-MOUNT_POINT_FIELD = 4
-OPTIONAL_FIELDS_END = "-"
-MOUNT_INFO = Path("/proc/self/mountinfo")
-FIELD_SEPARATOR = " "
-PATH_SEPARATOR = "/"
-# File systems whose every change this kernel makes, so inotify sees it: those on a local disk,
-# in memory, or an overlay of them
-LOCAL_FILE_SYSTEMS = frozenset(
-    {
-        "ext2",
-        "ext3",
-        "ext4",
-        "xfs",
-        "btrfs",
-        "f2fs",
-        "zfs",
-        "bcachefs",
-        "jfs",
-        "reiserfs",
-        "nilfs2",
-        "tmpfs",
-        "ramfs",
-        "overlay",
-    }
-)
 
 
 class InotifyFlag(IntFlag):
@@ -111,51 +74,17 @@ DIRECTORY_GONE = (
 )
 
 
-class Change(StrEnum):
-    """What an event says happened in a watched directory."""
-
-    # An entry made, or moved in
-    entry_added = auto()
-    # An entry deleted, or moved out
-    entry_removed = auto()
-    # An entry written, closed after writing, or its attributes changed; or the directory's own
-    entry_changed = auto()
-    # The watched directory itself deleted, moved, unmounted, or its watch removed
-    directory_gone = auto()
-    # Events were lost: the queue was full
-    queue_overflowed = auto()
-
-
-class WatchEvent(BaseModel):
-    """One event of an inotify instance's queue."""
-
-    model_config = ConfigDict(frozen=True)
-
-    # The descriptor of the watch it came from; -1 for a queue that overflowed, which names none
-    watch: int
-    change: Change
-    # The entry's name in the watched directory, as the file system spells it; empty for an
-    # event of the directory itself
-    name: str
-    is_directory: bool
-
-
-def watching_supported() -> bool:
-    """Whether inotify is here to watch with: on Linux alone."""
-    return sys.platform == LINUX_PLATFORM
-
-
-def change_of(mask: int) -> Change:
+def change_of(mask: int) -> WatchChange:
     """What an event's mask says happened."""
     if mask & InotifyFlag.queue_overflowed:
-        return Change.queue_overflowed
+        return WatchChange.queue_overflowed
     if mask & ENTRY_ADDED:
-        return Change.entry_added
+        return WatchChange.entry_added
     if mask & ENTRY_REMOVED:
-        return Change.entry_removed
+        return WatchChange.entry_removed
     if mask & DIRECTORY_GONE:
-        return Change.directory_gone
-    return Change.entry_changed
+        return WatchChange.directory_gone
+    return WatchChange.entry_changed
 
 
 def parsed_events(buffer: bytes) -> list[WatchEvent]:
@@ -185,10 +114,9 @@ def last_error(path: str) -> OSError:
     return OSError(error_number, os.strerror(error_number), path)
 
 
-class Inotify:
+class Inotify(DirectoryWatcher):
     """One inotify instance: watches directories, each on its own, and reads what changed in them
-    since the last read. Not safe for two threads at once; its descriptor is closed with it, or
-    when it is collected."""
+    since the last read. Its descriptor is closed with it, or when it is collected."""
 
     def __init__(self) -> None:
         """Raises the OSError the system gives where no instance can be made, as at the user's
@@ -207,24 +135,20 @@ class Inotify:
         self._descriptor = descriptor
         self._close_descriptor = weakref.finalize(self, os.close, descriptor)
 
+    @override
     def watch(self, directory: str) -> int:
-        """Watch a directory, never a symlink to one, for changes of its entries and of itself;
-        the watch's descriptor, the same for a directory watched already. Raises the OSError the
-        system gives: FileNotFoundError or NotADirectoryError where it is gone or no directory,
-        PermissionError where it may not be read, an OSError of ENOSPC at the user's limit of
-        watches."""
+        """The watch's descriptor; at the user's limit of watches an OSError of ENOSPC."""
         watch = self._add_watch(self._descriptor, os.fsencode(directory), WATCHED_MASK)
         if watch < 0:
             raise last_error(directory)
         return watch
 
+    @override
     def unwatch(self, watch: int) -> None:
-        """Stop a watch; one the kernel removed already, as a deleted directory's, is left as
-        it is."""
         self._remove_watch(self._descriptor, watch)
 
+    @override
     def events(self) -> list[WatchEvent]:
-        """Every event queued since the last read, in their order."""
         events: list[WatchEvent] = []
         while True:
             try:
@@ -233,68 +157,7 @@ class Inotify:
                 return events
             events += parsed_events(buffer)
 
+    @override
     def close(self) -> None:
         """Close the descriptor, which removes every watch."""
         self._close_descriptor()
-
-
-def unescaped(mount_text: str) -> str:
-    """A path of the mounts' table as the file system spells it."""
-    return MOUNT_ESCAPE.sub(lambda escape: chr(int(escape.group(1), OCTAL)), mount_text)
-
-
-def lies_within(path: str, mount_point: str) -> bool:
-    """Whether a path lies at a mount point or below it."""
-    return path == mount_point or path.startswith(
-        mount_point.rstrip(PATH_SEPARATOR) + PATH_SEPARATOR
-    )
-
-
-class Mount(BaseModel):
-    """A file system mounted: where, and its type."""
-
-    model_config = ConfigDict(frozen=True)
-
-    point: str
-    file_system: str
-
-
-def mounts_of(mount_info: str) -> list[Mount]:
-    """The mounts of /proc/self/mountinfo's table, in its order."""
-    mounts: list[Mount] = []
-    for line in mount_info.splitlines():
-        fields = line.split(FIELD_SEPARATOR)
-        mounts.append(
-            Mount(
-                point=unescaped(fields[MOUNT_POINT_FIELD]),
-                file_system=fields[fields.index(OPTIONAL_FIELDS_END) + 1],
-            )
-        )
-    return mounts
-
-
-def file_system_types(path: str, mount_info: str) -> list[str]:
-    """The types of the file systems at and below a real, absolute path, by the mounts' table:
-    the one it lies on, the deepest mount point holding it and the last one mounted there where
-    several are, then each mounted below it, in the table's order."""
-    mounts = mounts_of(mount_info)
-    holding = [mount for mount in mounts if lies_within(path, mount.point)]
-    # The last of the deepest, as `max` keeps the first of equals it meets
-    deepest = max(reversed(holding), key=lambda mount: len(mount.point), default=None)
-    below = [
-        mount.file_system
-        for mount in mounts
-        if mount.point != path and lies_within(mount.point, path)
-    ]
-    return ([deepest.file_system] if deepest is not None else []) + below
-
-
-def sees_every_change(directory: Path) -> bool:
-    """Whether inotify sees every change under a real directory: it lies on a local file
-    system, and so does each file system mounted below it."""
-    try:
-        mount_info = os.fsdecode(MOUNT_INFO.read_bytes())
-    except OSError:
-        return False
-    types = file_system_types(str(directory), mount_info)
-    return bool(types) and all(file_system in LOCAL_FILE_SYSTEMS for file_system in types)

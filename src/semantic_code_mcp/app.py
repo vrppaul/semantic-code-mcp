@@ -25,7 +25,7 @@ from semantic_code_mcp.services.files import ScannedFiles, WatchedFiles
 from semantic_code_mcp.services.projects import FilesOpener, ProjectRegistry, StoreOpener
 from semantic_code_mcp.storage.index_directories import DirectoryStore, IndexDirectory
 from semantic_code_mcp.storage.sqlite import SqliteIndexStore
-from semantic_code_mcp.watching import Inotify, watching_supported
+from semantic_code_mcp.watching.systems import system_watcher
 
 SERVER_NAME = "semantic-code-mcp"
 PACKAGE_NAME = "semantic-code-mcp"
@@ -116,10 +116,11 @@ def build_registry(
 
 
 def files_opener(settings: Settings, discovery: SourceDiscovery) -> FilesOpener:
-    """What reads each project's files: inotify's events between full scans where the settings
-    ask for it and the system has inotify, else a full scan each time."""
-    if settings.watch_files and watching_supported():
-        return partial(WatchedFiles, discovery, Inotify, time.monotonic)
+    """What reads each project's files: the system's watcher's events between full scans where
+    the settings ask for it and the system has a watcher, else a full scan each time."""
+    watcher = system_watcher()
+    if settings.watch_files and watcher is not None:
+        return partial(WatchedFiles, discovery, watcher, time.monotonic)
     return partial(ScannedFiles, discovery)
 
 

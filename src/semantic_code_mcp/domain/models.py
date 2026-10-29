@@ -211,6 +211,48 @@ type ProjectPath = str
 # The files of a project, each with its stamp
 type FileStamps = dict[ProjectPath, FileStamp]
 
+# The number of no watch, which an event of the whole queue carries, as one of changes lost
+NO_WATCH = -1
+
+
+class WatchChange(StrEnum):
+    """What an event of a watched directory says happened."""
+
+    # An entry made, or moved in
+    entry_added = auto()
+    # An entry deleted, or moved out
+    entry_removed = auto()
+    # An entry written, closed after writing, or its attributes changed; or the directory's own
+    entry_changed = auto()
+    # The watched directory itself deleted, moved, unmounted, or its watch removed
+    directory_gone = auto()
+    # Events were lost: the queue was full
+    queue_overflowed = auto()
+
+
+class WatchEvent(BaseModel):
+    """One event a watcher of directories hands back."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # The number of the watch it came from; NO_WATCH for changes lost, which name none
+    watch: int
+    change: WatchChange
+    # The entry's name in the watched directory, as the file system spells it; empty for an
+    # event of the directory itself
+    name: str
+    is_directory: bool
+
+
+class Place(BaseModel):
+    """Where a directory lies: its device and inode, which its path keeps while nothing moves
+    it or a directory above it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    device: int
+    inode: int
+
 
 class SourceFile(BaseModel):
     """A file an index run indexes, with what it was when the scan found it.

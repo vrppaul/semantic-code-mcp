@@ -20,8 +20,8 @@ from semantic_code_mcp.services.vectors import VectorService
 # Opens the store of a project's index of one identity, kept under the project's index
 # directory; the composition root says which store
 type StoreOpener = Callable[[Path, IndexIdentity], IndexStore]
-# Makes what reads a project's files on disk, the composition root saying whether inotify
-# follows them
+# Makes what reads a project's files on disk, the composition root saying whether the system's
+# watcher follows them
 type FilesOpener = Callable[[], ProjectFiles]
 
 

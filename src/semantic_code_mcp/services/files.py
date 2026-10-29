@@ -1,12 +1,13 @@
 """A project's files on disk now, for its stale check and its index runs: scanned each time, or
-followed by inotify between full scans on Linux (`followed_files.py`, ADR 010, O1).
+followed by the system's watcher between full scans (`followed_files.py`, ADR 010, O1): inotify
+on Linux, FSEvents on macOS, ReadDirectoryChangesW on Windows.
 
-A project is scanned at each look where no watch can tell what a scan would: off Linux, on a
-file system whose changes another machine makes, outside a repository's own root (a directory
-no repository holds, or one below a repository's root, where directories outside the project
-decide what git lists), with submodules, whose own indexes decide their files, and past
-inotify's limits or wherever the system fails it, for the rest of the session. A following that
-loses the files' thread starts again from a full scan at the same look.
+A project is scanned at each look where no watch can tell what a scan would: on a system with no
+watcher, on a file system whose changes another machine makes, outside a repository's own root
+(a directory no repository holds, or one below a repository's root, where directories outside
+the project decide what git lists), with submodules, whose own indexes decide their files, and
+past the watcher's limits or wherever the system fails it, for the rest of the session. A
+following that loses the files' thread starts again from a full scan at the same look.
 
 Every CHECK_INTERVAL_SECONDS a look is checked against a full scan: what no event can tell (the
 user's global git configuration and excludes file, a file system mounted over a directory
@@ -24,16 +25,16 @@ from typing import override
 import structlog
 
 from semantic_code_mcp.discovery import Repository, SourceDiscovery
-from semantic_code_mcp.domain.interfaces import ProjectFiles
+from semantic_code_mcp.domain.interfaces import DirectoryWatcher, ProjectFiles
 from semantic_code_mcp.domain.models import FileStamps
 from semantic_code_mcp.services.followed_files import FollowedFiles, FollowingLostError
 from semantic_code_mcp.services.timing import elapsed_milliseconds
-from semantic_code_mcp.watching import Inotify, sees_every_change
+from semantic_code_mcp.watching.systems import sees_every_change
 
 log = structlog.get_logger()
 
-# Makes the inotify instance a project is followed with
-type InotifyOpener = Callable[[], Inotify]
+# Makes the watcher a project is followed with
+type WatcherOpener = Callable[[], DirectoryWatcher]
 # The time in seconds on a clock that only moves on, as `time.monotonic` gives it
 type Clock = Callable[[], float]
 
@@ -65,14 +66,15 @@ class ScannedFiles(ProjectFiles):
 
 
 class WatchedFiles(ProjectFiles):
-    """A project's files followed by inotify where a watch can tell what a scan would, else
-    scanned each time. Its lock keeps two looks, and what they follow, one after another."""
+    """A project's files followed by the system's watcher where a watch can tell what a scan
+    would, else scanned each time. Its lock keeps two looks, and what they follow, one after
+    another."""
 
     def __init__(
-        self, discovery: SourceDiscovery, open_inotify: InotifyOpener, clock: Clock
+        self, discovery: SourceDiscovery, open_watcher: WatcherOpener, clock: Clock
     ) -> None:
         self._discovery = discovery
-        self._open_inotify = open_inotify
+        self._open_watcher = open_watcher
         self._clock = clock
         self._lock = threading.Lock()
         self._followed: FollowedFiles | None = None
@@ -134,20 +136,20 @@ class WatchedFiles(ProjectFiles):
             return self._discovery.scan(root, repository)
         started = time.perf_counter()
         try:
-            inotify = self._open_inotify()
+            watcher = self._open_watcher()
         except OSError as error:
             self._give_up(root, error)
             return self._discovery.scan(root, repository)
         try:
             self._followed = FollowedFiles.started(
-                root=root, repository=repository, discovery=self._discovery, inotify=inotify
+                root=root, repository=repository, discovery=self._discovery, watcher=watcher
             )
         except FollowingLostError as reason:
-            inotify.close()
+            watcher.close()
             log.info("files_not_followed", project=str(root), reason=str(reason))
             return self._discovery.scan(root, repository)
         except OSError as error:
-            inotify.close()
+            watcher.close()
             self._give_up(root, error)
             return self._discovery.scan(root, repository)
         log.debug(
@@ -161,7 +163,7 @@ class WatchedFiles(ProjectFiles):
     def _can_follow(self, root: Path, repository: Repository | None) -> bool:
         """Whether a watch can tell what a scan of the root would: a walk's, as the settings
         ask, or git's at its repository's own root without submodules; on file systems whose
-        every change inotify sees, the root's and each mounted below it."""
+        every change the system's watcher sees."""
         if self._discovery.use_gitignore and (
             repository is None or repository.root != root or os.path.lexists(root / SUBMODULES_FILE)
         ):

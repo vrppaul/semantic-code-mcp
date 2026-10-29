@@ -69,8 +69,9 @@ class Settings(BaseSettings):
     use_gitignore: bool = True
     # Git normally answers in milliseconds; past this, discovery walks the file system
     git_timeout_seconds: float = 10.0
-    # Follow a project's files with inotify, so a search reads what changed rather than every
-    # file (ADR 010, O1); off, or where inotify cannot tell, each search scans
+    # Follow a project's files with the system's watcher (inotify, FSEvents,
+    # ReadDirectoryChangesW), so a search reads what changed rather than every file (ADR 010,
+    # O1); off, or where the watcher cannot tell, each search scans
     watch_files: bool = True
 
     # How close in meaning to the query, a cosine similarity, a hit must be to stay: one no

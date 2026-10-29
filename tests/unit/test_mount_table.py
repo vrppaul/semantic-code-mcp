@@ -3,7 +3,7 @@ change only on a local one."""
 
 import pytest
 
-from semantic_code_mcp.watching import file_system_types
+from semantic_code_mcp.watching.file_systems import file_system_types
 
 # A table as /proc/self/mountinfo gives it: the root on a disk, network and FUSE shares below
 # the home directory, one spelled with a blank, WSL's mount of Windows' drive, and two file

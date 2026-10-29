@@ -172,6 +172,9 @@ known-first-party = ["semantic_code_mcp"]
 
 [tool.ty.environment]
 python-version = "3.14"
+# Each system's watcher of directories calls that system's own libraries (ADR 010, O1), which
+# the stubs give only for it: every platform's code is checked wherever the check runs
+python-platform = "all"
 
 [tool.ty.src]
 # The tests are held to ruff; no type check reads them
@@ -372,7 +375,8 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "ctypes stays in the watching part"
 type = "forbidden"
-# A call into the C library trusts its signature and the platform's: one part holds inotify's
+# A call into a system's library trusts its signature and the platform's: one part holds the
+# watchers' calls, inotify's, FSEvents' and ReadDirectoryChangesW's
 source_modules = [
     "semantic_code_mcp.app",
     "semantic_code_mcp.cli",
