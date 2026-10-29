@@ -3,9 +3,11 @@ hold is what a scan finds, a look after an edit reads what changed without askin
 project no watch can tell is scanned. Each runs on every system with a watcher: inotify on Linux,
 FSEvents on macOS, ReadDirectoryChangesW on Windows."""
 
+import contextlib
 import ctypes
 import os
 import shutil
+import stat
 import sys
 import tempfile
 from collections.abc import Callable, Collection
@@ -243,6 +245,18 @@ class CountedWatchersAtTheirLimit(CountedWatchers):
         return WatcherAtItsLimit()
 
 
+def writable_again(remove: Callable[[str], object], path: str, _error: BaseException) -> None:
+    """Remove what Windows refused to, once it may be written: git keeps its objects read-only."""
+    Path(path).chmod(stat.S_IWRITE)
+    remove(path)
+
+
+def remove_tree(directory: Path) -> None:
+    """Remove a directory and all in it, as gone already where it is."""
+    with contextlib.suppress(FileNotFoundError):
+        shutil.rmtree(directory, onexc=writable_again)
+
+
 def scan_of(project: Path, settings: Settings) -> FileStamps:
     """What a scan of the project finds now."""
     return discovery_for(settings, build_chunker()).discover(project)
@@ -385,7 +399,7 @@ def nest_a_repository(project: Path) -> None:
 
 
 def remove_the_nested_repository_s_git(project: Path) -> None:
-    shutil.rmtree(project / "nested" / ".git", ignore_errors=True)
+    remove_tree(project / "nested" / ".git")
 
 
 def commit_everything(project: Path) -> None:
@@ -610,7 +624,7 @@ def open_the_library_again(project: Path) -> None:
 
 
 def make_the_root_again(project: Path) -> None:
-    shutil.rmtree(project)
+    remove_tree(project)
     write_top_module(project)
 
 
@@ -880,6 +894,10 @@ def looked_at_case(case: Case, directory: Path) -> LookedAt:
                 steps=[move_the_main_repository_away],
             ),
             id="a linked worktree's main repository moved",
+            marks=pytest.mark.skipif(
+                sys.platform == WINDOWS_PLATFORM,
+                reason="Windows refuses to move a directory holding one watched",
+            ),
         ),
         pytest.param(
             Case(
@@ -1126,7 +1144,7 @@ def exclude_by_the_global_configuration(directory: Path, monkeypatch: pytest.Mon
     excludes = directory / "global-excludes"
     excludes.write_text("")
     configuration = directory / "global-configuration"
-    configuration.write_text(f"[core]\n\texcludesFile = {excludes}\n")
+    configuration.write_text(f"[core]\n\texcludesFile = {excludes.as_posix()}\n")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(configuration))
     return excludes
 
@@ -1181,6 +1199,8 @@ def test_reading_every_file_queues_nothing(tmp_path: Path):
     write_top_module(tmp_path)
     watcher = open_watcher()
     watcher.watch(str(tmp_path))
+    # What FSEvents may still hand of the module's writing, made before the watch
+    watcher.events()
 
     for _ in range(READS_OF_EVERY_FILE):
         (tmp_path / "a.py").read_text()

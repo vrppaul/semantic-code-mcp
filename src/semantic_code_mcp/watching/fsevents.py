@@ -2,22 +2,38 @@
 files instead of scanning every one (ADR 010, O1).
 
 A tree is one stream of its directory's events, file by file, delivered on a queue of its own
-as they come. A look first flushes the stream: `FSEventStreamFlushSync` returns once every event
-that happened before it has been delivered, so a look holds every change made before it, with
-no marker and no deadline. The kernel tells changes alone, never a file opened or read; a
-stream that dropped events, or whose directory moved, says so. The calls are reached through
-`ctypes` from CoreServices and CoreFoundation: nothing to install.
+as they come. The kernel queues a change inside the call that made it, but the daemon that hands
+it to streams, fseventsd, reads that queue on its own time, and `FSEventStreamFlushSync` hands
+only what fseventsd has read: in CI, a stream flushed right after an edit missed it. So a look
+makes a mark, an empty file in a directory of the watcher's own that each of its streams
+watches beside its tree, and waits until the mark's event comes back: fseventsd reads the
+kernel's queue in order and a stream delivers by the order it read, so every change made before
+the mark has come by then, as git's own watcher of macOS waits for its cookies. A mark that does
+not come back in time ends the following, as events lost do.
+
+The kernel tells changes alone, never a file opened or read; a stream that dropped events, or
+whose directory moved, says so. The calls are reached through `ctypes` from CoreServices and
+CoreFoundation: nothing to install.
 """
 
 import ctypes
 import errno
+import itertools
 import os
+import tempfile
 import threading
 import weakref
 from enum import IntFlag
+from pathlib import Path
 from typing import override
 
-from semantic_code_mcp.watching.trees import Tree, TreeAction, TreeChange, TreeWatcher
+from semantic_code_mcp.watching.trees import (
+    CHANGES_LOST,
+    Tree,
+    TreeAction,
+    TreeChange,
+    TreeWatcher,
+)
 
 CORE_SERVICES = "/System/Library/Frameworks/CoreServices.framework/CoreServices"
 CORE_FOUNDATION = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
@@ -36,6 +52,14 @@ LATENCY_SECONDS = 0.001
 QUEUE_NAME = b"semantic-code-mcp.fsevents"
 SERIAL_QUEUE = None
 REFUSED_MESSAGE = "FSEvents refused to watch the directory"
+# The directory a watcher makes its marks in, in the system's temporary one, and their names
+MARKS_PREFIX = "semantic-code-mcp-marks-"
+MARK_PREFIX = "mark-"
+# The name of no mark, which no path's ends with
+NO_MARK = ""
+# How long a look waits for its mark to come back: fseventsd hands it within milliseconds unless
+# a flood of changes, a checkout's, holds it, after which a scan is no dearer than the wait
+MARK_TIMEOUT_SECONDS = 1.0
 
 
 class StreamFlag(IntFlag):
@@ -72,7 +96,7 @@ class EventFlag(IntFlag):
 
 # Events lost, or what no event of a path tells: the directory watched moved, a file system
 # mounted or unmounted below it
-CHANGES_LOST = (
+LOST_FLAGS = (
     EventFlag.must_scan_below
     | EventFlag.dropped_by_the_service
     | EventFlag.dropped_by_the_kernel
@@ -101,7 +125,7 @@ QUEUE_WORK = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
 def action_of(flags: int) -> TreeAction:
     """What an event's flags, folded together for one path, say happened there."""
-    if flags & CHANGES_LOST:
+    if flags & LOST_FLAGS:
         return TreeAction.lost
     if flags & MADE_OR_REMOVED:
         return TreeAction.made_or_removed
@@ -155,13 +179,12 @@ class Frameworks:
         self.deliver_on = services.FSEventStreamSetDispatchQueue
         self.start = services.FSEventStreamStart
         self.start.restype = ctypes.c_bool
-        self.flush = services.FSEventStreamFlushSync
         self.stop = services.FSEventStreamStop
         self.invalidate = services.FSEventStreamInvalidate
         self.release_stream = services.FSEventStreamRelease
-        for call in (self.start, self.flush, self.stop, self.invalidate, self.release_stream):
+        for call in (self.start, self.stop, self.invalidate, self.release_stream):
             call.argtypes = [ctypes.c_void_p]
-        for call in (self.flush, self.stop, self.invalidate, self.release_stream):
+        for call in (self.stop, self.invalidate, self.release_stream):
             call.restype = None
         self.deliver_on.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         self.deliver_on.restype = None
@@ -176,13 +199,37 @@ class Frameworks:
         self.release_queue.restype = None
 
 
-class Delivered:
-    """The changes a stream delivered on its queue, kept until a look takes them: the queue's
-    thread adds them, a look's takes them."""
+class Marks:
+    """Where a watcher's streams have their marks made: a directory of the watcher's own in the
+    system's temporary one, which each stream watches beside its tree, and the marks' names."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._directory = tempfile.TemporaryDirectory(prefix=MARKS_PREFIX)
+        # As FSEvents spells it, past the symlink of /var
+        self.directory = str(Path(self._directory.name).resolve())
+        self._numbers = itertools.count()
+
+    def next_name(self) -> str:
+        """A name no mark of this watcher had."""
+        return f"{MARK_PREFIX}{next(self._numbers)}"
+
+    def close(self) -> None:
+        self._directory.cleanup()
+
+
+def name_of(path: str) -> str:
+    return path.rpartition(os.sep)[2]
+
+
+class Delivered:
+    """The changes a stream delivered on its queue, kept until a look takes them, and whether
+    the mark a look waits for came back: the queue's thread adds them, a look's takes them."""
+
+    def __init__(self) -> None:
+        self._arrived = threading.Condition()
         self._changes: list[TreeChange] = []
+        self._awaited = NO_MARK
+        self._came_back = False
 
     def deliver(
         self,
@@ -198,11 +245,24 @@ class Delivered:
             TreeChange(path=os.fsdecode(paths[event]), action=action_of(flags[event]))
             for event in range(count)
         ]
-        with self._lock:
+        with self._arrived:
             self._changes += delivered
+            self._came_back |= any(name_of(change.path) == self._awaited for change in delivered)
+            self._arrived.notify_all()
+
+    def await_mark(self, name: str) -> None:
+        """Wait for the mark of this name from now, before it is made."""
+        with self._arrived:
+            self._awaited = name
+            self._came_back = False
+
+    def mark_came_back(self, timeout_seconds: float) -> bool:
+        """Whether the mark awaited came back within the time."""
+        with self._arrived:
+            return self._arrived.wait_for(lambda: self._came_back, timeout_seconds)
 
     def taken(self) -> list[TreeChange]:
-        with self._lock:
+        with self._arrived:
             changes = self._changes
             self._changes = []
         return changes
@@ -231,15 +291,19 @@ def released(frameworks: Frameworks, stream: Stream) -> None:
 class FSEventsTree(Tree):
     """A directory and every one below it, watched by a stream of FSEvents."""
 
-    def __init__(self, directory: str, frameworks: Frameworks) -> None:
+    def __init__(self, directory: str, frameworks: Frameworks, marks: Marks) -> None:
         super().__init__(directory)
-        self._frameworks = frameworks
+        self._marks = marks
         self._delivered = Delivered()
         callback = EVENTS_DELIVERED(self._delivered.deliver)
-        path = frameworks.string_of_path(NO_ALLOCATOR, os.fsencode(directory))
-        paths = (ctypes.c_void_p * 1)(path)
+        strings = [
+            frameworks.string_of_path(NO_ALLOCATOR, os.fsencode(path))
+            for path in (directory, marks.directory)
+        ]
+        paths = (ctypes.c_void_p * len(strings))(*strings)
         array = frameworks.array_of(NO_ALLOCATOR, paths, len(paths), frameworks.array_callbacks)
-        frameworks.release(path)
+        for string in strings:
+            frameworks.release(string)
         pointer = frameworks.create_stream(
             NO_ALLOCATOR, callback, NO_CONTEXT, array, SINCE_NOW, LATENCY_SECONDS, STREAM_FLAGS
         )
@@ -248,16 +312,23 @@ class FSEventsTree(Tree):
             raise OSError(errno.EIO, REFUSED_MESSAGE, directory)
         queue = frameworks.create_queue(QUEUE_NAME, SERIAL_QUEUE)
         frameworks.deliver_on(pointer, queue)
-        self._stream = Stream(pointer, queue, callback)
-        self._release = weakref.finalize(self, released, frameworks, self._stream)
+        self._release = weakref.finalize(
+            self, released, frameworks, Stream(pointer, queue, callback)
+        )
         if not frameworks.start(pointer):
             self._release()
             raise OSError(errno.EIO, REFUSED_MESSAGE, directory)
 
     @override
     def changes(self) -> list[TreeChange]:
-        self._frameworks.flush(self._stream.pointer)
-        return self._delivered.taken()
+        name = self._marks.next_name()
+        mark = Path(self._marks.directory) / name
+        self._delivered.await_mark(name)
+        mark.touch()
+        came_back = self._delivered.mark_came_back(MARK_TIMEOUT_SECONDS)
+        mark.unlink()
+        changes = self._delivered.taken()
+        return changes if came_back else [*changes, CHANGES_LOST]
 
     @override
     def close(self) -> None:
@@ -270,7 +341,13 @@ class FSEvents(TreeWatcher):
     def __init__(self) -> None:
         super().__init__()
         self._frameworks = Frameworks()
+        self._marks = Marks()
 
     @override
     def open_tree(self, directory: str) -> Tree:
-        return FSEventsTree(directory, self._frameworks)
+        return FSEventsTree(directory, self._frameworks, self._marks)
+
+    @override
+    def close(self) -> None:
+        super().close()
+        self._marks.close()
