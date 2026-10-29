@@ -24,7 +24,7 @@ Whether the tool is needed, and what part of it: 180 sessions of Claude Code hea
 | Sentry, turns / prompt | 4.5 / 86k | 3.9 / 83k | 4.2 / 89k |
 | Sentry, sessions that searched | | 11 of 30 | 8 of 30 |
 
-On code no model has seen, the search halves the turns and cuts the prompt by 40%; on Sentry, which the model knows, the agent greps names from memory and gains little. Words alone match words and meaning on both: turns equal in 10 of algotrading's 15 questions, the rest split 3 to 2. The agent writes its query in the words code uses (`lazily create database connection pool bound to running event loop`) and searches again when it misses. The words-only arm ran with no similarity floor and answered 30 of 30.
+On code no model has seen, the search halves the turns and cuts the prompt by 40%; on Sentry, which the model knows, the agent greps names from memory and gains little. Words alone match words and meaning on both: turns equal in 10 of algotrading's 15 questions, the rest split 3 to 2. The agent writes its query in the words code uses, a string of the nouns and verbs its identifiers would hold, and searches again when it misses. The words-only arm ran with no similarity floor and answered 30 of 30.
 
 The harness's 66 questions ask once, in the question's own wording, and there meaning has a niche. Chunk MRR with words alone / words and a static model (Model2Vec's potion-code-16M-v2) / words and MiniLM (today's model), both fused as today, the floors off (2026-10-28; MiniLM without floors scores as with them, within 0.03):
 
