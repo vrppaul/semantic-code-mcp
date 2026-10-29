@@ -1,6 +1,6 @@
 # 010: The waits measured after words first, and what would cut them
 
-**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O5 built (2026-10-28), O3 and O2 (2026-10-29); O1 built on watchfiles, rejected by its review and reverted, then built again on Linux by inotify read directly (2026-10-29); O4, macOS's and Windows' watchers with CI on them, and O6 to come
+**Status**: proposed (2026-10-28); built after ADR 009's other steps, as the owner put the optimizations last: O5 built (2026-10-28), O3 and O2 (2026-10-29); O1 built on watchfiles, rejected by its review and reverted, then built again on Linux by inotify read directly (2026-10-29); O4 built (2026-10-29), with two workers and no larger writes; macOS's and Windows' watchers with CI on them, and O6 to come
 **Date**: 2026-10-28
 **Continues**: 009 (D4, D6, D9, D12, its step 7)
 
@@ -85,6 +85,20 @@ Measured again before it is built (2026-10-29, after O3 and O2, in process, a lo
 - **`__main__` imports nothing** but under its guard, as a forkserver imports the main module; a cancelled run shuts the pool down with its futures cancelled.
 - **Tests**: a first index through the pool gives the chunks and records one in process gives; a run below the threshold makes no pool; a cancelled run leaves no worker behind; what a worker prints reaches stderr only.
 
+Built (2026-10-29) by that construction where measuring it bore it out, and otherwise as the measures drew it; `services/chunking.py` says how it works:
+- **Processes, as D12 found**: tree-sitter's parse holds the GIL (four threads parsed 4,000 of Sentry's files in 4.1 s where one took 2.5), and 3.14's pool of subinterpreters cannot load tree-sitter, its grammars or pydantic-core.
+- **Streamed, in process too**: a run chunks its files a batch of 32 at a time and writes them as they come, in slices of whole files of 256 chunks as before; a slice is written once a file after it has come, so the last write is known as the last. Chunked in process, Sentry's first index peaked at 133-155 MB, its proportional share of memory, against 365-370 MB resident when every chunk waited for the first write.
+- **The run's pace is its writes'**, one thread of the server: Sentry's 318 writes took 3.3-3.4 s alone and 4.7-7.7 s beside a pool, which takes cores and the processor's clock, and the pool waits for them. So two workers index Sentry as fast as four (7.0-7.2 s against 6.6-7.1, 11.7-12.2 in process) and algotrading in 2.0 s against 1.7-1.9 (3.2-3.5 in process), each worker holding about 45 MB: a pool of two, where they are at most half the cores, where D12 had four.
+- **A pool for a run of 8 MiB of source or more**, its size from the scan's stamps, as an empty `__init__.py` is a file and no work: of Sentry's first files a pool of two indexed 4 MiB in 1.7-1.8 s where the server alone took 1.6-2.0, and 8 MiB in 4.7-4.9 s against 5.6-6.6. Algotrading's 13.5 MB and Sentry's 66.8 take it; the pinned corpora, 1.3 MB at most, and nearly every edit do not. A pool starts in about 0.2 s, where D12 measured 1.2.
+- **A task is a batch and the chunker itself**, not a factory: the chunker pickles as its classes in 296 bytes. A factory in the composition root, as drawn, would have made each worker import `app` and with it `mcp`: 0.85 s and 93 MB a worker at every pool's start. Batches of 32 files chunked Sentry fastest (four workers: 5.0 s, against 5.4-6.0 in batches of 8, 16 or 64); a worker has two in hand, taken back in the files' order; unpickling every chunk in the server costs 0.3 s in all.
+- **The console script's module, not `__main__`'s guard**: multiprocessing never imports a package's `__main__` again in a child, so `python -m` needed nothing; the console script that `uvx` runs is imported again in the forkserver, and it imported `semantic_code_mcp.cli`, so the forkserver took 0.6 s at its first start and held 94 MB resident for the rest of the session. The console script now names `semantic_code_mcp.__main__:main`, which imports the server only when it runs: through the real script, after a first index of Sentry, the forkserver holds 19 MB and multiprocessing's resource tracker 16.
+- **The protocol's pipe kept clean** by each worker's initializer, as drawn, which also logs as the server does: structlog's default prints to stdout, a line for every file at the debug level. Its test runs a pool in a process of its own and reads that process's stdout, not through the tools: a stray line there is what would break the session, and a server is never handed a chunker that writes one.
+- **Few writes for a whole first build: not built.** Slices of 256, 1,024, 4,096, 16,384 or all 87,694 chunks wrote Sentry's whole build in 2.9-4.1 s, the same within the spread, as ADR 009's step 6 found: the writes cost their rows, not their count.
+- **A cancelled run** closes the batches it reads, which shuts the pool down off the event loop, the batches not begun cancelled and those begun finished; its test sees no process of the pool left once the cancellation lands.
+- **`evals speed` reads the memory of the server and every process it starts**, by each one's proportional share, summed, every 50 ms while the server works: it read the server's own process alone, which leaves out the pool, the forkserver and the tracker.
+
+Measured on Sentry by words, `evals speed` on `1294ddb` and the build in alternating turns, three each, at a load of 1.0 to 1.2: the cold first answer 8.4-11.1 s against 16.2-17.0, the full index 6.1-7.0 s against 12.3-13.4; the server's own process at its peak 139 MB against 368, 134-137 after against 246; the server and the processes it starts, one turn each under the new reading, 240 MB at the peak against 351 and 141 after against 228. The warm searches, `index_status` and the search after an edit within the spread. On the pinned corpora, one turn each, nothing pooled: the full index and every search the same or quicker within a turn's spread, the memory the same. `evals quality` gives its baseline byte for byte. What it costs: two processes of about 45 MB each and two cores for the seconds of a first index of much source, and 35 MB resident (19 by their shares) held by the forkserver and the tracker until the server ends.
+
 ### O5. The model's libraries imported with the model
 
 onnxruntime, tokenizers and huggingface_hub imported when a search by meaning first loads the model: 22 MB and 80 ms less for every server. Done (2026-10-28) with ADR 009's extra `semantic-code-mcp[meaning]`, which installs them, imported only where meaning is asked for, when a model loads or a server set to search by meaning starts: a server's imports by words 89 MB at their peak and 0.655 s at the median of twelve alternating turns, against 113 MB and 0.79 s with them.
@@ -95,7 +109,7 @@ The chunks without vectors handed out in pages, not all 87,694 at once, which wo
 
 ### Order
 
-O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29; done); then O4; then CI on macOS and Windows with their watchers; O6 with ADR 009's step 9.
+O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29; done); then O4 (done); then CI on macOS and Windows with their watchers; O6 with ADR 009's step 9.
 
 ## Alternatives Considered
 
@@ -103,9 +117,11 @@ O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's w
 - **A stale check cached for some seconds**: an agent that edits and searches at once would meet the old index.
 - **Larger slices for every run**: a run that is not a first build keeps each slice it wrote when cancelled; only the whole build gains nothing from small ones.
 - **A faster `mcp` import**: not ours to change.
+- **Threads, or 3.14's subinterpreters, for chunking**: tree-sitter's parse holds the GIL, and neither tree-sitter, its grammars nor pydantic-core load in a subinterpreter (O4).
+- **Four workers**: as fast as two, as the writes set a first index's pace, and 85 MB more at the peak (O4).
 
 ## Consequences
 
 - A warm search on a large repository costs what its search does, not what its scan does; a search after an edit, what the edit's file costs.
-- A first answer on Sentry halves, and a server's memory stays near its start.
+- A first answer on Sentry takes about half as long, 8 to 11 s, and the server's processes peak at about two thirds of what they did, 240 MB, and hold about 140 MB after; a first index of much source takes two more cores for its seconds.
 - O1 adds a part with a life of its own (an inotify instance per project, started at its first look and closed with the server's session) and no dependency: its calls go through `ctypes`, which an import-linter contract keeps in `watching.py`. Each server takes a watch per directory from the user's limit, which editors share, until one daemon per user (`TODO.md`) holds one for every session.

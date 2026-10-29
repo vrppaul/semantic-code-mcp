@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import os
 import threading
 from collections import defaultdict
 from collections.abc import Callable
@@ -15,11 +16,13 @@ from pydantic import BaseModel, ConfigDict
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, Vector, VectorMatrix
 from semantic_code_mcp.domain.models import (
     Chunk,
+    ChunkKind,
     IndexCounts,
     IndexedFiles,
     IndexIdentity,
     IndexManifest,
     IndexUpdate,
+    Language,
     SearchCandidates,
     SearchQuery,
     SearchScope,
@@ -41,6 +44,12 @@ VECTOR_OFFSET = 1
 FAKE_MODEL = VectorIdentity(
     model_name=FAKE_MODEL_NAME, model_revision=None, embedder_version=FAKE_EMBEDDER_VERSION
 )
+# What a chunker of the tests writes straight to its process's standard output, by its file
+# descriptor, as a library's C code would
+STRAY_LINE = b"a stray line on standard output\n"
+STANDARD_OUTPUT = 1
+# Where the one chunk of a file a fake chunker makes lies
+FIRST_LINE = 1
 
 
 class FakeEmbedder(Embedder):
@@ -266,6 +275,43 @@ class ChangingChunker(VersionedChunker):
     @override
     def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
         self._change()
+        return self._inner.chunk_file(project_root, path)
+
+
+class ProcessNamingChunker(VersionedChunker):
+    """A chunker of another's extensions and version that gives each file one chunk, named by
+    the id of the process that made it."""
+
+    def __init__(self, inner: Chunker) -> None:
+        super().__init__(inner, inner.version)
+
+    @override
+    def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
+        return [
+            Chunk(
+                chunk_id=path.as_posix(),
+                path=path,
+                language=Language.python,
+                kind=ChunkKind.module,
+                name=str(os.getpid()),
+                parent=None,
+                line_start=FIRST_LINE,
+                line_end=FIRST_LINE,
+                content=path.as_posix(),
+            )
+        ]
+
+
+class StdoutWritingChunker(VersionedChunker):
+    """A chunker that writes STRAY_LINE to its process's standard output each time it reads a
+    file, then chunks it as another does."""
+
+    def __init__(self, inner: Chunker) -> None:
+        super().__init__(inner, inner.version)
+
+    @override
+    def chunk_file(self, project_root: Path, path: Path) -> list[Chunk]:
+        os.write(STANDARD_OUTPUT, STRAY_LINE)
         return self._inner.chunk_file(project_root, path)
 
 

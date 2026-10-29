@@ -9,6 +9,7 @@ from semantic_code_mcp.config import Settings, get_index_path
 from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import Chunker, Embedder, IndexStore, ProjectFiles
 from semantic_code_mcp.domain.models import IndexIdentity, VectorIdentity
+from semantic_code_mcp.services.chunking import Chunking, pool_workers
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.search import SearchService, SimilarityFloors
 from semantic_code_mcp.services.vectors import VectorService
@@ -57,9 +58,10 @@ class ProjectRegistry:
     project has one store and one set of locks. Building touches no disk — a store opens
     its connection when first used, in a worker thread — so a lookup and its insert run
     with no await between them, and two first requests cannot build a project twice.
-    The chunker names the identity of every index this server keeps, and the embedding
-    model, shared by every project, that of the vectors it keeps in them. Closing it lets go
-    of what follows each project's files.
+    The chunker names the identity of every index this server keeps, and chunks every
+    project's files, in a pool of processes for a run of much source; the embedding model,
+    shared by every project, names that of the vectors it keeps in them.
+    Closing it lets go of what follows each project's files.
     """
 
     def __init__(  # noqa: PLR0913
@@ -75,6 +77,7 @@ class ProjectRegistry:
         self._settings = settings
         self._embedder = embedder
         self._chunker = chunker
+        self._chunking = Chunking(chunker, workers=pool_workers(), debug_logging=settings.debug)
         self._discovery = discovery
         self._open_store = open_store
         self._open_files = open_files
@@ -106,7 +109,7 @@ class ProjectRegistry:
         store = self._open_store(index_path, IndexIdentity(chunker_version=self._chunker.version))
         model = vector_identity(self._embedder)
         files = self._open_files()
-        indexing = IndexingService(files=files, chunker=self._chunker, store=store, model=model)
+        indexing = IndexingService(files=files, chunking=self._chunking, store=store, model=model)
         return ProjectServices(
             files=files,
             indexing=indexing,

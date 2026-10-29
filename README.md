@@ -15,7 +15,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
              (tree-sitter)   (onnxruntime)  (words, vectors)
 ```
 
-1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.
+1. **Chunking** — tree-sitter parses source files into functions, classes, methods, structs, traits, markdown sections, etc.; a repository of 8 MiB of source or more is parsed in two processes beside the server, for the seconds of its first index
 2. **Storage** — the chunks and a full-text index of their words in one SQLite database per index (LanceDB, an optional extra, in its place)
 3. **Search** — by words (BM25), the chunks named as the query first
 4. **Meaning, by a setting** — with the extra `semantic-code-mcp[meaning]` and `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning` the server embeds each chunk once with onnxruntime and the model's ONNX export (all-MiniLM-L6-v2, 384d, no torch), keeps each model's vectors beside the chunks, and fuses every search by meaning with one by words by rank

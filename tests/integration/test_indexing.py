@@ -1,7 +1,10 @@
 """Tests of indexing a project's words, into each store in turn."""
 
 import asyncio
+import multiprocessing
+import os
 import re
+import subprocess
 import sys
 from collections.abc import Callable
 from functools import partial
@@ -18,6 +21,7 @@ from semantic_code_mcp.domain.models import WHOLE_PROJECT, SearchMode, SearchQue
 from semantic_code_mcp.embedding.embedder import OnnxEmbedder
 from semantic_code_mcp.extras import LANCEDB_EXTRA, MEANING_EXTRA, ExtraMissingError, OptionalExtra
 from semantic_code_mcp.services import indexing as indexing_module
+from semantic_code_mcp.services.chunking import BATCH_FILES
 from semantic_code_mcp.services.indexing import IndexingService
 from semantic_code_mcp.services.progress import ProgressReporter
 from semantic_code_mcp.storage.index_directories import LEGACY_ENTRIES
@@ -25,15 +29,18 @@ from tests.conftest import MODEL_NAME
 from tests.fakes import (
     FAKE_EMBEDDER_VERSION,
     FAKE_MODEL,
+    STRAY_LINE,
     ChangingChunker,
     ChunkCountRecorder,
     FakeEmbedder,
     FakeIndexStore,
+    ProcessNamingChunker,
     ProgressRecorder,
     StoreHeldInItsWrite,
     VersionedChunker,
 )
 from tests.helpers import (
+    NO_POOL,
     commit_all,
     git_output,
     indexing_service,
@@ -45,8 +52,11 @@ from tests.indexing import (
     FUNCTIONS_PER_FILE,
     IDENTITY,
     NO_PROGRESS,
+    POOLED_FILES,
     first_index,
     functions_in_files,
+    large_modules,
+    note_writes,
     touch_later,
 )
 from tests.stores import NO_CANDIDATES, StoreClass, open_store
@@ -61,6 +71,9 @@ WAIT_SEEN_TIMEOUT_SECONDS = 30.0
 RETRIES_SEEN_SECONDS = 0.5
 # 0.4's record of mtimes, which it kept in a project-local index directory
 LEGACY_RECORDS = LEGACY_ENTRIES[1]
+# The module that runs a first index in a pool in a process of its own, and where it runs
+POOLED_RUN_MODULE = "tests.pooled_run"
+REPOSITORY_ROOT = Path(__file__).parents[2]
 
 
 def delete(path: Path) -> None:
@@ -630,3 +643,92 @@ async def test_a_run_ends_in_its_last_write_alone(test_settings: Settings, tmp_p
     await first_index(indexing_service(store, test_settings, build_chunker()), project)
 
     assert [update.last_of_run for update in store.updates] == [False, False, True]
+
+
+@pytest.mark.parametrize(
+    ("files", "chunked_here"),
+    [
+        pytest.param(POOLED_FILES, False, id="source enough to pay a pool's start"),
+        pytest.param(1, True, id="too little source for a pool"),
+    ],
+)
+async def test_a_run_is_chunked_in_a_pool_only_where_its_source_pays_the_pool_s_start(
+    test_settings: Settings, tmp_path: Path, files: int, chunked_here: bool
+):
+    project = large_modules(tmp_path, files)
+    store = FakeIndexStore(NO_CANDIDATES)
+
+    await first_index(
+        indexing_service(store, test_settings, ProcessNamingChunker(build_chunker())), project
+    )
+
+    stored = store.stored_chunks()
+    processes = {chunk.name for chunk in stored}
+    assert (len(stored), str(os.getpid()) in processes) == (files, chunked_here)
+
+
+async def test_a_run_in_a_pool_writes_what_a_run_in_process_writes(
+    test_settings: Settings, tmp_path: Path
+):
+    """The same chunks of the same files in the same writes, in the files' order."""
+    project = large_modules(tmp_path, POOLED_FILES)
+    in_pool = FakeIndexStore(NO_CANDIDATES)
+    in_process = FakeIndexStore(NO_CANDIDATES)
+
+    await first_index(indexing_service(in_pool, test_settings, build_chunker()), project)
+    await first_index(
+        indexing_service(in_process, test_settings, build_chunker(), workers=NO_POOL), project
+    )
+
+    assert in_pool.updates == in_process.updates
+
+
+async def test_a_run_writes_its_first_files_before_it_chunks_its_last(
+    test_settings: Settings, tmp_path: Path
+):
+    """A first index holds what it has not written yet, never every chunk at once."""
+    project = functions_in_files(tmp_path, BATCH_FILES + 1, FUNCTIONS_PER_FILE)
+    store = FakeIndexStore(NO_CANDIDATES)
+    writes_seen: list[int] = []
+    chunker = ChangingChunker(build_chunker(), partial(note_writes, store, writes_seen))
+
+    await first_index(indexing_service(store, test_settings, chunker, workers=NO_POOL), project)
+
+    assert (writes_seen[0], writes_seen[-1] > 0) == (0, True)
+
+
+async def test_a_run_cancelled_mid_write_leaves_none_of_its_pool_s_processes(
+    test_settings: Settings, tmp_path: Path
+):
+    """A client that hangs up during a first index: the pool goes with the run, the batches
+    not begun never chunked."""
+    project = large_modules(tmp_path, POOLED_FILES)
+    store = StoreHeldInItsWrite(FakeIndexStore(NO_CANDIDATES))
+    run = asyncio.create_task(
+        first_index(indexing_service(store, test_settings, build_chunker()), project)
+    )
+    await asyncio.to_thread(store.writing.wait, WAIT_SEEN_TIMEOUT_SECONDS)
+    processes_during = multiprocessing.active_children()
+
+    run.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await run
+    processes_after = multiprocessing.active_children()
+    store.release.set()
+
+    assert (processes_during != [], processes_after) == (True, [])
+
+
+def test_what_a_pool_s_process_writes_to_standard_output_reaches_standard_error(tmp_path: Path):
+    """A worker's standard output is the server's, the MCP session's stream: one stray line
+    there would break the session."""
+    project = large_modules(tmp_path, POOLED_FILES)
+
+    run = subprocess.run(  # nosec B603
+        [sys.executable, "-m", POOLED_RUN_MODULE, str(project), str(tmp_path / "cache")],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        check=True,
+    )
+
+    assert (run.stdout, STRAY_LINE in run.stderr) == (b"", True)

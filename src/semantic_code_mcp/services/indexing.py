@@ -8,29 +8,30 @@ finds the other's work done. A run plans before it changes anything: the records
 takes of the files on disk, compared with the records the index keeps and the files its
 chunks come from, give the files to index and the paths gone. A search's run takes the
 files its stale check found rather than scan the project again (ADR 010, O3), and plans
-once it holds the index, as another run may have written since. The run then writes a slice
-of whole files at a time, each slice's chunks taking the place of what the index held of
-those files, so a reader always finds every file's old chunks or its new ones, and a run
-stopped midway keeps the slices it wrote. A run embeds nothing: a chunk whose text the index holds
-already keeps the vectors it has, by its id, and the rest are embedded by the first search
-by meaning (`vectors.py`); a forced run drops the vectors of a model nothing pins, so that
-search embeds every chunk again. The index is the one of this server's chunker version; the
-store keeps those of others apart.
+once it holds the index, as another run may have written since. The run then chunks the files
+a batch at a time, in a pool of processes where their source pays its start (`chunking.py`),
+and writes them as they come, a slice of whole files at a time (ADR 010, O4): a first index
+holds what it has not written yet, never every chunk. Each slice's chunks take the place of
+what the index held of those files, so a reader always finds every file's old chunks or its
+new ones, and a run stopped midway keeps the slices it wrote. A run embeds nothing: a chunk
+whose text the index holds already keeps the vectors it has, by its id, and the rest are
+embedded by the first search by meaning (`vectors.py`); a forced run drops the vectors of a
+model nothing pins, so that search embeds every chunk again. The index is the one of this
+server's chunker version; the store keeps those of others apart.
 """
 
 import asyncio
 import time
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from enum import Enum
 from pathlib import Path
 
 import structlog
 from pydantic import BaseModel, ConfigDict
 
-from semantic_code_mcp.domain.interfaces import Chunker, IndexStore, ProjectFiles
+from semantic_code_mcp.domain.interfaces import IndexStore, ProjectFiles
 from semantic_code_mcp.domain.models import (
-    Chunk,
     FileStamps,
     IndexDelta,
     IndexedFiles,
@@ -42,13 +43,13 @@ from semantic_code_mcp.domain.models import (
     SourceFile,
     VectorIdentity,
 )
+from semantic_code_mcp.services.chunking import ChunkedFile, Chunking
 from semantic_code_mcp.services.progress import (
     PROGRESS_START,
     PROGRESS_TOTAL,
     ProgressReporter,
     share_done,
 )
-from semantic_code_mcp.services.timing import elapsed_milliseconds
 
 log = structlog.get_logger()
 
@@ -65,12 +66,11 @@ ANOTHER_SESSION_BUILDS = "Another session is building the index, waiting..."
 class IndexPhase(Enum):
     """The steps of an index run, each worth how far along the run is when it starts.
 
-    Writing takes the band from `writing` to the end, a slice at a time."""
+    Chunking and writing take the band from `indexing` to the end, a slice at a time."""
 
     scanning = 5.0
     planning = 10.0
-    chunking = 20.0
-    writing = 80.0
+    indexing = 20.0
 
 
 class StaleCheck(BaseModel):
@@ -88,27 +88,6 @@ class StaleCheck(BaseModel):
     manifest: IndexManifest | None
 
 
-class ChunkedFile(BaseModel):
-    """A file indexed in this run, and the chunks it gave."""
-
-    model_config = ConfigDict(frozen=True)
-
-    file: SourceFile
-    chunks: list[Chunk]
-
-
-class WriteSlice(BaseModel):
-    """Whole files of a run, written together."""
-
-    model_config = ConfigDict(frozen=True)
-
-    files: list[ChunkedFile]
-
-    @property
-    def chunks(self) -> list[Chunk]:
-        return [chunk for chunked_file in self.files for chunk in chunked_file.chunks]
-
-
 class IndexingService:
     """Keeps one project's index in step with its files.
 
@@ -122,12 +101,12 @@ class IndexingService:
     def __init__(
         self,
         files: ProjectFiles,
-        chunker: Chunker,
+        chunking: Chunking,
         store: IndexStore,
         model: VectorIdentity,
     ) -> None:
         self._files = files
-        self._chunker = chunker
+        self._chunking = chunking
         self._store = store
         self._model = model
         self._lock = asyncio.Lock()
@@ -254,13 +233,12 @@ class IndexingService:
         chunks_indexed = 0
         if delta.has_work:
             await progress.report(
-                IndexPhase.chunking.value, f"Chunking {len(delta.to_index)} files..."
+                IndexPhase.indexing.value, f"Chunking {len(delta.to_index)} files..."
             )
-            chunked = await asyncio.to_thread(self._chunk, project_root, delta.to_index)
-            chunks_indexed = await self._write(
-                write_slices(chunked, WRITE_SLICE_SIZE),
-                delta.to_delete,
-                progress=progress.within(IndexPhase.writing.value, PROGRESS_TOTAL),
+            chunks_indexed = await self._chunk_and_write(
+                project_root,
+                delta,
+                progress=progress.within(IndexPhase.indexing.value, PROGRESS_TOTAL),
             )
 
         return IndexReport(
@@ -274,64 +252,76 @@ class IndexingService:
         """What a run over these files is to do, from what the store holds."""
         return plan_delta(files, self._store.indexed_files(), every_file=force)
 
-    def _chunk(self, project_root: Path, files: list[SourceFile]) -> list[ChunkedFile]:
-        """Chunk files one after another; tree-sitter holds the GIL, so threads gain nothing."""
-        started = time.perf_counter()
-        chunked = [
-            ChunkedFile(file=file, chunks=self._chunker.chunk_file(project_root, file.path))
-            for file in files
-        ]
-        log.debug(
-            "chunking_completed",
-            files=len(files),
-            chunks=sum(len(chunked_file.chunks) for chunked_file in chunked),
-            duration_ms=elapsed_milliseconds(started),
-        )
-        return chunked
-
-    async def _write(
-        self, slices: list[WriteSlice], removed_paths: list[Path], *, progress: ProgressReporter
+    async def _chunk_and_write(
+        self, project_root: Path, delta: IndexDelta, *, progress: ProgressReporter
     ) -> int:
-        """Write the slices one after another, a report before each, the removals with the
-        first and the run's end with the last. The number of chunks written."""
-        total = sum(len(write_slice.chunks) for write_slice in slices)
-        done = 0
-        removals = removed_paths
-        last_slice = slices[-1]
-        for write_slice in slices:
-            chunks = write_slice.chunks
-            await progress.report(
-                share_done(done, total), f"Writing {len(chunks)} chunks, {done} of {total} done..."
-            )
-            update = IndexUpdate(
-                files=[chunked_file.file for chunked_file in write_slice.files],
-                chunks=chunks,
-                removed_paths=removals,
-                last_of_run=write_slice is last_slice,
-            )
-            await asyncio.to_thread(self._store.write, update)
-            done += len(chunks)
-            removals = []
-        return total
+        """Chunk the files to index a batch at a time and write them in slices as they come;
+        the number of chunks written."""
+        writer = RunWriter(
+            self._store, delta.to_delete, files_total=len(delta.to_index), progress=progress
+        )
+        async with aclosing(self._chunking.batches(project_root, delta.to_index)) as batches:
+            async for batch in batches:
+                await writer.add(batch)
+        return await writer.finish()
 
 
-def write_slices(chunked: list[ChunkedFile], size: int) -> list[WriteSlice]:
-    """The files in order, grouped into slices of at least `size` chunks, the last one
-    fewer; one slice, empty, when there are no files, so a run that only removes files
-    still writes once."""
-    slices: list[WriteSlice] = []
-    current: list[ChunkedFile] = []
-    current_chunks = 0
-    for chunked_file in chunked:
-        current.append(chunked_file)
-        current_chunks += len(chunked_file.chunks)
-        if current_chunks >= size:
-            slices.append(WriteSlice(files=current))
-            current = []
-            current_chunks = 0
-    if current or not slices:
-        slices.append(WriteSlice(files=current))
-    return slices
+class RunWriter:
+    """Writes one run's chunked files as they come, in their order, in slices of whole files of
+    at least WRITE_SLICE_SIZE chunks: the removals with the first write, a report before each,
+    the run's end with the last. A slice is written once a file after it has come, so the slice
+    left when the files end is the last write, empty where the run chunks nothing."""
+
+    def __init__(
+        self,
+        store: IndexStore,
+        removed_paths: list[Path],
+        *,
+        files_total: int,
+        progress: ProgressReporter,
+    ) -> None:
+        self._store = store
+        self._removals = removed_paths
+        self._files_total = files_total
+        self._progress = progress
+        self._gathered: list[ChunkedFile] = []
+        self._gathered_chunks = 0
+        self._files_written = 0
+        self._chunks_written = 0
+
+    async def add(self, chunked_files: list[ChunkedFile]) -> None:
+        """Gather the next files, writing each slice that a file after it fills."""
+        for chunked_file in chunked_files:
+            if self._gathered_chunks >= WRITE_SLICE_SIZE:
+                await self._write(last_of_run=False)
+            self._gathered.append(chunked_file)
+            self._gathered_chunks += len(chunked_file.chunks)
+
+    async def finish(self) -> int:
+        """Write what is gathered as the run's last write; the number of chunks written."""
+        await self._write(last_of_run=True)
+        return self._chunks_written
+
+    async def _write(self, *, last_of_run: bool) -> None:
+        """Write the files gathered as one slice."""
+        chunks = [chunk for chunked_file in self._gathered for chunk in chunked_file.chunks]
+        await self._progress.report(
+            share_done(self._files_written, self._files_total),
+            f"Writing {len(chunks)} chunks, {self._files_written} of {self._files_total}"
+            " files done...",
+        )
+        update = IndexUpdate(
+            files=[chunked_file.file for chunked_file in self._gathered],
+            chunks=chunks,
+            removed_paths=self._removals,
+            last_of_run=last_of_run,
+        )
+        await asyncio.to_thread(self._store.write, update)
+        self._removals = []
+        self._files_written += len(self._gathered)
+        self._chunks_written += len(chunks)
+        self._gathered = []
+        self._gathered_chunks = 0
 
 
 def plan_delta(on_disk: FileStamps, indexed: IndexedFiles, *, every_file: bool) -> IndexDelta:

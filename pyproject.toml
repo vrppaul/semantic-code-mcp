@@ -26,7 +26,7 @@ Issues = "https://github.com/vrppaul/semantic-code-mcp/issues"
 Changelog = "https://github.com/vrppaul/semantic-code-mcp/blob/master/CHANGELOG.md"
 
 [project.scripts]
-semantic-code-mcp = "semantic_code_mcp.cli:main"
+semantic-code-mcp = "semantic_code_mcp.__main__:main"
 
 [project.optional-dependencies]
 lancedb = [
