@@ -30,7 +30,6 @@ from semantic_code_mcp.discovery import SourceDiscovery
 from semantic_code_mcp.domain.interfaces import DirectoryWatcher
 from semantic_code_mcp.domain.models import FileStamps, WatchEvent
 from semantic_code_mcp.services.files import CHECK_INTERVAL_SECONDS, WatchedFiles
-from semantic_code_mcp.watching import directory_changes
 from semantic_code_mcp.watching.directory_changes import BUFFER_SIZE, NAME_ENCODING, RECORD_HEADER
 from semantic_code_mcp.watching.fsevents import MARKS_PREFIX
 from semantic_code_mcp.watching.systems import (
@@ -78,17 +77,15 @@ CURRENT_DIRECTORY = -100
 RENAME_SWAP = 2
 # The error inotify gives at the user's limit of watches
 LIMIT_OF_WATCHES_ERROR = OSError(28, "No space left on device")
-# A name of 100 characters, whose records fill ReadDirectoryChangesW's buffer soon: each a header
-# of 12 bytes and the name in UTF-16, one as it is made and one as it is deleted
-LONG_NAME = "n" * 100 + ".py"
+# A name of 240 characters, near the longest NTFS keeps, whose records fill ReadDirectoryChangesW's
+# buffer soonest: each a header of 12 bytes and the name in UTF-16, one as it is made and one as
+# it is deleted
+LONG_NAME = "n" * 237 + ".py"
 RECORD_BYTES = RECORD_HEADER.size + len(LONG_NAME.encode(NAME_ENCODING))
 RECORDS_A_FILE = 2
 # The files made and deleted: enough to fill the buffer twice over
 BUFFERS_FILLED = 2
 FILES_FILLING_THE_BUFFER = BUFFERS_FILLED * BUFFER_SIZE // (RECORDS_A_FILE * RECORD_BYTES)
-# What a tree keeps between looks in a test of what it keeps no more: as many modules made each
-# tell more changes than that
-FEW_CHANGES_KEPT = 50
 EXECUTE_ONLY = 0o311
 READABLE = 0o755
 # This process's open files
@@ -1322,9 +1319,9 @@ def test_a_queue_that_overflowed_starts_the_following_again(tmp_path: Path):
 
 
 @ONLY_ON_WINDOWS
-def test_changes_past_the_buffer_are_kept_between_looks(tmp_path: Path):
-    """Files of long names made and deleted, more than the buffer between two reads holds, as a
-    build's burst under `target/`, then a module made: the tree's thread keeps them all."""
+def test_changes_past_the_buffer_start_the_following_again(tmp_path: Path):
+    """Files of long names made and deleted, more than the buffer between two looks holds, as an
+    install's flood, then a module made, whose change the full buffer drops."""
     project = committed_repository(tmp_path)
     instances = CountedWatchers()
     files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
@@ -1334,25 +1331,6 @@ def test_changes_past_the_buffer_are_kept_between_looks(tmp_path: Path):
         (project / LONG_NAME).write_text(SOURCE)
         (project / LONG_NAME).unlink()
     write_source(project / "after_the_flood.py")
-    kept = files.current(project)
-    files.close()
-
-    assert (instances.opened, kept) == (1, scan_of(project, Settings()))
-
-
-@ONLY_ON_WINDOWS
-def test_changes_past_what_a_tree_keeps_start_the_following_again(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """As an install's flood: no cheaper to follow than to scan again."""
-    monkeypatch.setattr(directory_changes, "MOST_CHANGES_KEPT", FEW_CHANGES_KEPT)
-    project = committed_repository(tmp_path)
-    instances = CountedWatchers()
-    files = WatchedFiles(discovery_for(Settings(), build_chunker()), instances, SetClock())
-    files.current(project)
-
-    for number in range(FEW_CHANGES_KEPT):
-        write_source(project / f"flood_{number}.py")
     kept = files.current(project)
     files.close()
 

@@ -244,24 +244,37 @@ def test_a_directory_a_tree_holds_opens_none_of_its_own(tmp_path: Path):
     assert list(watcher.trees) == [str(project)]
 
 
+def write_an_empty_file(path: Path) -> None:
+    path.write_text("")
+
+
+def make_a_directory(path: Path) -> None:
+    path.mkdir()
+
+
 @pytest.mark.parametrize(
-    ("kept", "told_as"),
+    ("kept", "told_as", "make", "is_directory"),
     [
-        pytest.param("notes.py", "NOTES.PY", id="another case of its letters"),
+        pytest.param(
+            "notes.py", "NOTES.PY", write_an_empty_file, False, id="another case of its letters"
+        ),
         pytest.param(
             unicodedata.normalize("NFC", "café.py"),
             unicodedata.normalize("NFD", "café.py"),
+            write_an_empty_file,
+            False,
             id="Unicode's other form",
         ),
+        pytest.param("Lib", "LIB", make_a_directory, True, id="a directory"),
     ],
 )
 def test_a_name_made_spelled_otherwise_is_added_as_its_directory_spells_it(
-    kept: str, told_as: str, tmp_path: Path
+    kept: str, told_as: str, make: Callable[[Path], None], is_directory: bool, tmp_path: Path
 ):
     """As a system may tell a name by the spelling a tool used, on a volume that ignores case
     and Unicode's forms: what git lists, and a scan keeps, is the directory's spelling."""
     project = watched_project(tmp_path)
-    (project / kept).write_text("")
+    make(project / kept)
     watcher = ScriptedTrees()
     root = watcher.watch(str(project))
 
@@ -269,7 +282,7 @@ def test_a_name_made_spelled_otherwise_is_added_as_its_directory_spells_it(
 
     assert events == [
         event(root, WatchChange.entry_removed, told_as, is_directory=False),
-        event(root, WatchChange.entry_added, kept, is_directory=False),
+        event(root, WatchChange.entry_added, kept, is_directory=is_directory),
     ]
 
 

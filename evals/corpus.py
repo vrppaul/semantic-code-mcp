@@ -157,7 +157,8 @@ class GeneratedSource(BaseModel):
 
 
 def generator_digest() -> str:
-    """A digest of everything that makes a generated corpus's files."""
+    """A digest of what a generated corpus's files hold and are named: its templates, subjects
+    and names, not how `module_path` lays them out, which a moved answer's path shows."""
     making = "\0".join(
         [
             GENERATED_SOURCE,
