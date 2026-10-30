@@ -809,6 +809,16 @@ def exclude_beside_by_the_repository_s_configuration(project: Path) -> None:
     run_git(project, "config", "core.excludesFile", str(excludes))
 
 
+def rename_the_library_in_case(project: Path) -> None:
+    """On a volume that ignores case, as macOS' and Windows' do, its old name still finds it."""
+    (project / "lib").rename(project / "Lib")
+
+
+def edit_the_library_s_module_by_its_new_case(project: Path) -> None:
+    with (project / "Lib" / "c.py").open("a") as module:
+        module.write(MORE_SOURCE)
+
+
 def edit_the_nested_module(project: Path) -> None:
     with (project / "nested" / "inner.py").open("a") as module:
         module.write(MORE_SOURCE)
@@ -1002,6 +1012,13 @@ def looked_at_case(case: Case, directory: Path) -> LookedAt:
                 ],
             ),
             id="an excludes file named in the repository's configuration",
+        ),
+        pytest.param(
+            Case(
+                make_project=committed_repository,
+                steps=[rename_the_library_in_case, edit_the_library_s_module_by_its_new_case],
+            ),
+            id="a directory renamed only in case",
         ),
     ],
 )
