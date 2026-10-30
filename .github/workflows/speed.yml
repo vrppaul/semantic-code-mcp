@@ -3,10 +3,10 @@ name: Speed
 # What a user waits for on each system the README promises, on a repository of Sentry's shape
 # made on the runner (evals/generated/): the files followed by the system's watcher, then scanned
 # at each search, one run beside the other (ADR 010, O1). Figures in the log, no gate: a runner's
-# speed moves from run to run, and `evals/targets.py` holds the owner's machine alone.
+# speed moves from run to run, and `evals/targets.py` holds the owner's machine alone. Run by
+# hand, as a change of a watcher asks, some 15 minutes of three runners: from Actions once the
+# workflow is on master, and before that by a pull request that names `pull_request` here again
 on:
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
