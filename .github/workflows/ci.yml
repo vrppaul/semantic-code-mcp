@@ -1,8 +1,8 @@
 name: CI
 
+# On pull requests alone: master is protected, so each commit it gets was tested in its pull
+# request, and a push to it would test the same commit twice; a release's tag runs it again
 on:
-  push:
-    branches: [master]
   pull_request:
     branches: [master]
   workflow_call: # publish.yml runs the whole suite as a gate before PyPI
