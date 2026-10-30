@@ -20,7 +20,7 @@ Claude Code ──(MCP/STDIO)──▶ semantic-code-mcp server
 3. **Search** — by words (BM25), the chunks named as the query first
 4. **Meaning, by a setting** — with the extra `semantic-code-mcp[meaning]` and `SEMANTIC_CODE_MCP_SEARCH_MODE=words_and_meaning` the server embeds each chunk once with onnxruntime and the model's ONNX export (all-MiniLM-L6-v2, 384d, no torch), keeps each model's vectors beside the chunks, and fuses every search by meaning with one by words by rank
 
-Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Each chunker version and storage layout keeps an index of its own, so a new version builds a new index once, and switching back finds the old one; each model's vectors are kept apart inside it, so another model embeds again without chunking again; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads on the first search of a server set to search by meaning, never for a search by words.
+Indexing is incremental: the index records each file's modification time and size, and re-indexes the files that differ. Between searches the server follows each repository's files with the system's own watcher (inotify on Linux, FSEvents on macOS, ReadDirectoryChangesW on Windows), so a search reads only what changed; it scans every file where no watcher can tell, and every 5 minutes as a check. Each chunker version and storage layout keeps an index of its own, so a new version builds a new index once, and switching back finds the old one; each model's vectors are kept apart inside it, so another model embeds again without chunking again; an index no session used for a week is removed. In a git repository, git lists the files to index — tracked ones and untracked ones `.gitignore` does not exclude; elsewhere the server walks the file system. The embedding model loads on the first search of a server set to search by meaning, never for a search by words.
 
 ## Installation
 
@@ -271,10 +271,12 @@ def build_chunker() -> CompositeChunker:
 - `src/semantic_code_mcp/server/` — the MCP tools, their answers and presenters
 - `src/semantic_code_mcp/services/` — indexing, search, the registry of projects
 - `src/semantic_code_mcp/discovery.py` — which files get indexed (git or a file-system walk, ignore patterns)
+- `src/semantic_code_mcp/watching/` — each system's watcher of a project's files (inotify, FSEvents, ReadDirectoryChangesW)
+- `src/semantic_code_mcp/pools.py` — the pool of processes that chunks a first index of much source
 - `src/semantic_code_mcp/chunkers/` — language chunkers (`base.py`, `composite.py`, `python.py`, `rust.py`, `markdown.py`)
 - `src/semantic_code_mcp/embedding/`, `src/semantic_code_mcp/storage/` — the embedder and the model it loads from the `meaning` extra, and the stores (SQLite, LanceDB) behind one contract
 - `src/semantic_code_mcp/domain/` — models and interfaces
-- `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`, `speed`), and agents' sessions with and without the search (`agents`, on corpora it names)
+- `evals/` — search quality and speed on pinned corpora (`uv run python -m evals quality`, `speed`), speed also on a repository of Sentry's shape made where it runs (`evals/generated/`, which CI's `Speed` workflow times on three systems), and agents' sessions with and without the search (`agents`, on corpora it names)
 - `docs/decisions/` — architecture decision records
 - `TODO.md` — epics and planning
 - `CHANGELOG.md` — completed work (Keep a Changelog format)

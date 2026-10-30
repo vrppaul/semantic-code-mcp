@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-30
+
 ### Removed
 - A `search_code` result's score: by words a hit has no similarity, and one number on two scales misled; the order is the ranking
 - The ranking boost of files edited within the last week
