@@ -74,6 +74,18 @@ Its review (ACCEPT WITH FIXES, 2026-10-29) found a file whose name a directory t
 - a linked worktree on macOS pays two marks a look, one a tree, and on Windows its main repository cannot be moved meanwhile. Git's few files outside the root read by their stamps at each look instead of a tree would take both away, at the price of a rule of the follower's own for them on every system;
 - Windows' buffer takes the changes of directories a scan does not read too: a build or an install under the root (`target/`, `node_modules`) may fill it, and the look after starts the following again, which on Linux's figures costs about twice a scan.
 
+Measured (2026-10-30) on CI's runners, as none of this machine's is macOS or Windows: a corpus of Sentry's shape made on each (`evals/generated/sentry-shaped.toml`: 8,500 modules in 3,054 directories, 34,000 chunks, Sentry's 8,546 files in 3,129), `evals speed --words-only` with the files followed and with `--scan`, in alternating turns, two each (the workflow `Speed`, run 41017432612). Followed against scanned:
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| `index_status` | 33 ms against 173-174 | 57-59 against 278-283 | 85-86 against 637-672 |
+| A warm search, at the median | 69-70 against 212-213 | 93-94 against 296-369 | 138-141 against 680-686 |
+| A search after an edit, at the median | 105-106 against 247-248 | 133-159 against 332-387 | 286-288 against 916-920 |
+| A search after a burst of 10,000 files under `target/` | 69-73 against 284-294 | 123-173 against 467-495 | 1,883-1,921 against 841-854 |
+| A fresh server's first answer | 1.17-1.21 s against 1.02 | 1.70-2.41 against 1.15-1.44 | 2.76-2.79 against 1.84-1.87 |
+
+Following wins on each system by three to eight times but in two figures. A fresh server's first answer pays the following's start, its walk of every directory: 0.15-0.2 s on Linux, 0.3-1.0 on macOS, 0.9 on Windows, which two searches after it repay there. And on Windows a search after a build's burst costs 2.2 scans: the burst overflows the buffer between two looks and the following starts again. Draining a tree's changes as they come, by a thread of the tree's own, as macOS' queue delivers them, would keep the buffer from filling between looks; not built, the owner's word first. The run before these (41016761167) gave Windows a cold first answer of 12.7 s followed against 4.6 scanned, the followed run first and right after the corpus was made; these turns do not bear it out (15.9 and 8.5 s against 12.5 and 12.0, a runner whose full index took 9 to 13 s where the first took 4 to 5).
+
 ### O2. A lean scan for what scanning stays
 
 The first scan and the checks O1 keeps: paths as strings rather than `Path`, one `lstat` a file, the files' records not built as pydantic models in the loop, the plan over a dictionary of strings. Expected: 200 ms to 60-80 ms, git 40 of it. It touches `discovery.py`, `plan_delta` and both stores' reading of records.
