@@ -23,8 +23,9 @@ from semantic_code_mcp.domain.models import (
     SearchQuery,
     SearchScope,
 )
-from semantic_code_mcp.services.progress import ProgressReporter
-from semantic_code_mcp.services.search import SearchService, SimilarityFloors
+from semantic_code_mcp.services.indexing import IndexPhase
+from semantic_code_mcp.services.progress import PROGRESS_TOTAL, ProgressReporter
+from semantic_code_mcp.services.search import SearchPhase, SearchService, SimilarityFloors
 from tests.fakes import (
     FAKE_MODEL,
     FakeEmbedder,
@@ -356,6 +357,30 @@ async def test_progress_of_a_search_that_indexes_only_moves_forward(
     await service.search(query_of("anything"), sample_project, progress=ProgressReporter(recorder))
 
     assert recorder.progress_values == sorted(recorder.progress_values)
+
+
+async def test_a_search_by_words_gives_its_index_the_bar_up_to_its_search(
+    test_settings: Settings, sample_project: Path
+):
+    """No model to embed with or load: the band a search by meaning keeps for them is the
+    index's, so a client's bar does not stand near 30% and then jump."""
+    recorder = ProgressRecorder()
+    service = search_service(
+        FakeIndexStore(NO_CANDIDATES), test_settings, FakeEmbedder(), SearchMode.words
+    )
+
+    await service.search(query_of("anything"), sample_project, progress=ProgressReporter(recorder))
+
+    # The index's last report, its writing begun, where the band up to the search places it
+    indexing_band = SearchPhase.searching.value - SearchPhase.indexing.value
+    writing_begun = (
+        SearchPhase.indexing.value + IndexPhase.indexing.value / PROGRESS_TOTAL * indexing_band
+    )
+    assert recorder.progress_values[-3:] == [
+        writing_begun,
+        SearchPhase.searching.value,
+        SearchPhase.done.value,
+    ]
 
 
 async def test_a_project_with_nothing_indexed_is_answered_without_the_model(

@@ -133,7 +133,7 @@ class SearchService:
             await progress.report(SearchPhase.indexing.value, indexing_message(check.freshness))
             index_report = await self._indexing.index_from_check(
                 check,
-                progress=progress.within(SearchPhase.indexing.value, SearchPhase.embedding.value),
+                progress=progress.within(SearchPhase.indexing.value, self._indexing_ends_at()),
             )
 
         # Counted after any index run: one that found its work done by another run indexed
@@ -161,6 +161,18 @@ class SearchService:
                 assert_never(unhandled)
         await progress.report(SearchPhase.done.value, f"Found {len(report.results)} results")
         return report
+
+    def _indexing_ends_at(self) -> float:
+        """Where an index run inside a search ends on its bar: where the search's next step
+        starts, as a search by words embeds nothing and loads no model."""
+        match self._mode:
+            case SearchMode.words:
+                return SearchPhase.searching.value
+            case SearchMode.words_and_meaning:
+                return SearchPhase.embedding.value
+            # A mode added without its case is refused by the type checker here
+            case unhandled:
+                assert_never(unhandled)
 
     async def _prepare_meaning(self, progress: ProgressReporter, *, embed_first: bool) -> None:
         """Embed the chunks without the model's vectors, where some lack them, then load the

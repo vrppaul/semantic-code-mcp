@@ -388,8 +388,10 @@ class SqliteIndexStore(DirectoryStore):
         # worker threads, so they take and replace them under a lock
         self._holding = threading.Lock()
         self._held: HeldVectors | None = None
-        # Whether the run this store holds builds the database whole, and whether that build
-        # has made its database yet
+        # Whether the run this store holds builds the database whole, set as the run takes its
+        # hold and cleared as it lets go, so only the holder's side changes it and the run's
+        # writes, in worker threads after the hold, only read it; and whether that build has
+        # made its database yet
         self._building_whole = False
         self._whole_build_made = False
 
@@ -617,7 +619,6 @@ class SqliteIndexStore(DirectoryStore):
                 connection.execute(WRITE_AHEAD_LOG)
         if update.last_of_run:
             unfinished.replace(self._database())
-            self._building_whole = False
 
     def _make_database(self) -> None:
         """Make the database, its tables and its full-text index, if there is none: under a

@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust: impls are named with their trait's type arguments and negation, as in `From<u8> for Level` and `!Send for Handle`
 
 ### Fixed
+- A search by words that builds its index first moves its progress up to the search's own step, where it stood at 30% while it indexed and then jumped: the band before it was kept for embedding, which a search by words never does
 - `index_status` loaded the embedding model it never uses, blocking for seconds
 - Two index runs of one project at once (parallel tool calls) stored every changed file's chunks twice
 - A status or search during a forced re-index could fail on a dropped table; it still can at the moment a model replaced under a name nothing pins (a local path) changes the vectors' width
