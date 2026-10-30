@@ -16,7 +16,9 @@ of flags for several changes of one path, a directory's or a file's, and Windows
 at all. So what lies at the path now says what changed there:
 - an entry made, removed or renamed is what lay at its path gone, a directory watched there or a
   file, and what lies there now added, a directory walked again from its top: a file's name may
-  have been taken by a directory, or a directory's by a file;
+  have been taken by a directory, or a directory's by a file. What lies there is what its
+  directory lists by that very spelling, as a volume that ignores case finds `Src` by `src`
+  once `src` was renamed `Src`;
 - an entry written is a file changed; a directory's own writing, as its entries change, is
   passed over, as their own changes tell them;
 - an entry's attributes changed is a file changed, or a directory whose permissions may change
@@ -122,6 +124,14 @@ def entry_event(watch: int, change: WatchChange, name: str, *, is_directory: boo
     return WatchEvent(watch=watch, change=change, name=name, is_directory=is_directory)
 
 
+class LookCache(BaseModel):
+    """What one look of a watcher of trees has read so far: the watch holding each directory
+    met, by the system's spelling of it, and the names each directory watched lists."""
+
+    holding: dict[str, int | None]
+    names: dict[int, frozenset[str]]
+
+
 class TreeWatcher(DirectoryWatcher):
     """Directories watched each on its own within trees the system watches whole, each opened by
     `open_tree`."""
@@ -179,11 +189,10 @@ class TreeWatcher(DirectoryWatcher):
         self._untold = []
         for tree in self._trees:
             changes += tree.changes()
-        # The watch holding each directory met, by the system's spelling of it
-        holding: dict[str, int | None] = {}
+        look = LookCache(holding={}, names={})
         events: list[WatchEvent] = []
         for change in changes:
-            events += self._told(change, holding)
+            events += self._told(change, look)
         return events
 
     @override
@@ -205,21 +214,26 @@ class TreeWatcher(DirectoryWatcher):
             tree.close()
         self._trees = [tree for tree in self._trees if tree not in below] + [opened]
 
-    def _told(self, change: TreeChange, holding: dict[str, int | None]) -> list[WatchEvent]:
+    def _told(self, change: TreeChange, look: LookCache) -> list[WatchEvent]:
         """A change as inotify would tell it: none below no directory watched."""
         if change.action is TreeAction.lost:
             return [entry_event(NO_WATCH, WatchChange.changes_lost, NO_NAME, is_directory=False)]
         parent, name = os.path.split(os.path.normpath(change.path))
-        if parent not in holding:
-            holding[parent] = self._watch_holding(parent)
-        watch = holding[parent]
+        if parent not in look.holding:
+            look.holding[parent] = self._watch_holding(parent)
+        watch = look.holding[parent]
         if watch is None:
             return []
         path = f"{self._watched[watch].path}{os.sep}{name}"
         directory_now = is_plain_directory_now(path)
         match change.action:
             case TreeAction.made_or_removed:
-                return self._made_or_removed(watch, name, path, directory_now=directory_now)
+                if watch not in look.names:
+                    look.names[watch] = self._names_in(watch)
+                lies_there = name in look.names[watch]
+                return self._made_or_removed(
+                    watch, name, path, lies_there=lies_there, directory_now=directory_now
+                )
             case TreeAction.written if directory_now:
                 return []
             case _:
@@ -228,18 +242,27 @@ class TreeWatcher(DirectoryWatcher):
                 ]
 
     def _made_or_removed(
-        self, watch: int, name: str, path: str, *, directory_now: bool
+        self, watch: int, name: str, path: str, *, lies_there: bool, directory_now: bool
     ) -> list[WatchEvent]:
         """What lay at the path gone, a directory watched or a file, and what lies there now
         added: a file's name may have been taken by a directory, or a directory's by a file."""
         watched = os.path.normcase(path) in self._by_path
         gone = [entry_event(watch, WatchChange.entry_removed, name, is_directory=watched)]
-        if not os.path.lexists(path):
+        if not lies_there:
             return gone
         return [
             *gone,
             entry_event(watch, WatchChange.entry_added, name, is_directory=directory_now),
         ]
+
+    def _names_in(self, watch: int) -> frozenset[str]:
+        """The names a directory watched lists now, each as it is spelled there: none where it
+        went or may no longer be read."""
+        try:
+            with os.scandir(self._watched[watch].path) as entries:
+                return frozenset(entry.name for entry in entries)
+        except OSError:
+            return frozenset()
 
     def _watch_holding(self, directory: str) -> int | None:
         """The watch of a directory as the system spells it: by its text, else by where it lies;
