@@ -136,11 +136,11 @@ onnxruntime, tokenizers and huggingface_hub imported when a search by meaning fi
 
 ### O6. The search by meaning's own costs, with ADR 009's step 9
 
-The chunks without vectors handed out in pages, not all 87,694 at once, which would bring back the peak O4 removes; the held matrix in float16 (67 MB against 135 at 88k chunks), held to ADR 006's criterion on the harness.
+Dropped (2026-10-30), the owner's word: no more work goes to the search by meaning. As it was drawn: the chunks without vectors handed out in pages, not all 87,694 at once, which would bring back the peak O4 removes; the held matrix in float16 (67 MB against 135 at 88k chunks), held to ADR 006's criterion on the harness.
 
 ### Order
 
-O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29; done); then O4 (done); then CI on macOS and Windows (running and green since pull request 4, 2026-10-29) and their watchers (done, 2026-10-29); O6 with ADR 009's step 9.
+O3 and O2 (done, as O5); then O1 on Linux by its new construction (the owner's word, 2026-10-29; done); then O4 (done); then CI on macOS and Windows (running and green since pull request 4, 2026-10-29) and their watchers (done, 2026-10-29). O6 dropped (2026-10-30).
 
 ## Alternatives Considered
 
