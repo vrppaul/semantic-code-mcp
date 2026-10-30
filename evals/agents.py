@@ -669,7 +669,7 @@ def mcp_config(arm: AgentArm, index_directory: Path) -> McpConfig:
     model's weights cached there."""
     if arm.search_mode is None:
         return McpConfig(mcp_servers={})
-    options = ServerOptions(index_store=None, search_mode=arm.search_mode)
+    options = ServerOptions(index_store=None, search_mode=arm.search_mode, scan_files=False)
     settings = server_settings(index_directory, options)
     server = McpServerEntry(
         command=sys.executable,

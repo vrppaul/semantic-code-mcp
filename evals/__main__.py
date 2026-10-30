@@ -3,7 +3,7 @@
     uv run python -m evals quality [--corpus NAME ...] [--store STORE] [--search-mode MODE]
         [--save-baseline] [--held-out]
     uv run python -m evals speed [--corpus NAME ...] [--corpus-file PATH ...] [--store STORE]
-        [--edits N] [--words-only] [--save-baseline]
+        [--edits N] [--burst-files N] [--words-only] [--scan] [--save-baseline]
     uv run python -m evals agents (--corpus NAME | --corpus-file PATH) ... [--arm ARM ...]
         [--repeats N] [--model MODEL]
     uv run python -m evals rescore RUN
@@ -17,7 +17,8 @@ other than the server's default (`--store`, as when two stores are compared in t
 quality run in another search mode than the server's default (`--search-mode`, which sets
 the servers' setting to it, `words_and_meaning` searching by meaning too), nor a speed run
 without its server set to search by meaning (`--words-only`, as that server's first search
-embeds every chunk, an hour at Sentry's size). `agents` asks
+embeds every chunk, an hour at Sentry's size), nor one whose servers scan the files at each
+search (`--scan`, as when the system's watcher is set beside a scan in turns). `agents` asks
 Claude Code headless each question of the corpora it names in each arm (`evals/agents.py`),
 spending the owner's subscription; it prints each session as it ends, then each arm's sums
 and every two arms compared, and keeps no baseline, as its sessions hold the questions of
@@ -71,7 +72,6 @@ from evals.agents import (
     refuse_shared_names,
 )
 from evals.corpus import (
-    COMMIT_PREFIX_LENGTH,
     Corpus,
     available_corpus_names,
     checkout,
@@ -124,6 +124,12 @@ SERVER_LOG_FILE = "server.log"
 # upkeep, the full index's, and once in its UPKEEPS_PER_COMPACTION after, so at the last
 # edit's; a unit test holds the two together, as evals import no store
 DEFAULT_EDITS = 20
+# What a speed run says of how its servers found what changed in the files
+SCANNED_FILES_LINE = "files scanned at each search, the system's watcher left off"
+FOLLOWED_FILES_LINE = "files followed by the system's watcher where it can tell them"
+# The files a speed run's burst writes where the index never looks: about what a build writes
+# between two searches, more than Windows' watcher holds between two reads
+DEFAULT_BURST_FILES = 10_000
 JSON_INDENT = 2
 
 
@@ -168,6 +174,8 @@ class SpeedReport(BaseModel):
     machine: Machine
     # None for the server's default store at the commit measured
     index_store: StoreKind | None
+    # Whether each search scanned the files, the system's watcher left off
+    files_scanned: bool
     corpora: tuple[CorpusSpeed, ...]
 
 
@@ -182,15 +190,25 @@ def main() -> int:
             case EvalsCommand.quality:
                 run_quality(
                     load_corpora(arguments.corpus),
-                    ServerOptions(index_store=arguments.store, search_mode=arguments.search_mode),
+                    ServerOptions(
+                        index_store=arguments.store,
+                        search_mode=arguments.search_mode,
+                        scan_files=False,
+                    ),
                     save_baseline=arguments.save_baseline,
                     held_out=arguments.held_out,
                 )
             case EvalsCommand.speed:
                 run_speed(
                     chosen_corpora(arguments.corpus, arguments.corpus_file),
-                    index_store=arguments.store,
-                    run=SpeedRun(edits=arguments.edits, by_meaning=not arguments.words_only),
+                    ServerOptions(
+                        index_store=arguments.store, search_mode=None, scan_files=arguments.scan
+                    ),
+                    run=SpeedRun(
+                        edits=arguments.edits,
+                        burst_files=arguments.burst_files,
+                        by_meaning=not arguments.words_only,
+                    ),
                     save_baseline=arguments.save_baseline,
                 )
             case EvalsCommand.agents:
@@ -248,6 +266,10 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     # The held-out questions are asked on every run but shown only once a choice is made
     quality.add_argument("--held-out", action="store_true")
     speed.add_argument("--edits", type=positive_integer, default=DEFAULT_EDITS)
+    speed.add_argument("--burst-files", type=positive_integer, default=DEFAULT_BURST_FILES)
+    # Servers that scan the files at each search, the system's watcher left off, to set beside
+    # a run that follows them; never saved to the baseline
+    speed.add_argument("--scan", action="store_true")
     # Words alone, never saved to the baseline: the server set to search by meaning embeds
     # every chunk on its first search, an hour at Sentry's size
     speed.add_argument("--words-only", action="store_true")
@@ -276,6 +298,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         parser.error("--save-baseline keeps the default search's figures: leave --search-mode out")
     if arguments.command == EvalsCommand.speed and arguments.save_baseline and arguments.words_only:
         parser.error("--save-baseline keeps the speeds by meaning too: leave --words-only out")
+    if arguments.command == EvalsCommand.speed and arguments.save_baseline and arguments.scan:
+        parser.error("--save-baseline keeps the speeds of the files followed: leave --scan out")
     return arguments
 
 
@@ -308,19 +332,15 @@ def run_quality(
 
 
 def run_speed(
-    corpora: list[Corpus], *, index_store: StoreKind | None, run: SpeedRun, save_baseline: bool
+    corpora: list[Corpus], options: ServerOptions, *, run: SpeedRun, save_baseline: bool
 ) -> None:
     report = SpeedReport(
         machine=current_machine(),
-        index_store=index_store,
-        corpora=tuple(
-            asyncio.run(
-                collect_speed(
-                    corpora, ServerOptions(index_store=index_store, search_mode=None), run
-                )
-            )
-        ),
+        index_store=options.index_store,
+        files_scanned=options.scan_files,
+        corpora=tuple(asyncio.run(collect_speed(corpora, options, run))),
     )
+    print(describe_files(scanned=report.files_scanned))
     baseline = read_report(BASELINE_DIRECTORY / SPEED_FILE, SpeedReport)
     # Speeds compare only on the machine they were measured on
     baseline_by_corpus: dict[str, CorpusSpeed] = {}
@@ -341,6 +361,11 @@ def describe_crossing(crossing: TargetCrossed) -> str:
         f"  crosses a target: {target.figure} {crossing.measured}, "
         f"at most {target.most} for {target.size.name}"
     )
+
+
+def describe_files(*, scanned: bool) -> str:
+    """How a run's servers found what changed in the files."""
+    return SCANNED_FILES_LINE if scanned else FOLLOWED_FILES_LINE
 
 
 def describe_stores(measured: StoreKind | None, baseline: StoreKind | None) -> str:
@@ -384,7 +409,7 @@ def corpus_checkout(corpus_file: Path) -> CorpusCheckout:
     return CorpusCheckout(
         corpus=corpus,
         working_tree=checkout(source, CHECKOUTS_ROOT),
-        index_directory=INDEXES_ROOT / f"{source.name}-{source.commit[:COMMIT_PREFIX_LENGTH]}",
+        index_directory=INDEXES_ROOT / source.checkout_name(),
     )
 
 
@@ -616,7 +641,8 @@ def speed_summary(entry: CorpusSpeed) -> str:
         f"peak {entry.peak_memory_megabytes}MB, held after {entry.resident_memory_megabytes}MB; "
         f"index growth {entry.index_growth_megabytes_per_edit}MB per edit; "
         f"search after an edit {entry.search_after_edit_p50_milliseconds}ms, "
-        f"slowest {entry.search_after_edit_slowest_milliseconds}ms"
+        f"slowest {entry.search_after_edit_slowest_milliseconds}ms; "
+        f"search after a burst {entry.search_after_burst_milliseconds}ms"
     )
 
 

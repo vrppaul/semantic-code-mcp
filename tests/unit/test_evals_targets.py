@@ -33,6 +33,7 @@ def speeds(
         index_growth_megabytes_per_edit=0.02,
         search_after_edit_p50_milliseconds=search_after_edit_milliseconds,
         search_after_edit_slowest_milliseconds=search_after_edit_milliseconds,
+        search_after_burst_milliseconds=17.0,
         peak_memory_megabytes=peak_memory_megabytes,
         resident_memory_megabytes=peak_memory_megabytes,
         meaning=meaning,

@@ -14,7 +14,7 @@ from evals.agents import (
     bring_index_up_to_date,
     measure_agents,
 )
-from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
+from evals.corpus import Answer, Corpus, PinnedSource, Query, QuestionKind
 from evals.server import DEFAULT_OPTIONS, ServerStarter
 
 from semantic_code_mcp.domain.models import SearchMode
@@ -36,7 +36,7 @@ def confirm(text):
 MODULE_CHUNKS = 2
 MODULE_FILES = 1
 CORPUS = Corpus(
-    corpus=CorpusSource(
+    corpus=PinnedSource(
         name="progress", repository="https://example.org/progress", commit="0" * 40
     ),
     queries=(

@@ -35,7 +35,7 @@ from evals.agents import (
     session_record,
     stop_reason,
 )
-from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
+from evals.corpus import Answer, Corpus, PinnedSource, Query, QuestionKind
 from evals.server import CACHE_DIR_VARIABLE, SEARCH_MODE_VARIABLE
 
 from semantic_code_mcp.domain.models import SearchMode
@@ -457,7 +457,7 @@ def test_only_a_session_that_answered_is_scored(outcome: SessionOutcome, scored:
 
 def corpus_of(name: str, *questions: str) -> Corpus:
     return Corpus(
-        corpus=CorpusSource(name=name, repository="https://example.org/click", commit="0" * 40),
+        corpus=PinnedSource(name=name, repository="https://example.org/click", commit="0" * 40),
         queries=tuple(
             Query(text=question, kind=QuestionKind.code, answers=()) for question in questions
         ),

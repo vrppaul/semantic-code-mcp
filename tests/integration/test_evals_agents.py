@@ -21,7 +21,7 @@ from evals.agents import (
     measure_agents,
     prepare_config_directory,
 )
-from evals.corpus import Answer, Corpus, CorpusSource, Query, QuestionKind
+from evals.corpus import Answer, Corpus, PinnedSource, Query, QuestionKind
 from evals.server import DEFAULT_OPTIONS, ServerStarter
 
 from tests.helpers import POSIX_HARNESS, WINDOWS, install_fake_claude
@@ -34,7 +34,7 @@ LOGIN_FILE = ".credentials.json"
 OWN_TOOLS_AGAIN_ARM = AgentArm(name="own_tools_again", search_mode=None)
 KEY = Answer(path="src/progress.py", symbol="progressbar")
 CORPUS = Corpus(
-    corpus=CorpusSource(
+    corpus=PinnedSource(
         name="progress", repository="https://example.org/progress", commit="0" * 40
     ),
     queries=(

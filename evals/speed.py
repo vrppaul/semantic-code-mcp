@@ -1,33 +1,34 @@
 """Speed: what an agent waits for, and what the server costs the machine.
 
-Measured per corpus, in server processes of its own, every search by words, the default, but
-the model's: a full index from scratch, warm search latency, plain and narrowed to functions
-and methods outside every tests directory (a narrowing every corpus takes, which both
-filters read), and of one long question, an `index_status` call (each search makes one
-first), how much the index grows with each edit of a file other than the last (the copies
-upkeep keeps for a few seconds included) and how long the search after it takes, at the
-median and at the slowest (it re-indexes the edited file first; one in twenty compacts a
-LanceDB index), the peak memory of the server and the processes it starts, a first index's
-pool among them, and what they still hold once its work is done, as a session's idle server
-keeps it, with no model loaded; in a server of its own set to search by meaning too, the model
-load, a search of a one-file project, then the corpus's first search, which embeds every
-chunk, the warm searches after it, and that server's memory, left out of a run asked to
-measure words alone, as that first search takes an hour at Sentry's size; the first answer
-of a freshly started server on an up-to-date index — the process start an agent waits for —
-and, last, the first answer on a repository never indexed: a server started on an empty
-index directory, until its first search answers, the whole index built inside it. Memory is
-each process's proportional share of what it maps, summed, read from `/proc` every
-MEMORY_SAMPLE_SECONDS in a thread of the harness's own while a server indexes or loads its
-model, where a pool lives and the peak is, never while a search is timed, which the reads
-slowed by up to 30 ms at the median on Sentry; it is reported on Linux only. Pages shared with
-processes outside the server's, the harness among them, are split with those, so the figure
-moves a little with what else runs; a spike shorter than the reads' interval, as a model's load
-can be, may pass unseen; and it reads 5 to 20% below the processes' resident sizes. With 15 to
-20 questions per corpus, p95 is close to the slowest search: read it as that.
+Measured per corpus, in server processes of its own, every search by words, the default, but the
+model's: a full index from scratch, warm search latency, plain and narrowed to functions and methods
+outside every tests directory (a narrowing every corpus takes, which both filters read), and of one
+long question, an `index_status` call (each search makes one first), how much the index grows with
+each edit of a file other than the last (the copies upkeep keeps for a few seconds included) and how
+long the search after it takes, at the median and at the slowest (it re-indexes the edited file
+first; one in twenty compacts a LanceDB index), the search after a burst of files where the index
+never looks, as a build writes under `target/` (a watcher of a whole tree hears each one), the peak
+memory of the server and the processes it starts, a first index's pool among them, and what they
+still hold once its work is done, as a session's idle server keeps it, with no model loaded; in a
+server of its own set to search by meaning too, the model load, a search of a one-file project, then
+the corpus's first search, which embeds every chunk, the warm searches after it, and that server's
+memory, left out of a run asked to measure words alone, as that first search takes an hour at
+Sentry's size; the first answer of a freshly started server on an up-to-date index — the process
+start an agent waits for — and, last, the first answer on a repository never indexed: a server
+started on an empty index directory, until its first search answers, the whole index built inside
+it. Memory is each process's proportional share of what it maps, summed, read from `/proc` every
+MEMORY_SAMPLE_SECONDS in a thread of the harness's own while a server indexes or loads its model,
+where a pool lives and the peak is, never while a search is timed, which the reads slowed by up to
+30 ms at the median on Sentry; it is reported on Linux only. Pages shared with processes outside the
+server's, the harness among them, are split with those, so the figure moves a little with what else
+runs; a spike shorter than the reads' interval, as a model's load can be, may pass unseen; and it
+reads 5 to 20% below the processes' resident sizes. With 15 to 20 questions per corpus, p95 is close
+to the slowest search: read it as that.
 """
 
 import os
 import platform
+import shutil
 import statistics
 import tempfile
 import threading
@@ -83,6 +84,13 @@ LONG_QUESTION_WORDS = 40
 LONG_QUESTION_SEARCHES = 5
 # Status calls timed on the indexed corpus; each search makes the same check first
 STATUS_CALLS = 10
+# Where a burst of files is written, as a build writes them: under a directory every default
+# ignores, so no burst file is indexed; a directory of its own there, removed after; so many
+# files a directory, and a name with no extension a chunker reads, as an object file's
+BURST_DIRECTORY = Path("target") / "semantic-code-mcp-burst"
+BURST_FILES_PER_DIRECTORY = 100
+BURST_FILE = "unit_{number:05}.o"
+BURST_CONTENT = b"\0"
 # A narrowing every corpus can take, which both filters read: two kinds, and a glob
 # left out, the regex a search tests every path against
 NARROWING = SearchNarrowing(chunk_kinds=("function", "method"), exclude_glob="tests")
@@ -103,12 +111,13 @@ class Machine(BaseModel):
 
 
 class SpeedRun(BaseModel):
-    """How a run measures each corpus: the edits it makes, and whether a server set to search
-    by meaning is measured too."""
+    """How a run measures each corpus: the edits it makes, the files of the burst it writes,
+    and whether a server set to search by meaning is measured too."""
 
     model_config = ConfigDict(frozen=True)
 
     edits: int
+    burst_files: int
     by_meaning: bool
 
 
@@ -194,6 +203,7 @@ class CorpusSpeed(BaseModel):
     index_growth_megabytes_per_edit: float
     search_after_edit_p50_milliseconds: float
     search_after_edit_slowest_milliseconds: float
+    search_after_burst_milliseconds: float
     peak_memory_megabytes: float | None
     resident_memory_megabytes: float | None
     # None for a run that measures words alone
@@ -259,6 +269,9 @@ async def measure_speed(
         # Restoring the checkout touched the edited files: index them now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
+        search_after_burst_seconds = await timed_search_after_burst(
+            connection, working_tree, queries[0], run.burst_files
+        )
         peak_memory = memory.peak_megabytes()
         resident_memory = memory.resident_megabytes()
 
@@ -297,6 +310,7 @@ async def measure_speed(
         ),
         search_after_edit_p50_milliseconds=median_milliseconds(edits_cost.search_seconds),
         search_after_edit_slowest_milliseconds=milliseconds(max(edits_cost.search_seconds)),
+        search_after_burst_milliseconds=milliseconds(search_after_burst_seconds),
         peak_memory_megabytes=peak_memory,
         resident_memory_megabytes=resident_memory,
         meaning=meaning,
@@ -373,6 +387,21 @@ async def timed_search_seconds(
     started = time.perf_counter()
     await connection.search(working_tree, query, RESULTS_PER_QUERY, narrowing)
     return time.perf_counter() - started
+
+
+async def timed_search_after_burst(
+    connection: ServerConnection, working_tree: Path, query: str, files: int
+) -> float:
+    """How long a search takes right after a burst of files is written where the index never
+    looks; the burst is removed after."""
+    burst = working_tree / BURST_DIRECTORY
+    for number in range(files):
+        directory = burst / str(number // BURST_FILES_PER_DIRECTORY)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / BURST_FILE.format(number=number)).write_bytes(BURST_CONTENT)
+    seconds = await timed_search_seconds(connection, working_tree, query, None)
+    shutil.rmtree(burst)
+    return seconds
 
 
 class Edit(BaseModel):

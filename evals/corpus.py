@@ -1,6 +1,8 @@
-"""Pinned corpora: which repository at which commit, and the questions asked of it.
+"""Pinned corpora: which repository at which commit, and the questions asked of it; or a
+repository made here, of modules spread over directories, where a large one cannot be cloned.
 
-Each corpus is a TOML file under `evals/corpora/`. A question says what it asks for, code
+Each corpus is a TOML file under `evals/corpora/`; one made here lies under `evals/generated/`,
+apart, as only a speed run asks it (`--corpus-file`). A question says what it asks for, code
 or its documentation, and names every answer that counts — a file, the chunk name inside
 it, and its parent where chunks of several parents share that name — so a score never
 depends on taste. The questions under `held_out` are asked and reported apart, and never
@@ -26,6 +28,30 @@ CORPUS_FILE_SUFFIX = ".toml"
 COMMIT_PREFIX_LENGTH = 12
 # Where a clone is made before it is moved into place; a failed clone or checkout is removed
 PARTIAL_CHECKOUT_SUFFIX = ".partial"
+# The version of what a generated corpus's modules hold and where they lie, in its checkout's
+# name: a change of either makes the checkout anew
+GENERATOR_VERSION = 1
+# A generated corpus's directories and modules, by their numbers, and its one commit's author
+GENERATED_DIRECTORY = "package_{number:02}"
+GENERATED_MODULE = "module_{number:05}.py"
+GENERATED_AUTHOR = ("-c", "user.name=evals", "-c", "user.email=evals@localhost")
+# What each generated module is of, by its number in turn, which its names and words carry
+GENERATED_SUBJECTS = ("invoice", "order", "payment", "refund", "shipment", "receipt", "account")
+GENERATED_SOURCE = '''"""Module {number} of a generated corpus: the ledger of each {subject}."""
+
+
+def settle_{subject}_{number}(amount):
+    """Settle what one {subject} owes, as module {number} reckons it."""
+    return amount + {number}
+
+
+class {title}Ledger{number}:
+    """The {subject}s settled so far."""
+
+    def post(self, entry):
+        """Post one {subject} to the ledger."""
+        return entry
+'''
 
 
 # How a key, and every hit, names the parent of a chunk that sits in nothing
@@ -77,14 +103,68 @@ class Query(BaseModel):
     judged: tuple[JudgedAnswer, ...] = ()
 
 
-class CorpusSource(BaseModel):
+class PinnedSource(BaseModel):
     """Where a corpus comes from: a repository pinned to one commit."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     repository: str
     commit: str
+
+    def checkout_name(self) -> str:
+        """The name of its checkout's directory, and of the index kept for it."""
+        return f"{self.name}-{self.commit[:COMMIT_PREFIX_LENGTH]}"
+
+
+class GeneratedSource(BaseModel):
+    """Where a corpus comes from: a repository made here, its modules spread over directories,
+    each holding so many modules or so many directories, levels deep enough for them all."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    modules: int
+    modules_per_directory: int
+    directories_per_directory: int
+
+    def checkout_name(self) -> str:
+        """The name of its checkout's directory, and of the index kept for it."""
+        return (
+            f"{self.name}-{self.modules}-{self.modules_per_directory}"
+            f"-{self.directories_per_directory}-v{GENERATOR_VERSION}"
+        )
+
+    def module_path(self, number: int) -> str:
+        """Where the numbered module lies, from the root: in the directory its number falls in,
+        named by that directory's number's digits, one a level."""
+        levels = digits_in(self.last_directory(), self.directories_per_directory)
+        directory = number // self.modules_per_directory
+        names: list[str] = []
+        for _ in range(levels):
+            directory, digit = divmod(directory, self.directories_per_directory)
+            names.append(GENERATED_DIRECTORY.format(number=digit))
+        return "/".join([*reversed(names), GENERATED_MODULE.format(number=number)])
+
+    def last_directory(self) -> int:
+        """The number of the directory the last module lies in."""
+        return (self.modules - 1) // self.modules_per_directory
+
+
+def digits_in(number: int, base: int) -> int:
+    """How many digits a number has, written in a base; one for zero."""
+    digits = 1
+    while number >= base:
+        number //= base
+        digits += 1
+    return digits
+
+
+def generated_module_source(number: int) -> str:
+    """What the numbered module of a generated corpus holds: a function, a class and its
+    method, named and worded by the module's subject."""
+    subject = GENERATED_SUBJECTS[number % len(GENERATED_SUBJECTS)]
+    return GENERATED_SOURCE.format(number=number, subject=subject, title=subject.title())
 
 
 class Corpus(BaseModel):
@@ -92,7 +172,7 @@ class Corpus(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    corpus: CorpusSource
+    corpus: PinnedSource | GeneratedSource
     queries: tuple[Query, ...]
     held_out: tuple[Query, ...]
 
@@ -142,13 +222,14 @@ def load_corpora(names: Sequence[str]) -> list[Corpus]:
     return [load_corpus(name) for name in names or available_corpus_names()]
 
 
-def checkout(source: CorpusSource, checkouts_root: Path) -> Path:
-    """A clean working tree of the corpus at its pinned commit, cloned on first use.
+def checkout(source: PinnedSource | GeneratedSource, checkouts_root: Path) -> Path:
+    """A clean working tree of the corpus, at its pinned commit, cloned on first use, or made
+    and committed on first use.
 
     A checkout kept from an earlier run is restored first, so edits a killed speed run
     left behind are not indexed.
     """
-    target = checkouts_root / f"{source.name}-{source.commit[:COMMIT_PREFIX_LENGTH]}"
+    target = checkouts_root / source.checkout_name()
     if target.is_dir():
         restore(target)
         return target
@@ -157,13 +238,35 @@ def checkout(source: CorpusSource, checkouts_root: Path) -> Path:
     checkouts_root.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(partial, ignore_errors=True)
     try:
-        run_git(["clone", "--quiet", "--filter=blob:none", source.repository, str(partial)])
-        run_git(["-C", str(partial), "checkout", "--quiet", "--detach", source.commit])
+        match source:
+            case PinnedSource():
+                cloned(source, partial)
+            case GeneratedSource():
+                generated(source, partial)
     except subprocess.CalledProcessError:
         shutil.rmtree(partial, ignore_errors=True)
         raise
     partial.rename(target)
     return target
+
+
+def cloned(source: PinnedSource, working_tree: Path) -> None:
+    """Clone a pinned corpus into a working tree, at its commit."""
+    run_git(["clone", "--quiet", "--filter=blob:none", source.repository, str(working_tree)])
+    run_git(["-C", str(working_tree), "checkout", "--quiet", "--detach", source.commit])
+
+
+def generated(source: GeneratedSource, working_tree: Path) -> None:
+    """Make a generated corpus's modules in a working tree, and commit them."""
+    for number in range(source.modules):
+        module = working_tree / source.module_path(number)
+        module.parent.mkdir(parents=True, exist_ok=True)
+        module.write_text(generated_module_source(number))
+    run_git(["-C", str(working_tree), "init", "--quiet"])
+    run_git(["-C", str(working_tree), "add", "--all"])
+    run_git(
+        ["-C", str(working_tree), *GENERATED_AUTHOR, "commit", "--quiet", "--message", "generated"]
+    )
 
 
 def missing_answer_paths(corpus: Corpus, working_tree: Path) -> list[str]:

@@ -1,0 +1,54 @@
+# A repository of Sentry's shape, made where none so large can be cloned, as on CI's runners:
+# 8,500 modules in 3,054 directories, Sentry's 8,546 files in 3,129. Its modules are small and
+# alike, so its first index is no measure of a real one's; a stale check's, a watcher's start
+# and a search's cost are, as they go by files and directories. Asked by a speed run alone:
+#
+#     uv run python -m evals speed --corpus-file evals/generated/sentry-shaped.toml --words-only
+# No question is held out: none of its rankings is ever chosen by
+held_out = []
+
+[corpus]
+name = "sentry-shaped"
+modules = 8500
+modules_per_directory = 3
+directories_per_directory = 14
+
+[[queries]]
+kind = "code"
+text = "settle what one invoice owes in module 0"
+answers = [{ path = "package_00/package_00/package_00/package_00/module_00000.py", symbol = "settle_invoice_0" }]
+
+[[queries]]
+kind = "code"
+text = "the ledger of each payment settled so far in module 1213"
+answers = [{ path = "package_00/package_02/package_00/package_12/module_01213.py", symbol = "settle_payment_1213" }]
+
+[[queries]]
+kind = "code"
+text = "post one shipment to its ledger in module 2426"
+answers = [{ path = "package_00/package_04/package_01/package_10/module_02426.py", symbol = "settle_shipment_2426" }]
+
+[[queries]]
+kind = "code"
+text = "settle the account in module 3639"
+answers = [{ path = "package_00/package_06/package_02/package_09/module_03639.py", symbol = "settle_account_3639" }]
+
+[[queries]]
+kind = "code"
+text = "post an order to the ledger in module 4852"
+answers = [{ path = "package_00/package_08/package_03/package_07/module_04852.py", symbol = "settle_order_4852" }]
+
+[[queries]]
+kind = "code"
+text = "settle a refund in module 6065"
+answers = [{ path = "package_00/package_10/package_04/package_05/module_06065.py", symbol = "settle_refund_6065" }]
+
+[[queries]]
+kind = "code"
+text = "reckon what a receipt owes in module 7278"
+answers = [{ path = "package_00/package_12/package_05/package_04/module_07278.py", symbol = "settle_receipt_7278" }]
+
+[[queries]]
+kind = "code"
+text = "post an order to the ledger in module 8499"
+answers = [{ path = "package_01/package_00/package_06/package_05/module_08499.py", symbol = "settle_order_8499" }]

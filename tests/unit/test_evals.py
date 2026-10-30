@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from evals.__main__ import DEFAULT_EDITS, parse_arguments
-from evals.corpus import TOP_LEVEL, Answer, Corpus, CorpusSource, Query, QuestionKind
+from evals.corpus import TOP_LEVEL, Answer, Corpus, PinnedSource, Query, QuestionKind
 from evals.quality import (
     Hit,
     KindScores,
@@ -24,8 +24,10 @@ from evals.quality import (
     shares_answer_words,
 )
 from evals.server import (
+    FILES_SCANNED,
     INDEX_STORE_VARIABLE,
     SEARCH_MODE_VARIABLE,
+    WATCH_FILES_VARIABLE,
     SearchHit,
     ServerOptions,
     ServerStarter,
@@ -263,7 +265,7 @@ def test_an_answer_in_a_file_the_server_does_not_index_is_a_mistake():
     unindexed = Answer(path="build/types.py", symbol="convert")
     question = Query(text="convert a value", kind=QuestionKind.code, answers=(indexed, unindexed))
     corpus = Corpus(
-        corpus=CorpusSource(name="click", repository="click.git", commit="abc"),
+        corpus=PinnedSource(name="click", repository="click.git", commit="abc"),
         queries=(question,),
         held_out=(),
     )
@@ -389,7 +391,7 @@ def test_a_server_of_the_harness_keeps_its_indexes_in_the_store_a_run_names(
     monkeypatch.setenv(INDEX_STORE_VARIABLE, StoreKind.lancedb)
 
     environment = server_environment(
-        tmp_path, ServerOptions(index_store=index_store, search_mode=None)
+        tmp_path, ServerOptions(index_store=index_store, search_mode=None, scan_files=False)
     )
 
     assert environment.get(INDEX_STORE_VARIABLE) == store_given
@@ -414,26 +416,48 @@ def test_a_server_of_the_harness_searches_in_the_mode_a_run_names(
     monkeypatch.setenv(SEARCH_MODE_VARIABLE, SearchMode.words_and_meaning)
 
     environment = server_environment(
-        tmp_path, ServerOptions(index_store=None, search_mode=search_mode)
+        tmp_path, ServerOptions(index_store=None, search_mode=search_mode, scan_files=False)
     )
 
     assert environment.get(SEARCH_MODE_VARIABLE) == setting_given
 
 
-def test_a_starter_set_to_search_by_meaning_starts_servers_that_do_in_the_same_store(
+def test_a_starter_set_to_search_by_meaning_starts_servers_that_do_alike_but_for_it(
     tmp_path: Path,
 ):
     """As `evals speed` times the model's load and the searches by meaning."""
     starter = ServerStarter(
-        io.StringIO(), ServerOptions(index_store=StoreKind.lancedb, search_mode=None)
+        io.StringIO(),
+        ServerOptions(index_store=StoreKind.lancedb, search_mode=None, scan_files=True),
     )
 
     environment = starter.searching(SearchMode.words_and_meaning).environment(tmp_path)
 
-    assert (environment.get(SEARCH_MODE_VARIABLE), environment.get(INDEX_STORE_VARIABLE)) == (
-        SearchMode.words_and_meaning,
-        StoreKind.lancedb,
+    assert (
+        environment.get(SEARCH_MODE_VARIABLE),
+        environment.get(INDEX_STORE_VARIABLE),
+        environment.get(WATCH_FILES_VARIABLE),
+    ) == (SearchMode.words_and_meaning, StoreKind.lancedb, FILES_SCANNED)
+
+
+@pytest.mark.parametrize(
+    ("scan_files", "setting_given"),
+    [
+        pytest.param(False, None, id="followed, the server's default"),
+        pytest.param(True, FILES_SCANNED, id="scanned, as a run asks"),
+    ],
+)
+def test_a_server_of_the_harness_scans_the_files_where_a_run_asks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scan_files: bool, setting_given: str | None
+):
+    """The caller's own setting never reaches it."""
+    monkeypatch.setenv(WATCH_FILES_VARIABLE, FILES_SCANNED)
+
+    environment = server_environment(
+        tmp_path, ServerOptions(index_store=None, search_mode=None, scan_files=scan_files)
     )
+
+    assert environment.get(WATCH_FILES_VARIABLE) == setting_given
 
 
 @pytest.mark.parametrize(

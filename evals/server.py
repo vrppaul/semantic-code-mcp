@@ -23,6 +23,10 @@ SETTINGS_PREFIX = "SEMANTIC_CODE_MCP_"
 CACHE_DIR_VARIABLE = f"{SETTINGS_PREFIX}CACHE_DIR"
 INDEX_STORE_VARIABLE = f"{SETTINGS_PREFIX}INDEX_STORE"
 SEARCH_MODE_VARIABLE = f"{SETTINGS_PREFIX}SEARCH_MODE"
+# The setting that follows a project's files by the system's watcher, and its value that scans
+# them at each search instead
+WATCH_FILES_VARIABLE = f"{SETTINGS_PREFIX}WATCH_FILES"
+FILES_SCANNED = "false"
 SERVER_MODULE = "semantic_code_mcp"
 # Long enough for a full index of the largest corpus with a cold model download: `agents`
 # indexes corpora kept outside the repository, and one of Sentry's 87,694 chunks took about
@@ -122,16 +126,25 @@ class ServerConnection:
 
 class ServerOptions(BaseModel):
     """What a run sets of the servers it starts: the store that keeps their indexes and how
-    their searches rank, each the server's default where a run names none."""
+    their searches rank, each the server's default where a run names none, and whether each
+    search scans the files, the system's watcher left off."""
 
     model_config = ConfigDict(frozen=True)
 
     index_store: StoreKind | None
     search_mode: SearchMode | None
+    scan_files: bool
+
+    def searching(self, search_mode: SearchMode) -> ServerOptions:
+        """The same options, the searches in another mode."""
+        return ServerOptions(
+            index_store=self.index_store, search_mode=search_mode, scan_files=self.scan_files
+        )
 
 
-# The servers of a run that sets nothing: the default store and the default search
-DEFAULT_OPTIONS = ServerOptions(index_store=None, search_mode=None)
+# The servers of a run that sets nothing: the default store, the default search, the files
+# followed
+DEFAULT_OPTIONS = ServerOptions(index_store=None, search_mode=None, scan_files=False)
 
 
 class ServerStarter:
@@ -149,10 +162,7 @@ class ServerStarter:
     def searching(self, search_mode: SearchMode) -> ServerStarter:
         """A starter of the same run whose servers search in another mode, their logs written
         to the same file."""
-        return ServerStarter(
-            self._server_log,
-            ServerOptions(index_store=self._options.index_store, search_mode=search_mode),
-        )
+        return ServerStarter(self._server_log, self._options.searching(search_mode))
 
     def environment(self, index_directory: Path) -> dict[str, str]:
         """The environment each server of this starter runs in, its indexes in
@@ -184,13 +194,15 @@ def server_environment(index_directory: Path, options: ServerOptions) -> dict[st
 
 
 def server_settings(index_directory: Path, options: ServerOptions) -> dict[str, str]:
-    """The settings a server of the harness is given: the index directory, and the store and
-    the search mode a run names, where it names them."""
+    """The settings a server of the harness is given: the index directory, the store and the
+    search mode a run names, where it names them, and the watcher off where a run scans."""
     settings = {CACHE_DIR_VARIABLE: str(index_directory)}
     if options.index_store is not None:
         settings[INDEX_STORE_VARIABLE] = options.index_store
     if options.search_mode is not None:
         settings[SEARCH_MODE_VARIABLE] = options.search_mode
+    if options.scan_files:
+        settings[WATCH_FILES_VARIABLE] = FILES_SCANNED
     return settings
 
 
