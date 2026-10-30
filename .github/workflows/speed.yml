@@ -7,6 +7,8 @@ name: Speed
 # hand, as a change of a watcher asks, some 15 minutes of three runners: from Actions once the
 # workflow is on master, and before that by a pull request that names `pull_request` here again
 on:
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -38,3 +40,11 @@ jobs:
         run: >-
           uv run python -m evals speed --corpus-file evals/generated/sentry-shaped.toml
           --words-only --scan
+      # What the servers logged of their following: each start again and its reason, a check
+      # that found the files differ from a scan; none is a run's figures alone
+      - name: the following's starts again
+        if: always()
+        shell: bash
+        run: >-
+          grep -E "files_followed_again|files_not_followed|files_followed_differ"
+          evals/results/server.log || true

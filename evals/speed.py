@@ -269,9 +269,6 @@ async def measure_speed(
         # Restoring the checkout touched the edited files: index them now, so the fresh
         # server below answers its first search without re-indexing anything
         await connection.index(working_tree)
-        search_after_burst_seconds = await timed_search_after_burst(
-            connection, working_tree, queries[0], run.burst_files
-        )
         peak_memory = memory.peak_megabytes()
         resident_memory = memory.resident_megabytes()
 
@@ -290,6 +287,11 @@ async def measure_speed(
     # it leaves warm would slow what is measured after it
     cold_first_answer_seconds = await timed_cold_first_answer_seconds(
         working_tree, queries[0], servers
+    )
+    # After the cold first answer too: a watcher of a whole tree hears the burst's every file
+    # made and removed, and a system's scanner of new files reads them for a while
+    search_after_burst_seconds = await timed_search_after_burst(
+        working_tree, index_directory, queries[0], run.burst_files, servers
     )
 
     return CorpusSpeed(
@@ -390,18 +392,26 @@ async def timed_search_seconds(
 
 
 async def timed_search_after_burst(
-    connection: ServerConnection, working_tree: Path, query: str, files: int
+    working_tree: Path, index_directory: Path, query: str, files: int, servers: ServerStarter
 ) -> float:
     """How long a search takes right after a burst of files is written where the index never
-    looks; the burst is removed after."""
+    looks, in a server of its own on the index as it is, its first search made before; what the
+    burst made is removed after, the directory it made it in too, whatever came of the search."""
     burst = working_tree / BURST_DIRECTORY
-    for number in range(files):
-        directory = burst / str(number // BURST_FILES_PER_DIRECTORY)
-        directory.mkdir(parents=True, exist_ok=True)
-        (directory / BURST_FILE.format(number=number)).write_bytes(BURST_CONTENT)
-    seconds = await timed_search_seconds(connection, working_tree, query, None)
-    shutil.rmtree(burst)
-    return seconds
+    # What to remove after: the burst's own directory, and `target/` where the burst made it
+    made = burst if burst.parent.exists() else burst.parent
+    async with servers.connect(index_directory) as connection:
+        await connection.search(working_tree, query, RESULTS_PER_QUERY)
+        try:
+            for number in range(files):
+                directory = burst / str(number // BURST_FILES_PER_DIRECTORY)
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / BURST_FILE.format(number=number)).write_bytes(BURST_CONTENT)
+            return await timed_search_seconds(connection, working_tree, query, None)
+        finally:
+            # A burst cut short, or a file a system's scanner of new files still holds, never
+            # hides the search's own failure
+            shutil.rmtree(made, ignore_errors=True)
 
 
 class Edit(BaseModel):

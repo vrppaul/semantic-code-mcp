@@ -32,6 +32,7 @@ watched that holds it by its text, and else by where that directory lies, its de
 import errno
 import os
 import stat
+import unicodedata
 from abc import ABC, abstractmethod
 from enum import StrEnum, auto
 from pathlib import Path
@@ -44,6 +45,8 @@ from semantic_code_mcp.domain.models import NO_WATCH, Place, WatchChange, WatchE
 
 # The number of the first watch, as inotify gives it
 FIRST_WATCH = 1
+# The form of Unicode names are compared in, its letters composed, as git keeps them on macOS
+COMPOSED_FORM = "NFC"
 # The name of an event of the directory itself, or of changes lost
 NO_NAME = ""
 
@@ -124,12 +127,27 @@ def entry_event(watch: int, change: WatchChange, name: str, *, is_directory: boo
     return WatchEvent(watch=watch, change=change, name=name, is_directory=is_directory)
 
 
+class ListedNames(BaseModel):
+    """The names a directory lists, as it spells each, and by how a volume that ignores case and
+    Unicode's forms compares them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    spelled: frozenset[str]
+    by_key: dict[str, str]
+
+
 class LookCache(BaseModel):
     """What one look of a watcher of trees has read so far: the watch holding each directory
     met, by the system's spelling of it, and the names each directory watched lists."""
 
     holding: dict[str, int | None]
-    names: dict[int, frozenset[str]]
+    names: dict[int, ListedNames]
+
+
+def spelling_key(name: str) -> str:
+    """A name as a volume that ignores case and Unicode's forms compares it."""
+    return unicodedata.normalize(COMPOSED_FORM, name).casefold()
 
 
 class TreeWatcher(DirectoryWatcher):
@@ -230,10 +248,7 @@ class TreeWatcher(DirectoryWatcher):
             case TreeAction.made_or_removed:
                 if watch not in look.names:
                     look.names[watch] = self._names_in(watch)
-                lies_there = name in look.names[watch]
-                return self._made_or_removed(
-                    watch, name, path, lies_there=lies_there, directory_now=directory_now
-                )
+                return self._made_or_removed(watch, name, path, look.names[watch])
             case TreeAction.written if directory_now:
                 return []
             case _:
@@ -242,27 +257,39 @@ class TreeWatcher(DirectoryWatcher):
                 ]
 
     def _made_or_removed(
-        self, watch: int, name: str, path: str, *, lies_there: bool, directory_now: bool
+        self, watch: int, name: str, path: str, listed: ListedNames
     ) -> list[WatchEvent]:
         """What lay at the path gone, a directory watched or a file, and what lies there now
-        added: a file's name may have been taken by a directory, or a directory's by a file."""
+        added, by the spelling its directory lists it by: a file's name may have been taken by a
+        directory, or a directory's by a file, and the system may spell a name otherwise than
+        its directory keeps it."""
         watched = os.path.normcase(path) in self._by_path
         gone = [entry_event(watch, WatchChange.entry_removed, name, is_directory=watched)]
-        if not lies_there:
+        spelled = name if name in listed.spelled else listed.by_key.get(spelling_key(name))
+        if spelled is None:
             return gone
+        spelled_path = f"{self._watched[watch].path}{os.sep}{spelled}"
         return [
             *gone,
-            entry_event(watch, WatchChange.entry_added, name, is_directory=directory_now),
+            entry_event(
+                watch,
+                WatchChange.entry_added,
+                spelled,
+                is_directory=is_plain_directory_now(spelled_path),
+            ),
         ]
 
-    def _names_in(self, watch: int) -> frozenset[str]:
-        """The names a directory watched lists now, each as it is spelled there: none where it
-        went or may no longer be read."""
+    def _names_in(self, watch: int) -> ListedNames:
+        """The names a directory watched lists now: none where it went or may no longer be
+        read."""
         try:
             with os.scandir(self._watched[watch].path) as entries:
-                return frozenset(entry.name for entry in entries)
+                names = [entry.name for entry in entries]
         except OSError:
-            return frozenset()
+            names = []
+        return ListedNames(
+            spelled=frozenset(names), by_key={spelling_key(name): name for name in names}
+        )
 
     def _watch_holding(self, directory: str) -> int | None:
         """The watch of a directory as the system spells it: by its text, else by where it lies;

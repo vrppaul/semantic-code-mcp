@@ -26,7 +26,10 @@ def test_a_generated_corpus_holds_each_module_where_its_path_says_committed(tmp_
     assert (
         sorted(git_output(working_tree, "ls-files")),
         git_output(working_tree, "status", "--porcelain"),
-    ) == (sorted(SMALL.module_path(number) for number in range(SMALL.modules)), [])
+    ) == (
+        sorted([".gitignore", *(SMALL.module_path(number) for number in range(SMALL.modules))]),
+        [],
+    )
 
 
 def test_the_sentry_shaped_corpus_s_answers_lie_where_its_modules_do():

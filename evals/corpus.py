@@ -11,6 +11,7 @@ gave that a judge settled, right or wrong, as the agents wrote them: what no key
 as the same rule in a file the server does not chunk.
 """
 
+import hashlib
 import shutil
 import subprocess  # nosec B404
 import tomllib
@@ -28,12 +29,14 @@ CORPUS_FILE_SUFFIX = ".toml"
 COMMIT_PREFIX_LENGTH = 12
 # Where a clone is made before it is moved into place; a failed clone or checkout is removed
 PARTIAL_CHECKOUT_SUFFIX = ".partial"
-# The version of what a generated corpus's modules hold and where they lie, in its checkout's
-# name: a change of either makes the checkout anew
-GENERATOR_VERSION = 1
-# A generated corpus's directories and modules, by their numbers, and its one commit's author
+# A generated corpus's directories and modules, by their numbers, what its git ignores, as a
+# real repository ignores its build's output, and its one commit's author
 GENERATED_DIRECTORY = "package_{number:02}"
 GENERATED_MODULE = "module_{number:05}.py"
+GENERATED_IGNORE_FILE = ".gitignore"
+GENERATED_IGNORED = "target/\n"
+# How many hex digits of the digest of what makes a generated corpus its checkout's name holds
+GENERATOR_DIGEST_LENGTH = 12
 GENERATED_AUTHOR = ("-c", "user.name=evals", "-c", "user.email=evals@localhost")
 # What each generated module is of, by its number in turn, which its names and words carry
 GENERATED_SUBJECTS = ("invoice", "order", "payment", "refund", "shipment", "receipt", "account")
@@ -129,10 +132,12 @@ class GeneratedSource(BaseModel):
     directories_per_directory: int
 
     def checkout_name(self) -> str:
-        """The name of its checkout's directory, and of the index kept for it."""
+        """The name of its checkout's directory, and of the index kept for it: its shape, and a
+        digest of what its modules hold and where they lie, so a change of either makes the
+        checkout anew."""
         return (
             f"{self.name}-{self.modules}-{self.modules_per_directory}"
-            f"-{self.directories_per_directory}-v{GENERATOR_VERSION}"
+            f"-{self.directories_per_directory}-{generator_digest()}"
         )
 
     def module_path(self, number: int) -> str:
@@ -149,6 +154,21 @@ class GeneratedSource(BaseModel):
     def last_directory(self) -> int:
         """The number of the directory the last module lies in."""
         return (self.modules - 1) // self.modules_per_directory
+
+
+def generator_digest() -> str:
+    """A digest of everything that makes a generated corpus's files."""
+    making = "\0".join(
+        [
+            GENERATED_SOURCE,
+            *GENERATED_SUBJECTS,
+            GENERATED_DIRECTORY,
+            GENERATED_MODULE,
+            GENERATED_IGNORE_FILE,
+            GENERATED_IGNORED,
+        ]
+    )
+    return hashlib.sha256(making.encode()).hexdigest()[:GENERATOR_DIGEST_LENGTH]
 
 
 def digits_in(number: int, base: int) -> int:
@@ -262,6 +282,7 @@ def generated(source: GeneratedSource, working_tree: Path) -> None:
         module = working_tree / source.module_path(number)
         module.parent.mkdir(parents=True, exist_ok=True)
         module.write_text(generated_module_source(number))
+    (working_tree / GENERATED_IGNORE_FILE).write_text(GENERATED_IGNORED)
     run_git(["-C", str(working_tree), "init", "--quiet"])
     run_git(["-C", str(working_tree), "add", "--all"])
     run_git(

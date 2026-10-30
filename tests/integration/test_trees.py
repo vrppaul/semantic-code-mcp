@@ -3,6 +3,7 @@ told as inotify would tell it, by the directory watched that holds it and its na
 lies at its path now; a watch is refused where inotify would refuse it."""
 
 import sys
+import unicodedata
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -241,6 +242,35 @@ def test_a_directory_a_tree_holds_opens_none_of_its_own(tmp_path: Path):
     watcher.watch(str(project / "src"))
 
     assert list(watcher.trees) == [str(project)]
+
+
+@pytest.mark.parametrize(
+    ("kept", "told_as"),
+    [
+        pytest.param("notes.py", "NOTES.PY", id="another case of its letters"),
+        pytest.param(
+            unicodedata.normalize("NFC", "café.py"),
+            unicodedata.normalize("NFD", "café.py"),
+            id="Unicode's other form",
+        ),
+    ],
+)
+def test_a_name_made_spelled_otherwise_is_added_as_its_directory_spells_it(
+    kept: str, told_as: str, tmp_path: Path
+):
+    """As a system may tell a name by the spelling a tool used, on a volume that ignores case
+    and Unicode's forms: what git lists, and a scan keeps, is the directory's spelling."""
+    project = watched_project(tmp_path)
+    (project / kept).write_text("")
+    watcher = ScriptedTrees()
+    root = watcher.watch(str(project))
+
+    events = told(watcher, project, project / told_as, TreeAction.made_or_removed)
+
+    assert events == [
+        event(root, WatchChange.entry_removed, told_as, is_directory=False),
+        event(root, WatchChange.entry_added, kept, is_directory=False),
+    ]
 
 
 def test_a_watcher_closed_closes_each_of_its_trees(tmp_path: Path):

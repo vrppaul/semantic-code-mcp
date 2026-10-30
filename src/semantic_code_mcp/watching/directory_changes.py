@@ -62,8 +62,9 @@ WAIT_FOR_EITHER = False
 NO_END = 0xFFFF_FFFF  # INFINITE
 READ_ENDED = 0  # WAIT_OBJECT_0
 # The changes a tree keeps between two looks before it keeps that they were lost instead:
-# about 33,000 files made, each told about three times, some 25 MB
-MOST_CHANGES_KEPT = 100_000
+# about 17,000 files made, each told about three times; 100,000 changes of paths of 71
+# characters held 62 MB, measured
+MOST_CHANGES_KEPT = 50_000
 # A look takes what is done and never waits; a handle closed waits for its read cancelled
 DO_NOT_WAIT = False
 WAIT = True

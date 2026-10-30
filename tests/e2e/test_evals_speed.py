@@ -63,10 +63,8 @@ async def test_a_burst_of_build_files_leaves_nothing_behind(tmp_path: Path):
 
     with (tmp_path / "server.log").open("w") as server_log:
         servers = ServerStarter(server_log, DEFAULT_OPTIONS)
-        async with servers.connect(tmp_path / "index") as connection:
-            await connection.index(working_tree)
-            await timed_search_after_burst(
-                connection, working_tree, "show a progress bar", A_FEW_FILES
-            )
+        await timed_search_after_burst(
+            working_tree, tmp_path / "index", "show a progress bar", A_FEW_FILES, servers
+        )
 
-    assert not (working_tree / BURST_DIRECTORY).exists()
+    assert not (working_tree / BURST_DIRECTORY.parent).exists()
